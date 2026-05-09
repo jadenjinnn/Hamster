@@ -32,6 +32,7 @@ private:
   void OpenFile(std::filesystem::path path);
 
   Hamster::UUID m_SelectedEntity = Hamster::UUID::GetNil();
+  Hamster::Name *m_Name = nullptr;
   Hamster::Transform *m_Transform = nullptr;
   Hamster::Sprite *m_Sprite = nullptr;
   Hamster::Behaviour *m_Behaviour = nullptr;

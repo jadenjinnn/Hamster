@@ -12,6 +12,8 @@
 
 #include <box2d/box2d.h>
 
+#include "Theme/IconsFontAwesome6.h"
+
 static constexpr ImVec4 kAxisRed       = {0.878f, 0.290f, 0.310f, 1.0f};
 static constexpr ImVec4 kAxisRedHov    = {0.920f, 0.360f, 0.380f, 1.0f};
 static constexpr ImVec4 kAxisRedAct    = {0.780f, 0.220f, 0.240f, 1.0f};
@@ -74,10 +76,38 @@ void PropertyEditor::Render() {
     return;
   }
 
-  ImGui::Text("%s", m_SelectedEntity.GetUUIDString().c_str());
+  // Entity header — icon + editable name
+  {
+    float iconSize = ImGui::GetTextLineHeight() * 2.0f;
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.345f, 0.529f, 0.969f, 1.0f));
+    ImGui::SetWindowFontScale(2.0f);
+    ImGui::Text(ICON_FA_CUBE);
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::PopStyleColor();
+
+    ImGui::SameLine();
+
+    ImGui::BeginGroup();
+    if (m_Name != nullptr) {
+      ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
+      ImGui::InputText("##EntityName", &m_Name->name[0], m_Name->name.capacity() + 1,
+                        ImGuiInputTextFlags_CallbackResize,
+                        [](ImGuiInputTextCallbackData *data) -> int {
+                            auto *str = static_cast<std::string *>(data->UserData);
+                            str->resize(data->BufTextLen);
+                            data->Buf = &(*str)[0];
+                            return 0;
+                        }, &m_Name->name);
+      ImGui::PopItemWidth();
+    }
+    ImGui::TextDisabled("%s", m_SelectedEntity.GetUUIDString().c_str());
+    ImGui::EndGroup();
+  }
+
+  ImGui::Dummy({0, 8});
 
   if (m_Transform != nullptr) {
-    ImGui::SeparatorText("Transform");
+    ImGui::SeparatorText(ICON_FA_UP_DOWN_LEFT_RIGHT "  Transform");
     ImGui::Dummy({0, 4});
 
     // Position
@@ -110,7 +140,7 @@ void PropertyEditor::Render() {
 
   if (m_Sprite != nullptr) {
     ImGui::Dummy({0, 8});
-    ImGui::SeparatorText("Sprite");
+    ImGui::SeparatorText(ICON_FA_IMAGE "  Sprite");
     ImGui::Dummy({0, 4});
 
     ImGui::PushItemWidth(80);
@@ -142,7 +172,7 @@ void PropertyEditor::Render() {
 
   if (m_Behaviour != nullptr) {
     ImGui::Dummy({0, 8});
-    ImGui::SeparatorText("Scripts");
+    ImGui::SeparatorText(ICON_FA_CODE "  Scripts");
     ImGui::Dummy({0, 4});
 
     ImGui::PushItemWidth(80);
@@ -204,7 +234,7 @@ void PropertyEditor::Render() {
 
   if (m_Rigidbody != nullptr) {
     ImGui::Dummy({0, 8});
-    ImGui::SeparatorText("Rigidbody");
+    ImGui::SeparatorText(ICON_FA_SHAPES "  Rigidbody");
     ImGui::Dummy({0, 4});
 
     ImGui::AlignTextToFramePadding();
@@ -256,6 +286,13 @@ void PropertyEditor::SetSelectedEntity(Hamster::UUID uuid) {
   m_SelectedEntity = uuid;
 
   if (!Hamster::UUID::IsNil(m_SelectedEntity)) {
+    if (m_Scene->EntityHasComponent<Hamster::Name>(m_SelectedEntity)) {
+      m_Name =
+          &m_Scene->GetEntityComponent<Hamster::Name>(m_SelectedEntity);
+    } else {
+      m_Name = nullptr;
+    }
+
     if (m_Scene->EntityHasComponent<Hamster::Transform>(m_SelectedEntity)) {
       m_Transform =
           &m_Scene->GetEntityComponent<Hamster::Transform>(m_SelectedEntity);
