@@ -65,3 +65,7 @@ Pushback intensity decreases down this list. Phase 1 is the most collaborative; 
 ## Feature workflow (Phase 5+)
 
 @docs/feature-workflow.md
+
+## Bug workflow
+
+@docs/bug-workflow.md
