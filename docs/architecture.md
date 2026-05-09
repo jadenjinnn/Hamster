@@ -37,9 +37,9 @@ Hamster is a Windows-targeted 2D game engine with an embedded Python scripting l
 5. **`Layer::OnImGuiUpdate()`** on every layer — all panels and the scene viewport image are drawn here
 6. **`ImGuiLayer::End()`** — submits ImGui draw commands to OpenGL
 7. **`Scene::OnUpdate()`** on the active scene (if any):
-   - O(n²) loop over all entities with `Rigidbody`: call `Physics::ResolveCollision`; if colliding, post `CollisionEvent` on the global dispatcher. Runs even when simulation is paused.
-   - If simulation is **not** paused: call `obj.attr("on_update")(delta_time)` on each Python behaviour object; then run a second O(n²) collision resolution pass *(known bug: resolves twice, see Known Smells)*
-   - Python errors are caught; first exception pauses the simulation and prints to the console
+   - `OnPhysicsDetect()`: O(n²) loop over all entities with `Rigidbody` — calls `Physics::IsColliding`, posts `CollisionEvent` on the injected dispatcher. Runs even when simulation is paused.
+   - If simulation is **not** paused: `OnScriptUpdate()` calls `obj.attr("on_update")(delta_time)` on each Python behaviour; then `OnPhysicsResolve()` runs a second O(n²) pass to adjust positions via `Physics::ResolveCollision`.
+   - Python errors are caught; first exception pauses the simulation and logs to the scene's client logger
 8. **`Window::Update`** — `glfwSwapBuffers` + `glfwPollEvents`
 
 Note: `Scene::OnUpdate` runs *after* ImGui, so Python transform changes are first visible in the next frame's render.
@@ -85,13 +85,13 @@ The pybind11 module is compiled as `Hamster.pyd` (Windows) / `Hamster.so` (Linux
 
 ### Threading
 
-Single-threaded for Python. All `on_update` and `on_create` calls happen on the main thread. `AssetManager::AddTextureAsync` loads image data on a background thread but marshals the OpenGL upload back to the main thread via `Application::AppendToMainThreadQueue`. The GIL is held for all Python calls.
+Single-threaded for Python. All `on_update` and `on_create` calls happen on the main thread. `AssetManager::AddTextureAsync` loads image data on a background thread but marshals the OpenGL upload back to the main thread via a stored enqueue callback (set during `AssetManager::Init`). The GIL is held for all Python calls.
 
 ### Object lifetime
 
 `pybind11::object` instances live in `Behaviour::pyObjects` (`std::vector<pybind11::object>`) on the entity. They are ref-counted by pybind11. Each `HamsterBehaviour` holds a raw `Transform*` into the EnTT registry (valid as long as the entity is alive) and a raw `Application*` (valid for the process lifetime).
 
-**Known leak**: `EventDispatcher` has no unsubscribe. Each `HamsterBehaviour` constructor registers three callbacks (key-pressed, key-released, collision) on the global dispatcher. Across play/stop cycles, callbacks accumulate.
+~~**Known leak**: `EventDispatcher` has no unsubscribe.~~ Fixed: `Subscribe` returns a `SubscriptionHandle`; `HamsterBehaviour` destructor unsubscribes its 3 callbacks.
 
 ## Data flow (typical simulation frame)
 
@@ -103,13 +103,13 @@ EditorLayer::OnUpdate
   └─ Mouse click: render to FBO with flat colours → glReadPixels → entity selection
 
 Scene::OnUpdate
-  ├─ O(n²) collision pass: IsColliding → ResolveCollision + post CollisionEvent
+  ├─ OnPhysicsDetect: O(n²) IsColliding → post CollisionEvent on injected dispatcher
   │     └─ HamsterBehaviour::OnCollision: fills m_CollisionEntities
   └─ [if simulation running]
-        ├─ obj.on_update(dt) for each Python behaviour
+        ├─ OnScriptUpdate: obj.on_update(dt) for each Python behaviour
         │     scripts read self.transform / self.key_pressed / self.colliding
         │     scripts write self.transform = ...
-        └─ O(n²) collision pass again (redundant, see Known Smells)
+        └─ OnPhysicsResolve: O(n²) ResolveCollision (adjusts positions)
 
 ImGui panels render scene viewport (FramebufferTexture → AddImage)
 glfwSwapBuffers
@@ -144,12 +144,13 @@ See `docs/build.md` for the full build recipe (populated in Phase 2). Shape:
 
 ## Known smells / refactor candidates
 
-- **`Events/ScriptingEvent.h/.cpp` missing** (`Hamster-Core/src/Events/`) — listed in CMakeLists, `#include`d by `Scene.h`, never created. `ScriptingEventDispatcher` is used in `Scene.h/.cpp` with no definition. Guaranteed compile error. Must be implemented or removed before any build attempt.
+- ~~**`Events/ScriptingEvent.h/.cpp` missing**~~ Fixed: removed in Phase 2 along with `HamsterBehaviour::Subscribe/Post`.
 - ~~**`EventDispatcher` has no unsubscribe**~~ Fixed: `Subscribe` returns a `SubscriptionHandle`; `Unsubscribe(EventType, handle)` removes it. `HamsterBehaviour` destructor unsubscribes its 3 callbacks.
 - ~~**`HamsterBehaviour.h:35` — `GetKeyReleased()` returns `m_KeyPressed`**~~ Fixed in Phase 2.
 - ~~**Collision resolved twice per frame**~~ Fixed: first loop now uses `IsColliding` (detect + post event), second loop uses `ResolveCollision` (adjust positions).
 - ~~**`Scene.h` — dead member `test_t`**~~ Fixed: removed in Phase 2.
-- **`AssetManager` is all-static** (`Hamster-Core/src/Utils/AssetManager.h/.cpp`) — no lifecycle; `Terminate()` doesn't clear scripts; texture reads are not mutex-guarded (only writes are). Consider making it an owned singleton or passing it through `Application`.
+- ~~**Application singleton coupling**~~ Fixed in Phase 5: Scene, Project, Panel, ImGuiLayer, Scripting, AssetManager, EditorLayer, and ProjectHubLayer all receive dependencies (EventDispatcher*, Application*, GLFWwindow*) through constructors instead of calling `Application::GetApplicationInstance()`. Zero singleton calls remain in Hamster-Core; only 2 remain in Hamster-Wheel (ProjectCreator/ProjectSelector passing `&app` to Project methods). `HAMSTER_LOG` macro removed; replaced with direct `m_ClientLogger->Log()` calls.
+- **`AssetManager` is all-static** (`Hamster-Core/src/Utils/AssetManager.h/.cpp`) — no lifecycle; `Terminate()` doesn't clear scripts; texture reads are not mutex-guarded (only writes are). Main-thread enqueue is now injected via `Init()`, but the class is still all-static.
 - **Serialization is raw binary and not portable** (`SceneSerialiser`, `ProjectSerialiser`, `AssetManager::Serialise`) — uses `reinterpret_cast` of structs, `size_t`-prefixed strings. Will break across Windows↔Linux or 32-vs-64-bit. Consider switching to a portable format (JSON, MessagePack, or versioned binary) before scene data accumulates.
 - ~~**`HAMSTER_WHEEL_SRC_DIR` bakes the source path**~~ Fixed: all resource paths now use `GetExecutablePath()` relative to the build output. `HAMSTER_WHEEL_SRC_DIR` macro removed.
 - ~~**Build artifacts committed to git**~~ Fixed: untracked and added to `.gitignore`.

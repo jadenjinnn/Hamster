@@ -1,8 +1,21 @@
 # Session handoff
 
-## 2026-05-09
+## 2026-05-09 (session 3)
 
-- Phase 2 changes (CMake fixes, dead code removal, compiler flags) are **not yet committed**. ~12 modified files ready to stage.
-- `docs/build.md` now has the full working build recipe — verify it still works after any toolchain updates.
-- Phase 3 approach not yet discussed. Key blocker: `HamsterPCK` package structure is broken (no `__init__.py`, `sys.path` not set up). This must be fixed before any Python smoke test can run.
-- The `/log` skill referenced in `~/.claude/CLAUDE.md` session handoff instructions doesn't exist — may need a custom hook or manual process.
+- DI refactor complete (7 commits): Scene, Project, Panel, ImGuiLayer, Scripting, AssetManager, EditorLayer, ProjectHubLayer all receive dependencies via constructors
+- 0 singleton calls remain in Hamster-Core; 2 remain in Hamster-Wheel (editor-level, appropriate)
+- HAMSTER_LOG macro removed; replaced with direct m_ClientLogger->Log() calls
+- Remaining Phase 5 work: AssetManager still all-static (lifecycle/ownership), Renderer static state
+- Serialization portability still deferred until before Phase 6
+- Smoke test guardrail: `ctest --test-dir build -R SmokeTest`
+
+## 2026-05-09 (session 2)
+
+- Phases 2-4 complete, all committed and pushed
+- Phase 5 starts with dependency injection refactor:
+  - Pass EventDispatcher, etc. through constructors instead of reaching through Application singleton
+  - Start with Scene — most painful coupling point
+  - User understands the "ownership vs access" distinction and is on board
+- Other Phase 5 architectural work: AssetManager/Renderer static state, HAMSTER_LOG macro decoupling
+- Serialization portability deferred until before Phase 6
+- Smoke test guardrail: `ctest --test-dir build -R SmokeTest`
