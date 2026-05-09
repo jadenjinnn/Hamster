@@ -11,7 +11,61 @@
 #include <Scripting/Scripting.h>
 
 #include <box2d/box2d.h>
-// #include "Scripting/Scripting.h"
+
+static constexpr ImVec4 kAxisRed       = {0.878f, 0.290f, 0.310f, 1.0f};
+static constexpr ImVec4 kAxisRedHov    = {0.920f, 0.360f, 0.380f, 1.0f};
+static constexpr ImVec4 kAxisRedAct    = {0.780f, 0.220f, 0.240f, 1.0f};
+static constexpr ImVec4 kAxisGreen     = {0.337f, 0.576f, 0.439f, 1.0f};
+static constexpr ImVec4 kAxisGreenHov  = {0.400f, 0.660f, 0.510f, 1.0f};
+static constexpr ImVec4 kAxisGreenAct  = {0.260f, 0.490f, 0.360f, 1.0f};
+static constexpr ImVec4 kAxisBlue      = {0.310f, 0.620f, 0.890f, 1.0f};
+static constexpr ImVec4 kAxisBlueHov   = {0.380f, 0.690f, 0.940f, 1.0f};
+static constexpr ImVec4 kAxisBlueAct   = {0.240f, 0.530f, 0.780f, 1.0f};
+
+static void DrawAxisFloat(const char *axisLabel, const char *inputId, float *value,
+                          const ImVec4 &col, const ImVec4 &hov, const ImVec4 &act,
+                          float inputWidth) {
+    ImGuiStyle &style = ImGui::GetStyle();
+    float h = ImGui::GetFrameHeight();
+    float rounding = style.FrameRounding;
+    float savedSpacingX = style.ItemSpacing.x;
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, {0, style.ItemSpacing.y});
+
+    // Colored axis prefix — left-rounded only
+    ImVec2 pp = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton(axisLabel, {h, h});
+    ImVec4 bg = ImGui::IsItemActive() ? act : (ImGui::IsItemHovered() ? hov : col);
+    dl->AddRectFilled(pp, {pp.x + h, pp.y + h},
+                      ImGui::ColorConvertFloat4ToU32(bg),
+                      rounding, ImDrawFlags_RoundCornersLeft);
+    char vis[2] = {axisLabel[0], '\0'};
+    ImVec2 ts = ImGui::CalcTextSize(vis);
+    dl->AddText({pp.x + (h - ts.x) * 0.5f, pp.y + (h - ts.y) * 0.5f},
+                ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Text]), vis);
+
+    // Input — right-rounded only, drawn as custom bg + transparent InputFloat
+    ImGui::SameLine();
+    ImVec2 ip = ImGui::GetCursorScreenPos();
+    dl->AddRectFilled(ip, {ip.x + inputWidth, ip.y + h},
+                      ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_FrameBg]),
+                      rounding, ImDrawFlags_RoundCornersRight);
+
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, {0, 0, 0, 0});
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, {0, 0, 0, 0});
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, {0, 0, 0, 0});
+    ImGui::PushItemWidth(inputWidth);
+    ImGui::InputFloat(inputId, value);
+    ImGui::PopItemWidth();
+    ImGui::PopStyleColor(3);
+
+    ImGui::PopStyleVar();
+    ImGui::SameLine(0, savedSpacingX);
+}
+
+static constexpr float kLabelColumnWidth = 72.0f;
+static constexpr float kAxisInputWidth   = 60.0f;
 
 void PropertyEditor::Render() {
   if (!ImGui::Begin("Property Editor", &m_WindowOpen) ||
@@ -24,86 +78,40 @@ void PropertyEditor::Render() {
 
   if (m_Transform != nullptr) {
     ImGui::SeparatorText("Transform");
+    ImGui::Dummy({0, 4});
 
-    ImGui::PushItemWidth(80);
+    // Position
+    ImGui::AlignTextToFramePadding();
     ImGui::Text("Position");
-    ImGui::SameLine();
+    ImGui::SameLine(kLabelColumnWidth);
+    DrawAxisFloat("X##P", "##XP", &m_Transform->position.x, kAxisRed, kAxisRedHov, kAxisRedAct, kAxisInputWidth);
+    DrawAxisFloat("Y##P", "##YP", &m_Transform->position.y, kAxisGreen, kAxisGreenHov, kAxisGreenAct, kAxisInputWidth);
+    DrawAxisFloat("Z##P", "##ZP", &m_Transform->position.z, kAxisBlue, kAxisBlueHov, kAxisBlueAct, kAxisInputWidth);
+    ImGui::NewLine();
+    ImGui::Dummy({0, 4});
 
-    ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor(230, 57, 70));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor(216, 77, 89));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor(220, 40, 52));
-
-    ImGui::Button("X##P1", ImVec2(20, 20));
-
-    ImGui::PopStyleColor(3);
-    ImGui::SameLine();
-
-    ImGui::InputFloat("##X##P2", &m_Transform->position.x);
-
-    ImGui::SameLine();
-
-    ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor(81, 152, 114));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                          (ImVec4)ImColor(97, 193, 142));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor(50, 145, 95));
-
-    ImGui::Button("Y##P1", ImVec2(20, 20));
-
-    ImGui::PopStyleColor(3);
-    ImGui::SameLine();
-
-    ImGui::InputFloat("##Y##P2", &m_Transform->position.y);
-
-    ImGui::SameLine();
-
-    ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor(72, 190, 255));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                          (ImVec4)ImColor(63, 165, 221));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor(55, 138, 184));
-
-    ImGui::Button("Z##P1", ImVec2(20, 20));
-
-    ImGui::PopStyleColor(3);
-    ImGui::SameLine();
-
-    ImGui::InputFloat("##Z##P2", &m_Transform->position.z);
-
+    // Scale
+    ImGui::AlignTextToFramePadding();
     ImGui::Text("Scale");
-    ImGui::SameLine();
+    ImGui::SameLine(kLabelColumnWidth);
+    DrawAxisFloat("X##S", "##XS", &m_Transform->size.x, kAxisRed, kAxisRedHov, kAxisRedAct, kAxisInputWidth);
+    DrawAxisFloat("Y##S", "##YS", &m_Transform->size.y, kAxisGreen, kAxisGreenHov, kAxisGreenAct, kAxisInputWidth);
+    ImGui::NewLine();
+    ImGui::Dummy({0, 4});
 
-    ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor(230, 57, 70));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor(216, 77, 89));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor(220, 40, 52));
-
-    ImGui::Button("X##S1", ImVec2(20, 20));
-
-    ImGui::PopStyleColor(3);
-    ImGui::SameLine();
-
-    ImGui::InputFloat("##X##S2", &m_Transform->size.x);
-
-    ImGui::SameLine();
-
-    ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor(81, 152, 114));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                          (ImVec4)ImColor(97, 193, 142));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor(50, 145, 95));
-
-    ImGui::Button("Y##S1", ImVec2(20, 20));
-
-    ImGui::PopStyleColor(3);
-    ImGui::SameLine();
-
-    ImGui::InputFloat("##Y##S2", &m_Transform->size.y);
-
+    // Rotation
+    ImGui::AlignTextToFramePadding();
     ImGui::Text("Rotation");
-    ImGui::SameLine();
-
-    ImGui::InputFloat("##X#R1", &m_Transform->rotation);
+    ImGui::SameLine(kLabelColumnWidth);
+    ImGui::PushItemWidth(kAxisInputWidth + ImGui::GetFrameHeight());
+    ImGui::InputFloat("##XR", &m_Transform->rotation);
+    ImGui::PopItemWidth();
   }
 
   if (m_Sprite != nullptr) {
+    ImGui::Dummy({0, 8});
     ImGui::SeparatorText("Sprite");
+    ImGui::Dummy({0, 4});
 
     ImGui::PushItemWidth(80);
 
@@ -133,7 +141,9 @@ void PropertyEditor::Render() {
   }
 
   if (m_Behaviour != nullptr) {
+    ImGui::Dummy({0, 8});
     ImGui::SeparatorText("Scripts");
+    ImGui::Dummy({0, 4});
 
     ImGui::PushItemWidth(80);
 
@@ -193,9 +203,12 @@ void PropertyEditor::Render() {
   }
 
   if (m_Rigidbody != nullptr) {
+    ImGui::Dummy({0, 8});
     ImGui::SeparatorText("Rigidbody");
+    ImGui::Dummy({0, 4});
 
-    ImGui::Text("Is Static: ");
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("Is Static");
     ImGui::SameLine();
 
     ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(0.345f, 0.529f, 0.969f, 1.0f));
@@ -204,6 +217,9 @@ void PropertyEditor::Render() {
     ImGui::PopStyleColor();
   }
 
+  ImGui::Dummy({0, 16});
+  float btnWidth = ImGui::CalcTextSize("Add Component").x + ImGui::GetStyle().FramePadding.x * 2;
+  ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - btnWidth) * 0.5f + ImGui::GetCursorPosX());
   if (ImGui::Button("Add Component")) {
     ImGui::OpenPopup("Add Component");
   }

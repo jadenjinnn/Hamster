@@ -99,12 +99,12 @@ static void ApplyColors() {
 static void ApplyStyle() {
     ImGuiStyle &s = ImGui::GetStyle();
 
-    s.WindowPadding     = {10, 10};
-    s.FramePadding      = {8, 5};
-    s.CellPadding       = {6, 4};
-    s.ItemSpacing       = {8, 6};
-    s.ItemInnerSpacing  = {6, 4};
-    s.IndentSpacing     = 20.0f;
+    s.WindowPadding     = {12, 12};
+    s.FramePadding      = {8, 4};
+    s.CellPadding       = {8, 4};
+    s.ItemSpacing       = {8, 4};
+    s.ItemInnerSpacing  = {4, 4};
+    s.IndentSpacing     = 16.0f;
     s.ScrollbarSize     = 12.0f;
     s.GrabMinSize       = 8.0f;
 
