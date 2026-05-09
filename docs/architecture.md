@@ -151,18 +151,18 @@ See `docs/build.md` for the full build recipe (populated in Phase 2). Shape:
 - **`Scene.h:143` — dead member `test_t`** — `std::unordered_map<pybind11::object, int> test_t` is never used. `pybind11::object` as a map key requires a hash specialization; may not compile. Safe to remove.
 - **`AssetManager` is all-static** (`Hamster-Core/src/Utils/AssetManager.h/.cpp`) — no lifecycle; `Terminate()` doesn't clear scripts; texture reads are not mutex-guarded (only writes are). Consider making it an owned singleton or passing it through `Application`.
 - **Serialization is raw binary and not portable** (`SceneSerialiser`, `ProjectSerialiser`, `AssetManager::Serialise`) — uses `reinterpret_cast` of structs, `size_t`-prefixed strings. Will break across Windows↔Linux or 32-vs-64-bit. Consider switching to a portable format (JSON, MessagePack, or versioned binary) before scene data accumulates.
-- **`HAMSTER_WHEEL_SRC_DIR` bakes the source path into the binary** — `AssetBrowser.cpp` and `EditorLayer.cpp` resolve resource paths relative to this compile-time macro. Works only on the build machine. Needs a proper runtime resource path strategy before Phase 6 packaging.
-- **Build artifacts committed to git** — `build.ninja` (not in `.gitignore`), `cmake_install.cmake` at root/`Hamster-Core`/`Hamster-Py` (in `.gitignore` but already tracked), `Hamster-Core/libHamster-Core.a`. Need `git rm --cached` to untrack.
-- **`Hamster-Py` STATIC target is dead** — built but never linked by anything; the pybind11 module (`Hamster`) is what's actually used. The static lib is an artifact of an earlier design.
-- **Linux install targets in `Hamster-Wheel/CMakeLists.txt`** — hardcoded `/lib/x86_64-linux-gnu/libpython3.10.so.1.0` etc. will fail on Windows. Remove or conditionalize.
-- **`ImGui::ShowDemoWindow()` left in `EditorLayer::OnImGuiUpdate`** — debug leftover.
-- **`HamsterWheelApp.cpp:32`** — `EditorLayer* editorLayer` passed uninitialized to `ProjectHubLayer`. Never dereferenced (overwritten on `ProjectOpened`), but technically UB. Should be `nullptr`.
+- ~~**`HAMSTER_WHEEL_SRC_DIR` bakes the source path**~~ Fixed: all resource paths now use `GetExecutablePath()` relative to the build output. `HAMSTER_WHEEL_SRC_DIR` macro removed.
+- ~~**Build artifacts committed to git**~~ Fixed: untracked and added to `.gitignore`.
+- ~~**`Hamster-Py` STATIC target is dead**~~ Fixed: removed from `Hamster-Py/CMakeLists.txt`.
+- ~~**Linux install targets in `Hamster-Wheel/CMakeLists.txt`**~~ Fixed: removed in Phase 2.
+- ~~**`ImGui::ShowDemoWindow()` left in `EditorLayer::OnImGuiUpdate`**~~ Fixed: removed.
+- ~~**`HamsterWheelApp.cpp:32` — uninitialized `EditorLayer*`**~~ Fixed: initialized to `nullptr`.
 - **`Hamster-WheelQT/`** — abandoned Qt UI experiment, not in any CMakeLists. Dormant for now; planned to eventually replace Hamster-Wheel.
 
 ## Open questions
 
 - ~~What Python version will be used on Windows?~~ Resolved: Python 3.11.
 - ~~What is the intended `HamsterPCK` deployment strategy?~~ Resolved: simplified to `import Hamster`; `.pyd` copied flat into project directory, project directory on `sys.path`.
-- Should `ScriptingEventDispatcher` be implemented (Python-accessible event bus for inter-script communication) or removed? `HamsterBehaviour::Subscribe/Post` already references it.
+- ~~Should `ScriptingEventDispatcher` be implemented or removed?~~ Resolved: removed in Phase 2 along with `HamsterBehaviour::Subscribe/Post`.
 - When Box2D rigid-body dynamics are added, does it replace the custom AABB system entirely, or will both coexist?
 - Should the serialization format be made portable before scene data accumulates (i.e., during refactor phase)?

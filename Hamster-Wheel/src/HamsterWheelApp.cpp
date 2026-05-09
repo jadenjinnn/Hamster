@@ -28,7 +28,7 @@ int main() {
   ImGuiIO &io = ImGui::GetIO();
   io.Fonts->AddFontFromFileTTF(filePath.string().c_str(), 18.0f);
 
-  EditorLayer *editorLayer;
+  EditorLayer *editorLayer = nullptr;
   ProjectHubLayer *projectHubLayer = new ProjectHubLayer(editorLayer);
 
   app->PushLayer(projectHubLayer);

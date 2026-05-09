@@ -52,9 +52,6 @@ target_include_directories(Hamster-Wheel PRIVATE
         ${Python_INCLUDE_DIRS}
 )
 
-#add_subdirectory(Vendor/pybind11)
-target_compile_definitions(Hamster-Wheel PRIVATE HAMSTER_WHEEL_SRC_DIR="${CMAKE_SOURCE_DIR}/Hamster-Wheel/src")
-
 target_link_libraries(Hamster-Wheel PRIVATE Hamster-Core glfw imgui box2d tinyfiledialogs pybind11::embed)
 
 # Hamster-Wheel needs the pybind11 module built first

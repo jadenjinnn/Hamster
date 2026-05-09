@@ -14,10 +14,9 @@
 
 AssetBrowser::AssetBrowser(std::shared_ptr<Hamster::Scene> scene)
   : Hamster::Panel(scene) {
-  std::string wheelPath = HAMSTER_WHEEL_SRC_DIR;
-
   m_PythonIcon = std::make_unique<Hamster::Texture>(
-    wheelPath + "/../Resources/Icons/python.png");
+    Hamster::Application::GetExecutablePath() +
+    "/../share/Resources/Hamster-Wheel/Resources/Icons/python.png");
 };
 
 void AssetBrowser::Render() {

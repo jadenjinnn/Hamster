@@ -41,8 +41,8 @@ void EditorLayer::OnAttach() {
                         FORWARD_CALLBACK_FUNCTION(EditorLayer::FramebufferSizeChanged,
                                                   Hamster::FramebufferResizeEvent));
 
-    std::string srcPath = HAMSTER_WHEEL_SRC_DIR;
-    std::string iniPath = srcPath + "/default.ini";
+    std::string iniPath = Hamster::Application::GetExecutablePath() +
+        "/../share/Resources/Hamster-Wheel/Resources/default.ini";
 
     ImGui::LoadIniSettingsFromDisk(iniPath.c_str());
 
@@ -336,8 +336,6 @@ void EditorLayer::OnImGuiUpdate() {
         ImVec2(0, 1), ImVec2(1, 0));
 
     ImGui::End();
-
-    ImGui::ShowDemoWindow();
 
     if (m_Hierarchy->IsPanelOpen()) {
         m_Hierarchy->Render();
