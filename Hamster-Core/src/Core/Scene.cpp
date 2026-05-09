@@ -75,7 +75,19 @@ void Scene::DestroyEntity(UUID entityUUID) {
 // }
 
 void Scene::OnUpdate() {
-  // Detect collisions and post events (no position changes)
+  OnPhysicsDetect();
+
+  if (!m_IsSimulationPaused) {
+    auto currentFrame = static_cast<float>(glfwGetTime());
+    m_DeltaTime = currentFrame - m_LastFrame;
+    m_LastFrame = currentFrame;
+
+    OnScriptUpdate();
+    OnPhysicsResolve();
+  }
+}
+
+void Scene::OnPhysicsDetect() {
   auto collisionDetect = m_Registry.view<Transform, Rigidbody, ID>();
 
   collisionDetect.each([this, collisionDetect](auto entityA, auto &transformA,
@@ -94,50 +106,47 @@ void Scene::OnUpdate() {
       }
     });
   });
+}
 
-  if (!m_IsSimulationPaused) {
-    auto currentFrame = static_cast<float>(glfwGetTime());
-    m_DeltaTime = currentFrame - m_LastFrame;
-    m_LastFrame = currentFrame;
+void Scene::OnScriptUpdate() {
+  auto view = m_Registry.view<Behaviour>();
 
-    auto view = m_Registry.view<Behaviour>();
+  bool pythonError = false;
 
-    bool pythonError = false;
+  view.each([this, &pythonError](auto &behaviour) mutable {
+    for (auto &obj : behaviour.pyObjects) {
+      try {
+        obj.attr("on_update")(m_DeltaTime);
 
-    view.each([this, &pythonError](auto &behaviour) mutable {
-      for (auto &obj : behaviour.pyObjects) {
-        try {
-          obj.attr("on_update")(m_DeltaTime);
+        obj.attr("reset_input")();
+      } catch (pybind11::error_already_set &e) {
+        pythonError = true;
 
-          obj.attr("reset_input")();
-        } catch (pybind11::error_already_set &e) {
-          pythonError = true;
+        HAMSTER_LOG(Error, e.what())
 
-          HAMSTER_LOG(Error, e.what())
-
-          break;
-        }
+        break;
       }
-    });
-
-    // Resolve collisions (adjust positions)
-    auto physicsUpdate = m_Registry.view<Transform, Rigidbody>();
-
-    physicsUpdate.each(
-        [physicsUpdate](auto entityA, auto &transformA, auto &rbA) mutable {
-          physicsUpdate.each([entityA, &transformA, &rbA](auto entityB,
-                                                        auto &transformB,
-                                                        auto &rbB) mutable {
-            if (entityA != entityB) {
-              Physics::ResolveCollision(transformA, rbA, transformB, rbB);
-            }
-          });
-        });
-
-    if (pythonError) {
-      PauseSceneSimulation();
     }
+  });
+
+  if (pythonError) {
+    PauseSceneSimulation();
   }
+}
+
+void Scene::OnPhysicsResolve() {
+  auto physicsUpdate = m_Registry.view<Transform, Rigidbody>();
+
+  physicsUpdate.each(
+      [physicsUpdate](auto entityA, auto &transformA, auto &rbA) mutable {
+        physicsUpdate.each([entityA, &transformA, &rbA](auto entityB,
+                                                      auto &transformB,
+                                                      auto &rbB) mutable {
+          if (entityA != entityB) {
+            Physics::ResolveCollision(transformA, rbA, transformB, rbB);
+          }
+        });
+      });
 }
 
 void Scene::OnRender(bool renderFlat) {

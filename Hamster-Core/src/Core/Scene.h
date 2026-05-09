@@ -67,6 +67,9 @@ public:
   }
 
   void OnUpdate();
+  void OnPhysicsDetect();
+  void OnScriptUpdate();
+  void OnPhysicsResolve();
 
   void OnRender(bool renderFlat);
 
