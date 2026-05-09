@@ -34,9 +34,7 @@ namespace Hamster {
     // style.Colors[ImGuiCol_WindowBg].w = 1.0f;
     // }
 
-    Application &app = Application::GetApplicationInstance();
-
-    ImGui_ImplGlfw_InitForOpenGL(app.GetWindow(), true);
+    ImGui_ImplGlfw_InitForOpenGL(m_Window, true);
 
     ImGui_ImplOpenGL3_Init("#version 400 core");
   }

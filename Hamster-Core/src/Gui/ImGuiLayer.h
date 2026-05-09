@@ -10,11 +10,16 @@
 
 #include "Core/Layer.h"
 
+struct GLFWwindow;
+
 namespace Hamster {
 
 class ImGuiLayer : public Layer {
 public:
+  ImGuiLayer() = default;
   ~ImGuiLayer() override = default;
+
+  void SetWindow(GLFWwindow *window) { m_Window = window; }
 
   void Begin();
   void End();
@@ -24,6 +29,9 @@ public:
   void OnUpdate() override;
 
   void AttachDefaultColourScheme();
+
+private:
+  GLFWwindow *m_Window = nullptr;
 };
 
 } // namespace Hamster

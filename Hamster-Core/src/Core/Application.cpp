@@ -43,6 +43,7 @@ namespace Hamster {
         // dispatcher for user use serperate from internal use
         m_Dispatcher = std::make_shared<EventDispatcher>();
 
+        m_ImGuiLayer.SetWindow(m_Window->GetGLFWWindowPointer());
         PushLayer(&m_ImGuiLayer);
 
         m_Window->SetWindowEventDispatcher(m_Dispatcher.get());
