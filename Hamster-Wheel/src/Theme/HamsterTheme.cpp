@@ -19,8 +19,10 @@ static constexpr ImVec4 kTextDim     = {0.533f, 0.533f, 0.573f, 1.0f};   // #888
 static constexpr ImVec4 kAccent      = {0.345f, 0.529f, 0.969f, 1.0f};   // #5887f7  — blue
 static constexpr ImVec4 kAccentHov   = {0.435f, 0.600f, 1.000f, 1.0f};
 static constexpr ImVec4 kAccentAct   = {0.278f, 0.455f, 0.878f, 1.0f};
-static constexpr ImVec4 kScrollbar   = {0.180f, 0.180f, 0.200f, 1.0f};
-static constexpr ImVec4 kScrollGrab  = {0.300f, 0.300f, 0.330f, 1.0f};
+static constexpr ImVec4 kScrollbar   = {0.0f, 0.0f, 0.0f, 0.0f};
+static constexpr ImVec4 kScrollGrab  = {0.300f, 0.300f, 0.330f, 0.60f};
+static constexpr ImVec4 kScrollHov   = {0.350f, 0.350f, 0.380f, 0.75f};
+static constexpr ImVec4 kScrollAct   = {0.400f, 0.400f, 0.430f, 0.85f};
 
 static void ApplyColors() {
     ImVec4 *c = ImGui::GetStyle().Colors;
@@ -44,8 +46,8 @@ static void ApplyColors() {
 
     c[ImGuiCol_ScrollbarBg]           = kScrollbar;
     c[ImGuiCol_ScrollbarGrab]         = kScrollGrab;
-    c[ImGuiCol_ScrollbarGrabHovered]  = kSurfaceHov;
-    c[ImGuiCol_ScrollbarGrabActive]   = kSurfaceAct;
+    c[ImGuiCol_ScrollbarGrabHovered]  = kScrollHov;
+    c[ImGuiCol_ScrollbarGrabActive]   = kScrollAct;
 
     c[ImGuiCol_CheckMark]             = kAccent;
     c[ImGuiCol_SliderGrab]            = kAccent;
@@ -106,20 +108,22 @@ static void ApplyStyle() {
     s.ItemSpacing       = {8, 4};
     s.ItemInnerSpacing  = {4, 4};
     s.IndentSpacing     = 16.0f;
-    s.ScrollbarSize     = 12.0f;
-    s.GrabMinSize       = 8.0f;
+    s.ScrollbarSize     = 10.0f;
+    s.GrabMinSize       = 6.0f;
 
-    s.WindowBorderSize  = 1.0f;
+    s.WindowBorderSize  = 0.0f;
     s.ChildBorderSize   = 1.0f;
     s.PopupBorderSize   = 1.0f;
     s.FrameBorderSize   = 0.0f;
     s.TabBorderSize     = 0.0f;
 
+    s.DockingSeparatorSize = 1.0f;
+
     s.WindowRounding    = 8.0f;
     s.ChildRounding     = 8.0f;
     s.FrameRounding     = 6.0f;
     s.PopupRounding     = 8.0f;
-    s.ScrollbarRounding = 6.0f;
+    s.ScrollbarRounding = 99.0f;
     s.GrabRounding      = 4.0f;
     s.TabRounding       = 6.0f;
 }
