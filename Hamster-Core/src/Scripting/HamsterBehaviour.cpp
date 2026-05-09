@@ -18,19 +18,25 @@ HamsterBehaviour::HamsterBehaviour(UUID entityUUID,
     m_Rigidbody = &m_Scene->GetEntityComponent<Rigidbody>(m_UUID);
   }
 
-  app->GetEventDispatcher()->Subscribe(
+  m_KeyPressedHandle = app->GetEventDispatcher()->Subscribe(
       KeyPressed, FORWARD_CALLBACK_FUNCTION(HamsterBehaviour::OnKeyPressed,
                                             KeyPressedEvent));
 
-  app->GetEventDispatcher()->Subscribe(
+  m_KeyReleasedHandle = app->GetEventDispatcher()->Subscribe(
       KeyReleased, FORWARD_CALLBACK_FUNCTION(HamsterBehaviour::OnKeyReleased,
                                              KeyReleasedEvent));
 
-  app->GetEventDispatcher()->Subscribe(
+  m_CollisionHandle = app->GetEventDispatcher()->Subscribe(
       Collision,
       FORWARD_CALLBACK_FUNCTION(HamsterBehaviour::OnCollision, CollisionEvent));
+}
 
-  // Application::GetApplicationInstance().GetEventDispatcher();
+HamsterBehaviour::~HamsterBehaviour() {
+  if (auto *dispatcher = m_App->GetEventDispatcher().get()) {
+    dispatcher->Unsubscribe(KeyPressed, m_KeyPressedHandle);
+    dispatcher->Unsubscribe(KeyReleased, m_KeyReleasedHandle);
+    dispatcher->Unsubscribe(Collision, m_CollisionHandle);
+  }
 }
 
 void HamsterBehaviour::OnKeyPressed(KeyPressedEvent &e) {

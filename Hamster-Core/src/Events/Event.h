@@ -44,24 +44,30 @@ private:
   bool m_Handled = false;
 };
 
+using SubscriptionHandle = uint64_t;
+
 class EventDispatcher {
 public:
-  void Subscribe(EventType e, std::function<void(Event &)> fn);
+  SubscriptionHandle Subscribe(EventType e, std::function<void(Event &)> fn);
+
+  void Unsubscribe(EventType e, SubscriptionHandle handle);
 
   template <typename T> void Post(Event &e) {
-    if (m_Observers.find(e.GetEventType()) == m_Observers.end()) {
+    auto it = m_Observers.find(e.GetEventType());
+    if (it == m_Observers.end()) {
       return;
     }
 
-    auto &&observers = m_Observers.at(static_cast<T &>(e).GetEventType());
-
-    for (auto &&observer : observers) {
+    for (auto &[handle, observer] : it->second) {
       observer(static_cast<T &>(e));
     }
   }
 
 private:
-  std::unordered_map<EventType, std::vector<std::function<void(Event &)>>>
+  uint64_t m_NextHandle = 1;
+  std::unordered_map<EventType,
+                     std::vector<std::pair<SubscriptionHandle,
+                                           std::function<void(Event &)>>>>
       m_Observers;
 };
 } // namespace Hamster

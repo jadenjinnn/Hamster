@@ -19,6 +19,8 @@ public:
   HamsterBehaviour(UUID entityUUID, std::shared_ptr<Scene> scene,
                    Application *app);
 
+  ~HamsterBehaviour();
+
   virtual void OnCreate() {}
 
   virtual void OnUpdate(float deltaTime) {}
@@ -69,5 +71,9 @@ private:
 
   bool m_Colliding = false;
   std::set<std::string> m_CollisionEntities;
+
+  SubscriptionHandle m_KeyPressedHandle = 0;
+  SubscriptionHandle m_KeyReleasedHandle = 0;
+  SubscriptionHandle m_CollisionHandle = 0;
 };
 } // namespace Hamster

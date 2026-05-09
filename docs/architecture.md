@@ -145,7 +145,7 @@ See `docs/build.md` for the full build recipe (populated in Phase 2). Shape:
 ## Known smells / refactor candidates
 
 - **`Events/ScriptingEvent.h/.cpp` missing** (`Hamster-Core/src/Events/`) — listed in CMakeLists, `#include`d by `Scene.h`, never created. `ScriptingEventDispatcher` is used in `Scene.h/.cpp` with no definition. Guaranteed compile error. Must be implemented or removed before any build attempt.
-- **`EventDispatcher` has no unsubscribe** (`Hamster-Core/src/Events/Event.h/.cpp`) — `HamsterBehaviour` callbacks stack up across play/stop cycles. Fix: add an unsubscribe/handle mechanism, or rebuild the dispatcher on simulation stop.
+- ~~**`EventDispatcher` has no unsubscribe**~~ Fixed: `Subscribe` returns a `SubscriptionHandle`; `Unsubscribe(EventType, handle)` removes it. `HamsterBehaviour` destructor unsubscribes its 3 callbacks.
 - ~~**`HamsterBehaviour.h:35` — `GetKeyReleased()` returns `m_KeyPressed`**~~ Fixed in Phase 2.
 - ~~**Collision resolved twice per frame**~~ Fixed: first loop now uses `IsColliding` (detect + post event), second loop uses `ResolveCollision` (adjust positions).
 - **`Scene.h:143` — dead member `test_t`** — `std::unordered_map<pybind11::object, int> test_t` is never used. `pybind11::object` as a map key requires a hash specialization; may not compile. Safe to remove.
