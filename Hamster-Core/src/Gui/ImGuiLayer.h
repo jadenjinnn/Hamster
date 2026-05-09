@@ -28,8 +28,6 @@ public:
   void OnDetach() override;
   void OnUpdate() override;
 
-  void AttachDefaultColourScheme();
-
 private:
   GLFWwindow *m_Window = nullptr;
 };
