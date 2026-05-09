@@ -15,6 +15,7 @@ The owner has not written C++ since this project was last touched. Treat them as
 ## Autonomy
 
 **Plan-first, ask before edits.** For any change beyond a one-line fix:
+
 1. State the plan (files touched, approach, risks)
 2. Wait for "go"
 3. Execute
@@ -40,7 +41,7 @@ We are working through these phases in order. Do not skip ahead without explicit
 2. **Build on Windows** — get a clean build from a fresh toolchain install. Heavy collaboration expected on toolchain choices.
 3. **Smoke test** — minimal test that exercises the C++→Python boundary and runs at least one frame. Discuss approach before implementing.
 4. **Refactor** — propose priorities based on what was learned in phase 1, execute incrementally with the smoke test as a guardrail.
-5. **Features** — TBD, scoped after refactor.
+5. **Features** — driven by `docs/feature-workflow.md`. Use `/feature` to start implement` once approved.
 6. **Packaging** — Windows redistributable. Largely execution-mode.
 
 Pushback intensity decreases down this list. Phase 1 is the most collaborative; phase 6 is mostly execution.
@@ -60,3 +61,7 @@ Pushback intensity decreases down this list. Phase 1 is the most collaborative; 
 ## Personal/machine-specific notes
 
 @CLAUDE.local.md
+
+## Feature workflow (Phase 5+)
+
+@docs/feature-workflow.md

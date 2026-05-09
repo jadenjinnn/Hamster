@@ -67,12 +67,13 @@ static void ApplyColors() {
     c[ImGuiCol_ResizeGripHovered]     = kAccent;
     c[ImGuiCol_ResizeGripActive]      = kAccentAct;
 
-    c[ImGuiCol_Tab]                   = kBg;
-    c[ImGuiCol_TabHovered]            = kSurfaceAct;
-    c[ImGuiCol_TabActive]             = kSurface;
-    c[ImGuiCol_TabUnfocused]          = kBg;
-    c[ImGuiCol_TabUnfocusedActive]    = kSurface;
-    c[ImGuiCol_TabSelectedOverline]   = {0, 0, 0, 0};
+    c[ImGuiCol_Tab]                       = kBg;
+    c[ImGuiCol_TabHovered]                = kSurfaceAct;
+    c[ImGuiCol_TabSelected]               = kSurface;
+    c[ImGuiCol_TabSelectedOverline]       = {0, 0, 0, 0};
+    c[ImGuiCol_TabDimmed]                 = kBg;
+    c[ImGuiCol_TabDimmedSelected]         = kSurface;
+    c[ImGuiCol_TabDimmedSelectedOverline] = {0, 0, 0, 0};
 
     c[ImGuiCol_DockingPreview]        = kAccent;
     c[ImGuiCol_DockingEmptyBg]        = kBg;
