@@ -24,7 +24,7 @@ int main() {
 
   Hamster::Application app;
 
-  // Add fixture dir to sys.path so Python can find smoke_script and HamsterPCK
+  // Add fixture dir to sys.path so Python can find smoke_script and Hamster.pyd
   pybind11::module_ sys = pybind11::module_::import("sys");
   pybind11::list path = sys.attr("path");
   path.append(fixtureDir.string());

@@ -31,8 +31,8 @@ namespace Hamster {
 
         std::ofstream scriptOut(scriptPath);
 
-        std::string defaultContent = "import HamsterPCK \n\n"
-                "class test(HamsterPCK.Hamster.HamsterBehaviour):\n"
+        std::string defaultContent = "import Hamster\n\n"
+                "class test(Hamster.HamsterBehaviour):\n"
                 "    def on_update(self, delta_time):\n"
                 "        pass\n";
 

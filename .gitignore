@@ -153,6 +153,10 @@ build.ninja
 
 ### Build artifacts ###
 build/
+
+### Python ###
+__pycache__/
+*.pyc
 *.a
 *.lib
 

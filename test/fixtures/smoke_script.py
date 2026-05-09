@@ -1,7 +1,7 @@
-import HamsterPCK.Hamster
+import Hamster
 import os
 
-class SmokeTest(HamsterPCK.Hamster.HamsterBehaviour):
+class SmokeTest(Hamster.HamsterBehaviour):
     def on_create(self):
         marker_dir = os.environ.get("HAMSTER_TEST_MARKER_DIR", ".")
         with open(os.path.join(marker_dir, "smoke_create.ok"), "w") as f:

@@ -17,7 +17,7 @@ namespace Hamster {
     m_Module.reload();
     //
     pybind11::object hamsterBehaviourClass =
-        pybind11::module_::import("HamsterPCK.Hamster").attr("HamsterBehaviour");
+        pybind11::module_::import("Hamster").attr("HamsterBehaviour");
     //
     for (auto &item: m_Module.attr("__dict__").cast<pybind11::dict>()) {
       auto obj = item.second;
