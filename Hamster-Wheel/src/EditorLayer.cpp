@@ -23,7 +23,6 @@ EditorLayer::EditorLayer(Hamster::Application *app,
     m_Hierarchy = std::make_unique<Hierarchy>(m_Dispatcher, m_Scene, m_Renderer);
     m_FileBrowser = std::make_unique<FileBrowser>(m_Dispatcher, m_Scene);
     m_AssetBrowser = std::make_unique<AssetBrowser>(m_Dispatcher, m_Scene, assetManager);
-    m_StartPauseModal = std::make_unique<StartPauseModal>(m_Dispatcher, m_Scene);
     m_MenuBar = std::make_unique<MenuBar>(m_Dispatcher, m_Scene);
     m_Console = std::make_unique<Console>(m_Dispatcher, m_Scene);
 }
@@ -335,6 +334,52 @@ void EditorLayer::OnImGuiUpdate() {
                pos.y + m_LevelEditorAvailRegion.y),
         ImVec2(0, 1), ImVec2(1, 0));
 
+    // Play/Pause/Stop overlay — top-center of the viewport
+    {
+        const float btnSize = 28.0f;
+        const float spacing = 6.0f;
+        const float overlayW = btnSize * 3 + spacing * 2;
+        const float overlayX = pos.x + (m_LevelEditorAvailRegion.x - overlayW) * 0.5f;
+        const float overlayY = pos.y + 8.0f;
+
+        ImGui::SetCursorScreenPos({overlayX, overlayY});
+
+        bool paused = m_Scene->IsSceneSimulationPaused();
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, {4, 4});
+
+        if (paused) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.22f, 0.45f, 0.22f, 0.85f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.28f, 0.55f, 0.28f, 0.95f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.18f, 0.38f, 0.18f, 1.0f));
+            if (ImGui::Button(ICON_FA_PLAY "##play", {btnSize, btnSize})) {
+                m_Scene->RunSceneSimulation();
+            }
+            ImGui::PopStyleColor(3);
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55f, 0.45f, 0.15f, 0.85f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.65f, 0.55f, 0.20f, 0.95f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.45f, 0.38f, 0.10f, 1.0f));
+            if (ImGui::Button(ICON_FA_PAUSE "##pause", {btnSize, btnSize})) {
+                m_Scene->PauseSceneSimulation();
+            }
+            ImGui::PopStyleColor(3);
+        }
+
+        ImGui::SameLine(0, spacing);
+
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55f, 0.20f, 0.20f, 0.85f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.65f, 0.25f, 0.25f, 0.95f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.45f, 0.15f, 0.15f, 1.0f));
+        if (ImGui::Button(ICON_FA_STOP "##stop", {btnSize, btnSize})) {
+            m_Scene->PauseSceneSimulation();
+        }
+        ImGui::PopStyleColor(3);
+
+        ImGui::PopStyleVar(2);
+    }
+
     ImGui::End();
 
     if (m_Hierarchy->IsPanelOpen()) {
@@ -365,7 +410,6 @@ void EditorLayer::OnImGuiUpdate() {
         m_Console->Render();
     }
 
-    m_StartPauseModal->Render();
     m_MenuBar->Render();
 }
 

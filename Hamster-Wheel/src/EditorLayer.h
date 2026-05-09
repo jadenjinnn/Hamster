@@ -22,7 +22,7 @@
 #include "Panels/Hierarchy.h"
 #include "Panels/MenuBar.h"
 #include "Panels/PropertyEditor.h"
-#include "Panels/StartPauseModal.h"
+#include "Theme/IconsFontAwesome6.h"
 
 class EditorLayer : public Hamster::Layer {
 public:
@@ -56,7 +56,6 @@ private:
   std::unique_ptr<AssetBrowser> m_AssetBrowser;
   std::unique_ptr<Console> m_Console;
 
-  std::unique_ptr<StartPauseModal> m_StartPauseModal;
   std::unique_ptr<MenuBar> m_MenuBar;
 
   void FramebufferSizeChanged(Hamster::FramebufferResizeEvent &e);

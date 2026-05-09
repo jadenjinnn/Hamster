@@ -25,15 +25,13 @@ void Console::Render() {
 
     switch (type) {
     case Hamster::Info:
-      ImGui::PushStyleColor(ImGuiCol_Text, (ImVec4)ImColor(248, 253, 255));
-
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.933f, 0.933f, 0.949f, 1.0f));
       break;
     case Hamster::Error:
-      ImGui::PushStyleColor(ImGuiCol_Text, (ImVec4)ImColor(230, 57, 70));
-
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.878f, 0.325f, 0.345f, 1.0f));
       break;
     case Hamster::Warning:
-      ImGui::PushStyleColor(ImGuiCol_Text, (ImVec4)ImColor(251, 177, 60));
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.941f, 0.725f, 0.290f, 1.0f));
 
       break;
     }

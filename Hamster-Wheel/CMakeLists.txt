@@ -22,8 +22,6 @@ set(PANELS
         src/Panels/Hierarchy.cpp src/Panels/Hierarchy.h
 
 
-        src/Panels/StartPauseModal.cpp src/Panels/StartPauseModal.h
-
         src/Panels/MenuBar.cpp src/Panels/MenuBar.h
         src/Panels/ProjectCreator.cpp
         src/Panels/ProjectCreator.h
