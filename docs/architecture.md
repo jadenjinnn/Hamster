@@ -16,11 +16,11 @@ Hamster is a Windows-targeted 2D game engine with an embedded Python scripting l
 
 - `Hamster-Core/src/Core/` — `Application` singleton + main loop, `Window` (GLFW wrapper), `LayerStack`, `Scene` + ECS façade, `Project` + `ProjectSerialiser`, `SceneSerialiser`, `UUID`, `Log`/`Logger`, `Components.h` (all component structs)
 - `Hamster-Core/src/Events/` — `EventType` enum, `Event` base class, `EventDispatcher` (subscribe-only observer), all concrete event types (`WindowEvents`, `ApplicationEvents`, `InputEvents`, `SceneEvents`, `GuiEvents`)
-- `Hamster-Core/src/Renderer/` — `Renderer` (static, OpenGL draw calls, camera/zoom), `Shader`, `Texture`, `FramebufferTexture`, two built-in GLSL shaders (`SpriteShader`, `FlatShader`)
+- `Hamster-Core/src/Renderer/` — `Renderer` (instance owned by Application, OpenGL draw calls, camera/zoom), `Shader`, `Texture`, `FramebufferTexture`, two built-in GLSL shaders (`SpriteShader`, `FlatShader`)
 - `Hamster-Core/src/Physics/` — `Physics` (static, custom AABB `IsColliding` + `ResolveCollision`)
 - `Hamster-Core/src/Scripting/` — `Scripting` (interpreter lifecycle, default script generation), `HamsterBehaviour` (C++ base class Python scripts inherit from), `HamsterScript` (Python module loader + class scanner)
 - `Hamster-Core/src/Gui/` — `ImGuiLayer` (begin/end frame wrapper), `Panel` + `Modal` base classes
-- `Hamster-Core/src/Utils/` — `AssetManager` (textures + scripts, UUID-keyed, all-static), `InputManager` (GLFW key polling)
+- `Hamster-Core/src/Utils/` — `AssetManager` (textures + scripts, UUID-keyed, instance owned by Application), `InputManager` (GLFW key polling)
 - `Hamster-Py/src/` — pybind11 bindings: `main.cpp` (module entry point), `HamsterBehaviour.h` (trampoline + binding), `Library.h` (vec2/vec3), `Core.h` (Scene/Application/EventDispatcher — opaque), `Input.h` (KeyCodes enum), `UUID.h`, `Log.h`
 - `Hamster-Wheel/src/` — `HamsterWheelApp.cpp` (main), `EditorLayer` (scene viewport + entity picking), `ProjectHubLayer` (project open/create flow)
 - `Hamster-Wheel/src/Panels/` — `Hierarchy`, `PropertyEditor`, `FileBrowser`, `AssetBrowser`, `Console`, `MenuBar`, `StartPauseModal`, `ProjectSelector`, `ProjectCreator`, `RenameModal`
@@ -151,6 +151,7 @@ See `docs/build.md` for the full build recipe (populated in Phase 2). Shape:
 - ~~**`Scene.h` — dead member `test_t`**~~ Fixed: removed in Phase 2.
 - ~~**Application singleton coupling**~~ Fixed in Phase 5: Scene, Project, Panel, ImGuiLayer, Scripting, AssetManager, EditorLayer, and ProjectHubLayer all receive dependencies (EventDispatcher*, Application*, GLFWwindow*) through constructors instead of calling `Application::GetApplicationInstance()`. Zero singleton calls remain in Hamster-Core; only 2 remain in Hamster-Wheel (ProjectCreator/ProjectSelector passing `&app` to Project methods). `HAMSTER_LOG` macro removed; replaced with direct `m_ClientLogger->Log()` calls.
 - ~~**`AssetManager` is all-static**~~ Fixed: converted to an instance class owned by `Application` as `std::unique_ptr<AssetManager>`. RAII constructor/destructor replaced `Init()`/`Terminate()` (fixing a bug where `Terminate` didn't clear `m_Scripts`). Mutex removed — all writes happen on main thread. All call sites receive `AssetManager*` through constructors.
+- ~~**`Renderer` is all-static**~~ Fixed: converted to an instance class owned by `Application` as `std::unique_ptr<Renderer>`. Constructor replaces `Init()`, empty `Terminate()` removed. All call sites receive `Renderer*` through `Application::GetRenderer()` or constructor injection.
 - **Serialization is raw binary and not portable** (`SceneSerialiser`, `ProjectSerialiser`, `AssetManager::Serialise`) — uses `reinterpret_cast` of structs, `size_t`-prefixed strings. Will break across Windows↔Linux or 32-vs-64-bit. Consider switching to a portable format (JSON, MessagePack, or versioned binary) before scene data accumulates.
 - ~~**`HAMSTER_WHEEL_SRC_DIR` bakes the source path**~~ Fixed: all resource paths now use `GetExecutablePath()` relative to the build output. `HAMSTER_WHEEL_SRC_DIR` macro removed.
 - ~~**Build artifacts committed to git**~~ Fixed: untracked and added to `.gitignore`.
