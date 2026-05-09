@@ -22,8 +22,9 @@ Hamster is a Windows-targeted 2D game engine with an embedded Python scripting l
 - `Hamster-Core/src/Gui/` — `ImGuiLayer` (begin/end frame wrapper), `Panel` + `Modal` base classes
 - `Hamster-Core/src/Utils/` — `AssetManager` (textures + scripts, UUID-keyed, instance owned by Application), `InputManager` (GLFW key polling)
 - `Hamster-Py/src/` — pybind11 bindings: `main.cpp` (module entry point), `HamsterBehaviour.h` (trampoline + binding), `Library.h` (vec2/vec3), `Core.h` (Scene/Application/EventDispatcher — opaque), `Input.h` (KeyCodes enum), `UUID.h`, `Log.h`
-- `Hamster-Wheel/src/` — `HamsterWheelApp.cpp` (main), `EditorLayer` (scene viewport + entity picking), `ProjectHubLayer` (project open/create flow)
-- `Hamster-Wheel/src/Panels/` — `Hierarchy`, `PropertyEditor`, `FileBrowser`, `AssetBrowser`, `Console`, `MenuBar`, `StartPauseModal`, `ProjectSelector`, `ProjectCreator`, `RenameModal`
+- `Hamster-Wheel/src/` — `HamsterWheelApp.cpp` (main), `EditorLayer` (scene viewport + entity picking + play/pause/stop overlay), `ProjectHubLayer` (project open/create flow)
+- `Hamster-Wheel/src/Theme/` — `HamsterTheme` (centralized ImGui color/style/font config, applies Figma-inspired dark theme with Inter font + Font Awesome icons)
+- `Hamster-Wheel/src/Panels/` — `Hierarchy`, `PropertyEditor`, `FileBrowser`, `AssetBrowser`, `Console`, `MenuBar`, `ProjectSelector`, `ProjectCreator`, `RenameModal`
 
 ## Main loop
 
