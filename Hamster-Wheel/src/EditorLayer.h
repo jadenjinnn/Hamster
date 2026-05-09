@@ -26,7 +26,7 @@
 
 class EditorLayer : public Hamster::Layer {
 public:
-  EditorLayer(Hamster::EventDispatcher *dispatcher,
+  EditorLayer(Hamster::Application *app,
               std::shared_ptr<Hamster::Scene> scene);
 
   void OnAttach() override;
@@ -41,6 +41,7 @@ private:
   bool m_WindowOpen = true;
   bool m_WindowFocused = false;
 
+  Hamster::Application *m_App;
   Hamster::EventDispatcher *m_Dispatcher;
   std::shared_ptr<Hamster::Scene> m_Scene;
 

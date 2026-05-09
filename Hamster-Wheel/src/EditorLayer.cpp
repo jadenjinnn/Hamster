@@ -13,32 +13,29 @@
 
 #include "Core/Application.h"
 
-EditorLayer::EditorLayer(Hamster::EventDispatcher *dispatcher,
+EditorLayer::EditorLayer(Hamster::Application *app,
                          std::shared_ptr<Hamster::Scene> scene)
-    : m_Dispatcher(dispatcher), m_Scene(scene), m_FramebufferTexture(1920, 1080) {
-    m_PropertyEditor = std::make_unique<PropertyEditor>(dispatcher, m_Scene);
-    m_Hierarchy = std::make_unique<Hierarchy>(dispatcher, m_Scene);
-    m_FileBrowser = std::make_unique<FileBrowser>(dispatcher, m_Scene);
-    m_AssetBrowser = std::make_unique<AssetBrowser>(dispatcher, m_Scene);
-    m_StartPauseModal = std::make_unique<StartPauseModal>(dispatcher, m_Scene);
-    m_MenuBar = std::make_unique<MenuBar>(dispatcher, m_Scene);
-    m_Console = std::make_unique<Console>(dispatcher, m_Scene);
+    : m_App(app), m_Dispatcher(app->GetEventDispatcher().get()),
+      m_Scene(scene), m_FramebufferTexture(1920, 1080) {
+    m_PropertyEditor = std::make_unique<PropertyEditor>(m_Dispatcher, m_Scene);
+    m_Hierarchy = std::make_unique<Hierarchy>(m_Dispatcher, m_Scene);
+    m_FileBrowser = std::make_unique<FileBrowser>(m_Dispatcher, m_Scene);
+    m_AssetBrowser = std::make_unique<AssetBrowser>(m_Dispatcher, m_Scene);
+    m_StartPauseModal = std::make_unique<StartPauseModal>(m_Dispatcher, m_Scene);
+    m_MenuBar = std::make_unique<MenuBar>(m_Dispatcher, m_Scene);
+    m_Console = std::make_unique<Console>(m_Dispatcher, m_Scene);
 }
 
 void EditorLayer::OnAttach() {
     glfwGetFramebufferSize(
-        Hamster::Application::GetApplicationInstance().GetWindow(),
+        m_App->GetWindow(),
         &m_ViewportWidth, &m_ViewportHeight);
 
-    Hamster::Application::GetApplicationInstance()
-            .GetEventDispatcher()
-            ->Subscribe(Hamster::ActiveSceneChanged,
+    m_Dispatcher->Subscribe(Hamster::ActiveSceneChanged,
                         FORWARD_CALLBACK_FUNCTION(EditorLayer::ActiveSceneChanged,
                                                   Hamster::ActiveSceneChangedEvent));
 
-    Hamster::Application::GetApplicationInstance()
-            .GetEventDispatcher()
-            ->Subscribe(Hamster::FramebufferResize,
+    m_Dispatcher->Subscribe(Hamster::FramebufferResize,
                         FORWARD_CALLBACK_FUNCTION(EditorLayer::FramebufferSizeChanged,
                                                   Hamster::FramebufferResizeEvent));
 

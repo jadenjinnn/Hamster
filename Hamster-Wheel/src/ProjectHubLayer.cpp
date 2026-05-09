@@ -4,16 +4,21 @@
 
 #include "ProjectHubLayer.h"
 
-void ProjectHubLayer::OnAttach() {
-  Hamster::Application::GetApplicationInstance()
-      .GetEventDispatcher()
-      ->Subscribe(Hamster::ProjectOpened, [this](Hamster::Event &e) {
-        m_EditorLayer = new EditorLayer(
-            m_Dispatcher,
-            Hamster::Application::GetApplicationInstance().GetActiveScene());
+ProjectHubLayer::ProjectHubLayer(Hamster::Application *app)
+    : m_App(app),
+      m_Dispatcher(app->GetEventDispatcher().get()),
+      m_ProjectSelector(std::make_unique<ProjectSelector>(m_Dispatcher)),
+      m_ProjectCreator(std::make_unique<ProjectCreator>(m_Dispatcher)) {
+}
 
-        Hamster::Application::GetApplicationInstance().PushLayer(m_EditorLayer);
-        Hamster::Application::GetApplicationInstance().PopLayer(this);
+void ProjectHubLayer::OnAttach() {
+  m_Dispatcher->Subscribe(Hamster::ProjectOpened, [this](Hamster::Event &e) {
+        m_EditorLayer = new EditorLayer(
+            m_App,
+            m_App->GetActiveScene());
+
+        m_App->PushLayer(m_EditorLayer);
+        m_App->PopLayer(this);
       });
 }
 
