@@ -350,17 +350,17 @@ void EditorLayer::OnImGuiUpdate() {
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, {4, 4});
 
         if (paused) {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.22f, 0.45f, 0.22f, 0.85f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.28f, 0.55f, 0.28f, 0.95f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.18f, 0.38f, 0.18f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.337f, 0.576f, 0.439f, 0.90f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.400f, 0.660f, 0.510f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.260f, 0.490f, 0.360f, 1.0f));
             if (ImGui::Button(ICON_FA_PLAY "##play", {btnSize, btnSize})) {
                 m_Scene->RunSceneSimulation();
             }
             ImGui::PopStyleColor(3);
         } else {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55f, 0.45f, 0.15f, 0.85f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.65f, 0.55f, 0.20f, 0.95f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.45f, 0.38f, 0.10f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.337f, 0.576f, 0.439f, 0.90f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.400f, 0.660f, 0.510f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.260f, 0.490f, 0.360f, 1.0f));
             if (ImGui::Button(ICON_FA_PAUSE "##pause", {btnSize, btnSize})) {
                 m_Scene->PauseSceneSimulation();
             }
@@ -369,9 +369,9 @@ void EditorLayer::OnImGuiUpdate() {
 
         ImGui::SameLine(0, spacing);
 
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55f, 0.20f, 0.20f, 0.85f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.65f, 0.25f, 0.25f, 0.95f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.45f, 0.15f, 0.15f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.878f, 0.290f, 0.310f, 0.90f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.920f, 0.360f, 0.380f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.780f, 0.220f, 0.240f, 1.0f));
         if (ImGui::Button(ICON_FA_STOP "##stop", {btnSize, btnSize})) {
             m_Scene->PauseSceneSimulation();
         }

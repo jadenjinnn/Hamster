@@ -68,11 +68,11 @@ static void ApplyColors() {
     c[ImGuiCol_ResizeGripActive]      = kAccentAct;
 
     c[ImGuiCol_Tab]                   = kBg;
-    c[ImGuiCol_TabHovered]            = kSurfaceHov;
-    c[ImGuiCol_TabActive]             = kBgChild;
+    c[ImGuiCol_TabHovered]            = kSurfaceAct;
+    c[ImGuiCol_TabActive]             = kSurface;
     c[ImGuiCol_TabUnfocused]          = kBg;
-    c[ImGuiCol_TabUnfocusedActive]    = kBgChild;
-    c[ImGuiCol_TabSelectedOverline]   = kAccent;
+    c[ImGuiCol_TabUnfocusedActive]    = kSurface;
+    c[ImGuiCol_TabSelectedOverline]   = {0, 0, 0, 0};
 
     c[ImGuiCol_DockingPreview]        = kAccent;
     c[ImGuiCol_DockingEmptyBg]        = kBg;
@@ -114,13 +114,13 @@ static void ApplyStyle() {
     s.FrameBorderSize   = 0.0f;
     s.TabBorderSize     = 0.0f;
 
-    s.WindowRounding    = 6.0f;
-    s.ChildRounding     = 4.0f;
-    s.FrameRounding     = 4.0f;
-    s.PopupRounding     = 4.0f;
-    s.ScrollbarRounding = 4.0f;
-    s.GrabRounding      = 3.0f;
-    s.TabRounding       = 4.0f;
+    s.WindowRounding    = 8.0f;
+    s.ChildRounding     = 8.0f;
+    s.FrameRounding     = 6.0f;
+    s.PopupRounding     = 8.0f;
+    s.ScrollbarRounding = 6.0f;
+    s.GrabRounding      = 4.0f;
+    s.TabRounding       = 6.0f;
 }
 
 static void LoadFonts(ImGuiIO &io, const std::string &resourcePath) {
