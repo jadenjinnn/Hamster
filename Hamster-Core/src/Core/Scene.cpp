@@ -75,15 +75,16 @@ void Scene::DestroyEntity(UUID entityUUID) {
 // }
 
 void Scene::OnUpdate() {
-  auto test = m_Registry.view<Transform, Rigidbody, ID>();
+  // Detect collisions and post events (no position changes)
+  auto collisionDetect = m_Registry.view<Transform, Rigidbody, ID>();
 
-  test.each([this, test](auto entityA, auto &transformA, auto &rbA,
-                         auto &idA) mutable {
-    test.each([this, entityA, transformA, rbA, idA](auto entityB,
-                                                    auto &transformB, auto &rbB,
-                                                    auto &idB) mutable {
+  collisionDetect.each([this, collisionDetect](auto entityA, auto &transformA,
+                                               auto &rbA, auto &idA) mutable {
+    collisionDetect.each([this, entityA, &transformA, &idA](
+                             auto entityB, auto &transformB, auto &rbB,
+                             auto &idB) mutable {
       if (entityA != entityB) {
-        if (Physics::ResolveCollision(transformA, rbA, transformB, rbB)) {
+        if (Physics::IsColliding(transformA, transformB)) {
           CollisionEvent e(idA.uuid, idB.uuid);
 
           Application::GetApplicationInstance()
@@ -119,11 +120,12 @@ void Scene::OnUpdate() {
       }
     });
 
+    // Resolve collisions (adjust positions)
     auto physicsUpdate = m_Registry.view<Transform, Rigidbody>();
 
     physicsUpdate.each(
         [physicsUpdate](auto entityA, auto &transformA, auto &rbA) mutable {
-          physicsUpdate.each([entityA, transformA, rbA](auto entityB,
+          physicsUpdate.each([entityA, &transformA, &rbA](auto entityB,
                                                         auto &transformB,
                                                         auto &rbB) mutable {
             if (entityA != entityB) {
