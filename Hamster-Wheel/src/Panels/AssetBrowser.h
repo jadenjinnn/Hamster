@@ -11,7 +11,8 @@
 
 class AssetBrowser : public Hamster::Panel {
 public:
-  AssetBrowser(std::shared_ptr<Hamster::Scene> scene);
+  AssetBrowser(Hamster::EventDispatcher *dispatcher,
+               std::shared_ptr<Hamster::Scene> scene);
 
   void Render() override;
 

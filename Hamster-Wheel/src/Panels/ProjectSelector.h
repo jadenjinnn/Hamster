@@ -15,10 +15,11 @@
 
 class ProjectSelector : public Hamster::Panel {
 public:
-    ProjectSelector() {
+    explicit ProjectSelector(Hamster::EventDispatcher *dispatcher) : Hamster::Panel(dispatcher) {
     };
 
-    ProjectSelector(std::shared_ptr<Hamster::Scene> scene) : Hamster::Panel(scene, false) {
+    ProjectSelector(Hamster::EventDispatcher *dispatcher,
+                    std::shared_ptr<Hamster::Scene> scene) : Hamster::Panel(dispatcher, scene, false) {
     };
 
     void Render() override;

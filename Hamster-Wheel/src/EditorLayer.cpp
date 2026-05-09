@@ -13,15 +13,16 @@
 
 #include "Core/Application.h"
 
-EditorLayer::EditorLayer(std::shared_ptr<Hamster::Scene> scene)
-    : m_Scene(scene), m_FramebufferTexture(1920, 1080) {
-    m_PropertyEditor = std::make_unique<PropertyEditor>(m_Scene);
-    m_Hierarchy = std::make_unique<Hierarchy>(m_Scene);
-    m_FileBrowser = std::make_unique<FileBrowser>(m_Scene);
-    m_AssetBrowser = std::make_unique<AssetBrowser>(m_Scene);
-    m_StartPauseModal = std::make_unique<StartPauseModal>(m_Scene);
-    m_MenuBar = std::make_unique<MenuBar>(m_Scene);
-    m_Console = std::make_unique<Console>(m_Scene);
+EditorLayer::EditorLayer(Hamster::EventDispatcher *dispatcher,
+                         std::shared_ptr<Hamster::Scene> scene)
+    : m_Dispatcher(dispatcher), m_Scene(scene), m_FramebufferTexture(1920, 1080) {
+    m_PropertyEditor = std::make_unique<PropertyEditor>(dispatcher, m_Scene);
+    m_Hierarchy = std::make_unique<Hierarchy>(dispatcher, m_Scene);
+    m_FileBrowser = std::make_unique<FileBrowser>(dispatcher, m_Scene);
+    m_AssetBrowser = std::make_unique<AssetBrowser>(dispatcher, m_Scene);
+    m_StartPauseModal = std::make_unique<StartPauseModal>(dispatcher, m_Scene);
+    m_MenuBar = std::make_unique<MenuBar>(dispatcher, m_Scene);
+    m_Console = std::make_unique<Console>(dispatcher, m_Scene);
 }
 
 void EditorLayer::OnAttach() {

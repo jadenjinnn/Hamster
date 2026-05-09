@@ -20,10 +20,11 @@
 
 class ProjectCreator : public Hamster::Panel {
 public:
-    ProjectCreator(std::shared_ptr<Hamster::Scene> scene) : Hamster::Panel(std::move(scene), false) {
+    ProjectCreator(Hamster::EventDispatcher *dispatcher,
+                   std::shared_ptr<Hamster::Scene> scene) : Hamster::Panel(dispatcher, std::move(scene), false) {
     };
 
-    ProjectCreator() : Hamster::Panel(false) {
+    explicit ProjectCreator(Hamster::EventDispatcher *dispatcher) : Hamster::Panel(dispatcher, false) {
     };
 
     void Render() override;

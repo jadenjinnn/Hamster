@@ -4,30 +4,31 @@
 
 #ifndef PANEL_H
 #define PANEL_H
-#include "Core/Application.h"
 #include "Core/Scene.h"
 #include "Events/Event.h"
 
 namespace Hamster {
 class Panel {
 public:
-  Panel(std::shared_ptr<Scene> scene, bool defaultOpen = true)
+  Panel(EventDispatcher *dispatcher, std::shared_ptr<Scene> scene,
+        bool defaultOpen = true)
       : m_WindowOpen(defaultOpen), m_Scene(std::move(scene)) {
-    Application::GetApplicationInstance().GetEventDispatcher()->Subscribe(
+    dispatcher->Subscribe(
         ActiveSceneChanged,
         FORWARD_CALLBACK_FUNCTION(Panel::OnActiveSceneChanged,
                                   ActiveSceneChangedEvent));
   };
 
-  Panel(bool defaultOpen) : m_WindowOpen(defaultOpen) {
-    Application::GetApplicationInstance().GetEventDispatcher()->Subscribe(
+  Panel(EventDispatcher *dispatcher, bool defaultOpen)
+      : m_WindowOpen(defaultOpen) {
+    dispatcher->Subscribe(
         ActiveSceneChanged,
         FORWARD_CALLBACK_FUNCTION(Panel::OnActiveSceneChanged,
                                   ActiveSceneChangedEvent));
   };
 
-  Panel() {
-    Application::GetApplicationInstance().GetEventDispatcher()->Subscribe(
+  explicit Panel(EventDispatcher *dispatcher) {
+    dispatcher->Subscribe(
         ActiveSceneChanged,
         FORWARD_CALLBACK_FUNCTION(Panel::OnActiveSceneChanged,
                                   ActiveSceneChangedEvent));

@@ -9,7 +9,8 @@
 
 class Console : public Hamster::Panel {
 public:
-  explicit Console(std::shared_ptr<Hamster::Scene> scene);
+  explicit Console(Hamster::EventDispatcher *dispatcher,
+                   std::shared_ptr<Hamster::Scene> scene);
 
   void Render() override;
 

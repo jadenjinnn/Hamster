@@ -26,7 +26,8 @@
 
 class EditorLayer : public Hamster::Layer {
 public:
-  explicit EditorLayer(std::shared_ptr<Hamster::Scene> scene);
+  EditorLayer(Hamster::EventDispatcher *dispatcher,
+              std::shared_ptr<Hamster::Scene> scene);
 
   void OnAttach() override;
 
@@ -40,7 +41,7 @@ private:
   bool m_WindowOpen = true;
   bool m_WindowFocused = false;
 
-  // std::function<void(bool)> m_RenderFn;
+  Hamster::EventDispatcher *m_Dispatcher;
   std::shared_ptr<Hamster::Scene> m_Scene;
 
   ImVec2 m_LevelEditorAvailRegion = {0.0f, 0.0f};

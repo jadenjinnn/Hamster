@@ -9,6 +9,7 @@ void ProjectHubLayer::OnAttach() {
       .GetEventDispatcher()
       ->Subscribe(Hamster::ProjectOpened, [this](Hamster::Event &e) {
         m_EditorLayer = new EditorLayer(
+            m_Dispatcher,
             Hamster::Application::GetApplicationInstance().GetActiveScene());
 
         Hamster::Application::GetApplicationInstance().PushLayer(m_EditorLayer);

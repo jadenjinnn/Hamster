@@ -14,9 +14,10 @@
 
 class MenuBar : public Hamster::Panel {
 public:
-    MenuBar(std::shared_ptr<Hamster::Scene> scene) : Hamster::Panel(scene, true) {
-        m_ProjectSelector = std::make_unique<ProjectSelector>(scene);
-        m_ProjectCreator = std::make_unique<ProjectCreator>(scene);
+    MenuBar(Hamster::EventDispatcher *dispatcher,
+            std::shared_ptr<Hamster::Scene> scene) : Hamster::Panel(dispatcher, scene, true) {
+        m_ProjectSelector = std::make_unique<ProjectSelector>(dispatcher, scene);
+        m_ProjectCreator = std::make_unique<ProjectCreator>(dispatcher, scene);
     };
 
     void Render();

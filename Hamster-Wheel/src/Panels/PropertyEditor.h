@@ -16,8 +16,9 @@
 
 class PropertyEditor : public Hamster::Panel {
 public:
-  PropertyEditor(std::shared_ptr<Hamster::Scene> scene)
-      : Hamster::Panel(scene, true) {};
+  PropertyEditor(Hamster::EventDispatcher *dispatcher,
+                 std::shared_ptr<Hamster::Scene> scene)
+      : Hamster::Panel(dispatcher, scene, true) {};
 
   void Render() override;
 

@@ -11,7 +11,8 @@
 #include <Renderer/Texture.h>
 class FileBrowser : public Hamster::Panel {
 public:
-  explicit FileBrowser(std::shared_ptr<Hamster::Scene> scene);
+  explicit FileBrowser(Hamster::EventDispatcher *dispatcher,
+                       std::shared_ptr<Hamster::Scene> scene);
 
   void Render() override;
 

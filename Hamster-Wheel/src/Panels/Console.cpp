@@ -2,8 +2,9 @@
 
 #include <imgui.h>
 
-Console::Console(std::shared_ptr<Hamster::Scene> scene)
-    : Panel(std::move(scene), true) {
+Console::Console(Hamster::EventDispatcher *dispatcher,
+                 std::shared_ptr<Hamster::Scene> scene)
+    : Panel(dispatcher, std::move(scene), true) {
   m_ClientLogger = m_Scene->GetClientLogger();
 };
 

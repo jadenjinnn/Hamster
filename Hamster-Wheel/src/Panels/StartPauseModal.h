@@ -13,7 +13,8 @@
 
 class StartPauseModal : public Hamster::Panel {
 public:
-    StartPauseModal(std::shared_ptr<Hamster::Scene> scene) : Hamster::Panel(scene, true) {
+    StartPauseModal(Hamster::EventDispatcher *dispatcher,
+                    std::shared_ptr<Hamster::Scene> scene) : Hamster::Panel(dispatcher, scene, true) {
     };
 
     void Render() override;

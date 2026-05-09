@@ -4,6 +4,9 @@
 
 #include "AssetBrowser.h"
 
+#include <imgui.h>
+
+#include "Core/Application.h"
 #include "Utils/AssetManager.h"
 #include <tinyfiledialogs.h>
 
@@ -12,8 +15,9 @@
 #include <sstream>
 #include <string>
 
-AssetBrowser::AssetBrowser(std::shared_ptr<Hamster::Scene> scene)
-  : Hamster::Panel(scene) {
+AssetBrowser::AssetBrowser(Hamster::EventDispatcher *dispatcher,
+                           std::shared_ptr<Hamster::Scene> scene)
+  : Hamster::Panel(dispatcher, scene) {
   m_PythonIcon = std::make_unique<Hamster::Texture>(
     Hamster::Application::GetExecutablePath() +
     "/../share/Resources/Hamster-Wheel/Resources/Icons/python.png");

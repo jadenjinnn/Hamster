@@ -7,11 +7,14 @@
 #include <filesystem>
 
 #include <glad/glad.h>
+#include <imgui.h>
 
+#include <Core/Application.h>
 #include <Core/Project.h>
 
-FileBrowser::FileBrowser(std::shared_ptr<Hamster::Scene> scene)
-    : Panel(std::move(scene), true) {
+FileBrowser::FileBrowser(Hamster::EventDispatcher *dispatcher,
+                         std::shared_ptr<Hamster::Scene> scene)
+    : Panel(dispatcher, std::move(scene), true) {
 
   m_FolderIcon = std::make_unique<Hamster::Texture>(
       Hamster::Application::GetExecutablePath() +
