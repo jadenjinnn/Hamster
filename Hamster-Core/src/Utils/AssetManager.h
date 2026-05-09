@@ -11,6 +11,9 @@
 namespace Hamster {
     class AssetManager {
     public:
+        using MainThreadEnqueue = std::function<void(std::function<void()>)>;
+
+        static void Init(MainThreadEnqueue enqueue) { m_Enqueue = std::move(enqueue); }
         static std::shared_ptr<Shader>
         AddShader(std::string name, const std::string &vertexShaderPath,
                   const std::string &fragmentShaderPath);
@@ -73,5 +76,6 @@ namespace Hamster {
         inline static std::unordered_map<UUID, std::shared_ptr<HamsterScript> >
         m_Scripts;
         inline static std::mutex m_TextureLoadMutex;
+        inline static MainThreadEnqueue m_Enqueue;
     };
 } // namespace Hamster

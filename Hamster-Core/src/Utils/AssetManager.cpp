@@ -6,7 +6,6 @@
 
 #include "AssetManager.h"
 
-#include "Core/Application.h"
 #include "Core/Project.h"
 #include "Scripting/Scripting.h"
 
@@ -57,7 +56,7 @@ namespace Hamster {
 
         std::shared_ptr<Texture> texture = std::make_shared<Texture>();
 
-        Application::GetApplicationInstance().AppendToMainThreadQueue(
+        m_Enqueue(
             [futurePtr, texture]() mutable {
                 TextureData textData = futurePtr->get();
 
