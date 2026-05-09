@@ -1,0 +1,178 @@
+# Architecture
+
+> Living document. Updated via `/architecture-update`. Source of truth for "how this engine fits together." Read top-to-bottom should give a new engineer (or returning author) enough to navigate the codebase confidently in 10 minutes.
+
+## One-paragraph overview
+
+Hamster is a Windows-targeted 2D game engine with an embedded Python scripting layer, designed so that game authors write gameplay logic in Python against a C++ runtime. Three CMake subprojects make up the whole system: **Hamster-Core** (static C++ library — application loop, ECS via EnTT, OpenGL renderer, custom AABB physics, ImGui GUI integration, pybind11 interpreter lifecycle); **Hamster-Py** (a pybind11 extension module that exposes C++ types to Python under the `HamsterPCK.Hamster` namespace); and **Hamster-Wheel** (the editor executable — ImGui-based scene editor with hierarchy, property editor, asset browser, file browser, console, and project hub). Entities carry Transform, Sprite, Name, Rigidbody, ID, and Behaviour components; the Behaviour component stores instantiated Python objects (subclasses of `HamsterBehaviour`) that receive per-frame callbacks and engine events. A separate runtime-only player (no editor) is planned but not yet implemented.
+
+## Entry points
+
+- `Hamster-Wheel/src/HamsterWheelApp.cpp::main` — sole binary entry point; creates `Application`, loads the UI font, pushes `ProjectHubLayer`, then calls `Application::Run()`.
+- `ProjectHubLayer` → on `ProjectOpened` event → creates `EditorLayer` and swaps itself out of the layer stack.
+- User-authored `.py` files in the project directory — loaded by `HamsterScript` when the editor's play button is pressed (simulation start).
+
+## Module map
+
+- `Hamster-Core/src/Core/` — `Application` singleton + main loop, `Window` (GLFW wrapper), `LayerStack`, `Scene` + ECS façade, `Project` + `ProjectSerialiser`, `SceneSerialiser`, `UUID`, `Log`/`Logger`, `Components.h` (all component structs)
+- `Hamster-Core/src/Events/` — `EventType` enum, `Event` base class, `EventDispatcher` (subscribe-only observer), all concrete event types (`WindowEvents`, `ApplicationEvents`, `InputEvents`, `SceneEvents`, `GuiEvents`)
+- `Hamster-Core/src/Renderer/` — `Renderer` (static, OpenGL draw calls, camera/zoom), `Shader`, `Texture`, `FramebufferTexture`, two built-in GLSL shaders (`SpriteShader`, `FlatShader`)
+- `Hamster-Core/src/Physics/` — `Physics` (static, custom AABB `IsColliding` + `ResolveCollision`)
+- `Hamster-Core/src/Scripting/` — `Scripting` (interpreter lifecycle, default script generation), `HamsterBehaviour` (C++ base class Python scripts inherit from), `HamsterScript` (Python module loader + class scanner)
+- `Hamster-Core/src/Gui/` — `ImGuiLayer` (begin/end frame wrapper), `Panel` + `Modal` base classes
+- `Hamster-Core/src/Utils/` — `AssetManager` (textures + scripts, UUID-keyed, all-static), `InputManager` (GLFW key polling)
+- `Hamster-Py/src/` — pybind11 bindings: `main.cpp` (module entry point), `HamsterBehaviour.h` (trampoline + binding), `Library.h` (vec2/vec3), `Core.h` (Scene/Application/EventDispatcher — opaque), `Input.h` (KeyCodes enum), `UUID.h`, `Log.h`
+- `Hamster-Wheel/src/` — `HamsterWheelApp.cpp` (main), `EditorLayer` (scene viewport + entity picking), `ProjectHubLayer` (project open/create flow)
+- `Hamster-Wheel/src/Panels/` — `Hierarchy`, `PropertyEditor`, `FileBrowser`, `AssetBrowser`, `Console`, `MenuBar`, `StartPauseModal`, `ProjectSelector`, `ProjectCreator`, `RenameModal`
+
+## Main loop
+
+`Application::Run()` each frame, in order:
+
+1. **Flush pending layer changes** (push/pop queue from the previous frame's `OnUpdate` pass)
+2. **`Layer::OnUpdate()`** on every layer in the stack
+   - `EditorLayer::OnUpdate` renders to a framebuffer using flat entity colours, reads the pixel under the cursor, and resolves entity selection / guizmo drags
+3. **Flush pending layer changes again** — commits any layer transitions triggered during step 2, so ImGui sees the new stack in the same frame
+4. **`ImGuiLayer::Begin()`**
+5. **`Layer::OnImGuiUpdate()`** on every layer — all panels and the scene viewport image are drawn here
+6. **`ImGuiLayer::End()`** — submits ImGui draw commands to OpenGL
+7. **`Scene::OnUpdate()`** on the active scene (if any):
+   - O(n²) loop over all entities with `Rigidbody`: call `Physics::ResolveCollision`; if colliding, post `CollisionEvent` on the global dispatcher. Runs even when simulation is paused.
+   - If simulation is **not** paused: call `obj.attr("on_update")(delta_time)` on each Python behaviour object; then run a second O(n²) collision resolution pass *(known bug: resolves twice, see Known Smells)*
+   - Python errors are caught; first exception pauses the simulation and prints to the console
+8. **`Window::Update`** — `glfwSwapBuffers` + `glfwPollEvents`
+
+Note: `Scene::OnUpdate` runs *after* ImGui, so Python transform changes are first visible in the next frame's render.
+
+## The C++ ↔ Python boundary
+
+### Exposed C++ classes (Python-visible)
+
+| C++ type | Python name | Binding file |
+|---|---|---|
+| `Hamster::HamsterBehaviour` | `HamsterPCK.Hamster.HamsterBehaviour` | `Hamster-Py/src/HamsterBehaviour.h` |
+| `Hamster::Scene` | `HamsterPCK.Hamster.Scene` (opaque) | `Hamster-Py/src/Core.h` |
+| `Hamster::Application` | `HamsterPCK.Hamster.Application` (opaque) | `Hamster-Py/src/Core.h` |
+| `Hamster::Transform` | `HamsterPCK.Hamster.Transform` | `Hamster-Py/src/HamsterBehaviour.h` |
+| `glm::vec2` | `HamsterPCK.Hamster.vec2` | `Hamster-Py/src/Library.h` |
+| `glm::vec3` | `HamsterPCK.Hamster.vec3` | `Hamster-Py/src/Library.h` |
+| `Hamster::UUID` | `HamsterPCK.Hamster.UUID` | `Hamster-Py/src/UUID.h` |
+| `Hamster::KeyCodes` | `HamsterPCK.Hamster.key_code` | `Hamster-Py/src/Input.h` |
+| `Hamster::LogType` | `HamsterPCK.Hamster.LogType` | `Hamster-Py/src/Log.h` |
+
+### Interpreter lifecycle
+
+- `pybind11::initialize_interpreter()` — called once in `Application::Application()` via `Scripting::InitInterpreter()`
+- `pybind11::finalize_interpreter()` — called in `Application::~Application()` via `Scripting::FinaliseInterpreter()`
+- Single interpreter for the lifetime of the process; no subinterpreters
+
+### Script discovery and loading
+
+1. User adds a `.py` file to the project via the editor (File Browser or "New Script").
+2. `AssetManager::AddScript` creates a `HamsterScript`, which calls `pybind11::module_::import(filename_stem)` — the stem must be importable (i.e., on `sys.path`).
+3. On simulation start, `Scene::RunSceneSimulation` calls `HamsterScript::ReloadScript` on every script in every entity's `Behaviour` component.
+4. `ReloadScript` reloads the module, then scans `module.__dict__` for classes that are subclasses of `HamsterPCK.Hamster.HamsterBehaviour`. Each found class is pushed to `m_PyObjects`.
+5. `Scene::RunSceneSimulation` then instantiates each class: `pyClass(entity_uuid, scene_ptr, &application)`, stores the result in `Behaviour::pyObjects`, and calls `on_create()`.
+6. Each frame: `obj.attr("on_update")(delta_time)` → `obj.attr("reset_input")()`.
+
+### Calling pattern
+
+C++ drives Python (not the reverse). Engine calls `on_create` once and `on_update` every simulation tick. Python calls back into C++ through `HamsterBehaviour` methods (`self.transform`, `self.key_pressed`, `self.log(...)`, `self.subscribe(...)`, `self.post(...)`).
+
+### HamsterPCK package — **BROKEN / needs Phase 2 fix**
+
+The pybind11 module is compiled with `PYBIND11_MODULE(Hamster, m)`. For `import HamsterPCK.Hamster` to work, a Python package structure is needed:
+
+```
+<some directory on sys.path>/
+  HamsterPCK/
+    __init__.py
+    Hamster.pyd   (Windows) or Hamster.so (Linux)
+```
+
+The post-build step copies `Hamster.pyd`/`.so` to `Hamster-Wheel/Resources/Packages/` but the `HamsterPCK/` subdirectory and `__init__.py` do not exist in the repo, and `Resources/Packages/` is never added to `sys.path`. This must be fixed before Python scripting works. `sys.path` setup is in `Scripting::AddPathToPy` (fires on `ProjectOpened`), which currently adds the project directory — not the packages directory.
+
+### Threading
+
+Single-threaded for Python. All `on_update` and `on_create` calls happen on the main thread. `AssetManager::AddTextureAsync` loads image data on a background thread but marshals the OpenGL upload back to the main thread via `Application::AppendToMainThreadQueue`. The GIL is held for all Python calls.
+
+### Object lifetime
+
+`pybind11::object` instances live in `Behaviour::pyObjects` (`std::vector<pybind11::object>`) on the entity. They are ref-counted by pybind11. Each `HamsterBehaviour` holds a raw `Transform*` into the EnTT registry (valid as long as the entity is alive) and a raw `Application*` (valid for the process lifetime).
+
+**Known leak**: `EventDispatcher` has no unsubscribe. Each `HamsterBehaviour` constructor registers three callbacks (key-pressed, key-released, collision) on the global dispatcher. Across play/stop cycles, callbacks accumulate.
+
+## Data flow (typical simulation frame)
+
+```
+glfwPollEvents
+  └─ GLFW key callback → KeyPressedEvent posted → HamsterBehaviour::OnKeyPressed (all instances)
+
+EditorLayer::OnUpdate
+  └─ Mouse click: render to FBO with flat colours → glReadPixels → entity selection
+
+Scene::OnUpdate
+  ├─ O(n²) collision pass: IsColliding → ResolveCollision + post CollisionEvent
+  │     └─ HamsterBehaviour::OnCollision: fills m_CollisionEntities
+  └─ [if simulation running]
+        ├─ obj.on_update(dt) for each Python behaviour
+        │     scripts read self.transform / self.key_pressed / self.colliding
+        │     scripts write self.transform = ...
+        └─ O(n²) collision pass again (redundant, see Known Smells)
+
+ImGui panels render scene viewport (FramebufferTexture → AddImage)
+glfwSwapBuffers
+```
+
+## Build system
+
+See `docs/build.md` for the full build recipe (populated in Phase 2). Shape:
+
+- Root `CMakeLists.txt` adds subdirectories: `Hamster-Core`, `Hamster-Py`, `Hamster-Wheel`, then vendor libs: `imgui`, `glfw`, `entt`, `box2d`, `tinyfiledialogs`
+- `Hamster-Py/CMakeLists.txt` adds pybind11 (git submodule); this makes `pybind11::embed` available globally to Hamster-Wheel (order-dependent, fragile)
+- Output artifacts: `Hamster-Wheel` executable; `Hamster.pyd`/`.so` (pybind11 module, copied to `Resources/Packages/` post-build)
+- Last known working build: Linux, Clang, Python 3.10, CLion/Ninja — see `Scripts/compile.sh`
+- Current target: Windows native; toolchain TBD (Phase 2)
+- C++ standard: C++20 throughout
+
+## Third-party dependencies
+
+| Library | Version | Purpose | How acquired |
+|---|---|---|---|
+| pybind11 | submodule | C++/Python bindings + embedded interpreter | git submodule (`Hamster-Py/Vendor/pybind11`) |
+| EnTT | submodule | Entity-component-system | git submodule (`Hamster-Core/Vendor/entt`) |
+| GLFW | submodule | Window, OpenGL context, input | git submodule (`Hamster-Core/Vendor/glfw`) |
+| GLAD | generated | OpenGL function loader | vendored copy (`Hamster-Core/Vendor/glad`) |
+| GLM | submodule | Math (vec2/3/4, mat4) | git submodule (`Hamster-Core/Vendor/glm`) |
+| Dear ImGui | copy | Immediate-mode GUI; backends: GLFW + OpenGL3 | vendored directory copy (`Hamster-Core/Vendor/imgui`) |
+| Box2D | submodule | Physics — vendored but unused; planned for rigid-body dynamics | git submodule (`Hamster-Core/Vendor/box2d`) |
+| stb_image | submodule | PNG/JPG loading | git submodule (`Hamster-Core/Vendor/stb`) |
+| tinyfiledialogs | copy | Native file open/save dialogs | vendored copy (`Hamster-Wheel/Vendor/tinyfiledialogs`) |
+| Boost 1.86.0 | copy | UUID generation + container hash | vendored header-only copy (`Hamster-Core/Vendor/boost_1_86_0`); **planned for replacement** with a lighter UUID header |
+| Python | system | Embedded interpreter | `find_package(Python ... Development REQUIRED)` |
+
+## Known smells / refactor candidates
+
+- **`Events/ScriptingEvent.h/.cpp` missing** (`Hamster-Core/src/Events/`) — listed in CMakeLists, `#include`d by `Scene.h`, never created. `ScriptingEventDispatcher` is used in `Scene.h/.cpp` with no definition. Guaranteed compile error. Must be implemented or removed before any build attempt.
+- **`EventDispatcher` has no unsubscribe** (`Hamster-Core/src/Events/Event.h/.cpp`) — `HamsterBehaviour` callbacks stack up across play/stop cycles. Fix: add an unsubscribe/handle mechanism, or rebuild the dispatcher on simulation stop.
+- **`HamsterBehaviour.h:35` — `GetKeyReleased()` returns `m_KeyPressed`** — the underlying `m_KeyReleased` field is populated correctly by `OnKeyReleased`, but the public getter exposes the wrong member. One-line fix.
+- **Collision resolved twice per frame** (`Scene::OnUpdate`) — first O(n²) loop calls `ResolveCollision` + posts `CollisionEvent`; second loop calls `ResolveCollision` again without posting. When simulation is running, all collisions are resolved twice. Fix: first loop should call `IsColliding` only (post event); second loop should call `ResolveCollision` only.
+- **`HamsterPCK` package missing** — `HamsterPCK/` directory, `__init__.py`, and sys.path registration are all absent. Python scripting will not work until this is set up (Phase 2 / Phase 3).
+- **`Scene.h:143` — dead member `test_t`** — `std::unordered_map<pybind11::object, int> test_t` is never used. `pybind11::object` as a map key requires a hash specialization; may not compile. Safe to remove.
+- **`AssetManager` is all-static** (`Hamster-Core/src/Utils/AssetManager.h/.cpp`) — no lifecycle; `Terminate()` doesn't clear scripts; texture reads are not mutex-guarded (only writes are). Consider making it an owned singleton or passing it through `Application`.
+- **Serialization is raw binary and not portable** (`SceneSerialiser`, `ProjectSerialiser`, `AssetManager::Serialise`) — uses `reinterpret_cast` of structs, `size_t`-prefixed strings. Will break across Windows↔Linux or 32-vs-64-bit. Consider switching to a portable format (JSON, MessagePack, or versioned binary) before scene data accumulates.
+- **`HAMSTER_WHEEL_SRC_DIR` bakes the source path into the binary** — `AssetBrowser.cpp` and `EditorLayer.cpp` resolve resource paths relative to this compile-time macro. Works only on the build machine. Needs a proper runtime resource path strategy before Phase 6 packaging.
+- **Build artifacts committed to git** — `build.ninja` (not in `.gitignore`), `cmake_install.cmake` at root/`Hamster-Core`/`Hamster-Py` (in `.gitignore` but already tracked), `Hamster-Core/libHamster-Core.a`. Need `git rm --cached` to untrack.
+- **`Hamster-Py` STATIC target is dead** — built but never linked by anything; the pybind11 module (`Hamster`) is what's actually used. The static lib is an artifact of an earlier design.
+- **Linux install targets in `Hamster-Wheel/CMakeLists.txt`** — hardcoded `/lib/x86_64-linux-gnu/libpython3.10.so.1.0` etc. will fail on Windows. Remove or conditionalize.
+- **`ImGui::ShowDemoWindow()` left in `EditorLayer::OnImGuiUpdate`** — debug leftover.
+- **`HamsterWheelApp.cpp:32`** — `EditorLayer* editorLayer` passed uninitialized to `ProjectHubLayer`. Never dereferenced (overwritten on `ProjectOpened`), but technically UB. Should be `nullptr`.
+- **`Hamster-WheelQT/`** — abandoned Qt UI experiment, not in any CMakeLists. Dormant for now; planned to eventually replace Hamster-Wheel.
+
+## Open questions
+
+- What Python version will be used on Windows? (last known: 3.10 on Linux)
+- What is the intended `HamsterPCK` deployment strategy? Options: copy `HamsterPCK/` alongside the executable; pip-installable package; embed in `Resources/Packages/` with a sys.path setup step.
+- Should `ScriptingEventDispatcher` be implemented (Python-accessible event bus for inter-script communication) or removed? `HamsterBehaviour::Subscribe/Post` already references it.
+- When Box2D rigid-body dynamics are added, does it replace the custom AABB system entirely, or will both coexist?
+- Should the serialization format be made portable before scene data accumulates (i.e., during refactor phase)?

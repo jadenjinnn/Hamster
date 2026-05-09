@@ -48,8 +48,6 @@ set(Events
 
         src/Events/WindowEvents.h
         src/Events/SceneEvents.h
-        src/Events/ScriptingEvent.cpp
-        src/Events/ScriptingEvent.h
 )
 
 
@@ -91,8 +89,6 @@ set(Scripting
         src/Scripting/Scripting.cpp src/Scripting/Scripting.h
         src/Scripting/HamsterBehaviour.cpp src/Scripting/HamsterBehaviour.h
         src/Scripting/HamsterScript.cpp src/Scripting/HamsterScript.h
-        src/Scripting/HamsterEvent.cpp
-        src/Scripting/HamsterEvent.h
 )
 
 set(sources

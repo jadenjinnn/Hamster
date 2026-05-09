@@ -78,18 +78,4 @@ void HamsterBehaviour::OnCollision(CollisionEvent &e) {
   }
 }
 
-// void HamsterBehaviour::RegisterEvent(pybind11::object &obj) {
-//   m_Scene->GetEventDispatcher()->RegisterEvent(obj);
-// }
-
-void HamsterBehaviour::Subscribe(const pybind11::object &event,
-                                 pybind11::function fn) {
-  m_Scene->GetEventDispatcher()->Subscribe(event, fn);
-  // pybind11::hash(event);
-}
-
-void HamsterBehaviour::Post(const pybind11::object &event) {
-  m_Scene->GetEventDispatcher()->Post(event);
-}
-
 } // namespace Hamster

@@ -17,7 +17,6 @@
 #include "Components.h"
 
 #include "Events/ApplicationEvents.h"
-#include "Events/ScriptingEvent.h"
 #include "Events/WindowEvents.h"
 #include "Log.h"
 #include "Physics/Physics.h"
@@ -104,10 +103,6 @@ public:
 
   std::shared_ptr<Logger> GetClientLogger() { return m_ClientLogger; }
 
-  std::shared_ptr<ScriptingEventDispatcher> GetEventDispatcher() {
-    return m_Dispatcher;
-  }
-
 private:
   bool m_IsRunning = false;
   bool m_IsSimulationPaused = true;
@@ -137,10 +132,6 @@ private:
   float m_LastFrame = 0.0f;
 
   std::shared_ptr<Logger> m_ClientLogger;
-
-  std::shared_ptr<ScriptingEventDispatcher> m_Dispatcher;
-
-  std::unordered_map<pybind11::object, int> test_t;
 };
 } // namespace Hamster
 

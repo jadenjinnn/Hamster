@@ -33,8 +33,6 @@ Scene::Scene() {
                                  ".scene");
 
   m_RenderGroup = m_Registry.group<Sprite, Transform>();
-
-  m_Dispatcher = std::make_shared<ScriptingEventDispatcher>();
 }
 
 UUID Scene::CreateEntity() {

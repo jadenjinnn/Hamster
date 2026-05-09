@@ -32,7 +32,7 @@ public:
   }
 
   const KeyCodes &GetKeyPressed() { return m_KeyPressed; }
-  const KeyCodes &GetKeyReleased() { return m_KeyPressed; }
+  const KeyCodes &GetKeyReleased() { return m_KeyReleased; }
 
   void OnKeyPressed(KeyPressedEvent &e);
 
@@ -55,14 +55,6 @@ public:
   }
 
   void Log(LogType type, std::string message);
-
-  // void CrossScriptExecute(std::string &uuid, const char *funcName);
-
-  // void RegisterEvent(pybind11::object &obj);
-
-  void Subscribe(const pybind11::object &event, pybind11::function fn);
-
-  void Post(const pybind11::object &event);
 
 private:
   UUID m_UUID;

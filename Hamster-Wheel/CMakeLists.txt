@@ -29,12 +29,13 @@ set(PANELS
         src/Panels/ProjectCreator.h
         src/Panels/ProjectSelector.cpp
         src/Panels/ProjectSelector.h
-        src/ProjectHubLayer.cpp
+        src/ProjectHubLayer.cpp src/ProjectHubLayer.h
         src/Panels/FileBrowser.cpp
         src/Panels/FileBrowser.h
         src/Panels/AssetBrowser.cpp
         src/Panels/AssetBrowser.h
         src/Panels/Console.h src/Panels/Console.cpp
+        src/Panels/RenameModal.cpp src/Panels/RenameModal.h
 )
 
 add_executable(Hamster-Wheel ${PANELS} src/EditorLayer.cpp src/EditorLayer.h src/HamsterWheelApp.cpp)
@@ -47,8 +48,7 @@ target_include_directories(Hamster-Wheel PRIVATE
         ${CMAKE_SOURCE_DIR}/Hamster-Core/Vendor/imgui
         ${CMAKE_SOURCE_DIR}/Hamster-Core/Vendor/box2d/include
         Vendor/tinyfiledialogs
-        Vendor/pybind11/include
-        #        ${CMAKE_SOURCE_DIR}/Hamster-Py/Vendor/pybind11/include
+        ${CMAKE_SOURCE_DIR}/Hamster-Py/Vendor/pybind11/include
         ${Python_INCLUDE_DIRS}
 )
 
@@ -56,6 +56,12 @@ target_include_directories(Hamster-Wheel PRIVATE
 target_compile_definitions(Hamster-Wheel PRIVATE HAMSTER_WHEEL_SRC_DIR="${CMAKE_SOURCE_DIR}/Hamster-Wheel/src")
 
 target_link_libraries(Hamster-Wheel PRIVATE Hamster-Core glfw imgui box2d tinyfiledialogs pybind11::embed)
+
+# Hamster-Wheel needs the pybind11 module built first
+add_dependencies(Hamster-Wheel Hamster)
+
+# Pass the .pyd/.so filename to C++ so ProjectCreator doesn't hardcode a Python version
+target_compile_definitions(Hamster-Wheel PRIVATE HAMSTER_PY_MODULE_FILENAME="$<TARGET_FILE_NAME:Hamster>")
 
 # Copy Resources to the build directory during development
 add_custom_command(
@@ -66,6 +72,17 @@ add_custom_command(
         COMMENT "Copying Resources directory to build output directory"
 )
 
+# Copy the pybind11 module (.pyd/.so) into the build Resources/Packages/
+add_custom_command(
+        TARGET Hamster-Wheel POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+        $<TARGET_FILE_DIR:Hamster-Wheel>/../share/Resources/Hamster-Wheel/Resources/Packages
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:Hamster>
+        $<TARGET_FILE_DIR:Hamster-Wheel>/../share/Resources/Hamster-Wheel/Resources/Packages/
+        COMMENT "Copying Hamster Python module to build output"
+)
+
 
 # Install the executable
 install(TARGETS Hamster-Wheel DESTINATION usr/bin)
@@ -73,8 +90,4 @@ install(TARGETS Hamster-Wheel DESTINATION usr/bin)
 # Install resources
 install(DIRECTORY Resources/ DESTINATION usr/share/Hamster-Wheel/Resources)
 
-# Install non-standard libraries (if needed)
-install(FILES /lib/x86_64-linux-gnu/libpython3.10.so.1.0 DESTINATION usr/lib)
-install(FILES /lib/x86_64-linux-gnu/libexpat.so.1 DESTINATION usr/lib)
-install(FILES /lib/x86_64-linux-gnu/libz.so.1 DESTINATION usr/lib)
 

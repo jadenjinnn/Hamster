@@ -147,8 +147,14 @@ _deps
 *_REMOTE_*.txt
 
 ### Ninja ###
+build.ninja
 .ninja_deps
 .ninja_log
+
+### Build artifacts ###
+build/
+*.a
+*.lib
 
 ### Windows ###
 # Windows thumbnail cache files
@@ -180,3 +186,6 @@ $RECYCLE.BIN/
 squashfs-root/
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,clion,cmake,ninja,git
+
+
+CLAUDE.local.md
