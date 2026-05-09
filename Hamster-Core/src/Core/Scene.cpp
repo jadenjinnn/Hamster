@@ -151,31 +151,30 @@ void Scene::OnPhysicsResolve() {
 void Scene::OnRender(bool renderFlat) {
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  if (m_IsRunning) {
-    m_RenderGroup.sort<Transform>(
-        [](const Transform &lhs, const Transform &rhs) {
-          return lhs.position.z < rhs.position.z;
-        });
 
-    auto *renderer = m_App->GetRenderer();
+  m_RenderGroup.sort<Transform>(
+      [](const Transform &lhs, const Transform &rhs) {
+        return lhs.position.z < rhs.position.z;
+      });
 
-    if (!renderFlat) {
-      m_RenderGroup.each([renderer](auto &sprite, auto &transform) {
-        if (sprite.texture != nullptr) {
-          renderer->DrawSprite(*sprite.texture, transform.position,
-                               transform.size, transform.rotation,
-                               sprite.colour);
-        }
-      });
-    } else {
-      m_RenderGroup.each([renderer](auto entity, auto &sprite, auto &transform) {
-        if (sprite.texture != nullptr) {
-          renderer->DrawFlat(
-              transform.position, transform.size, transform.rotation,
-              Application::IdToColour(entt::to_integral(entity)));
-        }
-      });
-    }
+  auto *renderer = m_App->GetRenderer();
+
+  if (!renderFlat) {
+    m_RenderGroup.each([renderer](auto &sprite, auto &transform) {
+      if (sprite.texture != nullptr) {
+        renderer->DrawSprite(*sprite.texture, transform.position,
+                             transform.size, transform.rotation,
+                             sprite.colour);
+      }
+    });
+  } else {
+    m_RenderGroup.each([renderer](auto entity, auto &sprite, auto &transform) {
+      if (sprite.texture != nullptr) {
+        renderer->DrawFlat(
+            transform.position, transform.size, transform.rotation,
+            Application::IdToColour(entt::to_integral(entity)));
+      }
+    });
   }
 }
 

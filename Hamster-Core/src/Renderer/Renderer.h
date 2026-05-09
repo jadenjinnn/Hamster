@@ -55,7 +55,7 @@ namespace Hamster {
 
         float m_Zoom = 1.0f;
 
-        glm::mat4 m_ViewMatrix;
-        glm::vec2 m_CameraOffset;
+        glm::mat4 m_ViewMatrix{1.0f};
+        glm::vec2 m_CameraOffset{0.0f, 0.0f};
     };
 } // namespace Hamster
