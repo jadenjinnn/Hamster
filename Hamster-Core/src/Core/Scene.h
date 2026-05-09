@@ -137,10 +137,4 @@ private:
 };
 } // namespace Hamster
 
-#define HAMSTER_LOG(type, message)                                             \
-  Hamster::Application::GetApplicationInstance()                               \
-      .GetActiveScene()                                                        \
-      ->GetClientLogger()                                                      \
-      ->Log(type, message);
-
 #endif // SCENE_H

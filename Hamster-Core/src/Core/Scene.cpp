@@ -121,7 +121,7 @@ void Scene::OnScriptUpdate() {
       } catch (pybind11::error_already_set &e) {
         pythonError = true;
 
-        HAMSTER_LOG(Error, e.what())
+        m_ClientLogger->Log(Error, e.what());
 
         break;
       }
@@ -244,7 +244,7 @@ void Scene::RunSceneSimulation() {
           try {
             pyObject.attr("on_create")();
           } catch (pybind11::error_already_set &e) {
-            HAMSTER_LOG(Error, e.what())
+            m_ClientLogger->Log(Error, e.what());
 
             PauseSceneSimulation();
           }
