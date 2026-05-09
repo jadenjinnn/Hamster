@@ -148,7 +148,7 @@ See `docs/build.md` for the full build recipe (populated in Phase 2). Shape:
 - ~~**`EventDispatcher` has no unsubscribe**~~ Fixed: `Subscribe` returns a `SubscriptionHandle`; `Unsubscribe(EventType, handle)` removes it. `HamsterBehaviour` destructor unsubscribes its 3 callbacks.
 - ~~**`HamsterBehaviour.h:35` — `GetKeyReleased()` returns `m_KeyPressed`**~~ Fixed in Phase 2.
 - ~~**Collision resolved twice per frame**~~ Fixed: first loop now uses `IsColliding` (detect + post event), second loop uses `ResolveCollision` (adjust positions).
-- **`Scene.h:143` — dead member `test_t`** — `std::unordered_map<pybind11::object, int> test_t` is never used. `pybind11::object` as a map key requires a hash specialization; may not compile. Safe to remove.
+- ~~**`Scene.h` — dead member `test_t`**~~ Fixed: removed in Phase 2.
 - **`AssetManager` is all-static** (`Hamster-Core/src/Utils/AssetManager.h/.cpp`) — no lifecycle; `Terminate()` doesn't clear scripts; texture reads are not mutex-guarded (only writes are). Consider making it an owned singleton or passing it through `Application`.
 - **Serialization is raw binary and not portable** (`SceneSerialiser`, `ProjectSerialiser`, `AssetManager::Serialise`) — uses `reinterpret_cast` of structs, `size_t`-prefixed strings. Will break across Windows↔Linux or 32-vs-64-bit. Consider switching to a portable format (JSON, MessagePack, or versioned binary) before scene data accumulates.
 - ~~**`HAMSTER_WHEEL_SRC_DIR` bakes the source path**~~ Fixed: all resource paths now use `GetExecutablePath()` relative to the build output. `HAMSTER_WHEEL_SRC_DIR` macro removed.
