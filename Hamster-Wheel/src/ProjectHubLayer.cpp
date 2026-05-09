@@ -23,7 +23,7 @@ void ProjectHubLayer::OnAttach() {
 }
 
 void ProjectHubLayer::OnImGuiUpdate() {
-  Hamster::Renderer::Clear();
+  m_App->GetRenderer()->Clear();
 
   m_ProjectSelector->Render();
   m_ProjectCreator->Render();

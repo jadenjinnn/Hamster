@@ -23,6 +23,7 @@
 
 namespace Hamster {
     class AssetManager;
+    class Renderer;
 
     class Application {
     public:
@@ -84,6 +85,8 @@ namespace Hamster {
 
         AssetManager *GetAssetManager() { return m_AssetManager.get(); }
 
+        Renderer *GetRenderer() { return m_Renderer.get(); }
+
         static std::string GetExecutablePath();
 
     private:
@@ -106,6 +109,7 @@ namespace Hamster {
 
         std::unique_ptr<InputManager> m_InputManager;
         std::unique_ptr<AssetManager> m_AssetManager;
+        std::unique_ptr<Renderer> m_Renderer;
 
         std::unordered_map<UUID, std::shared_ptr<Scene> > m_Scenes;
         std::shared_ptr<Scene> m_ActiveScene = nullptr;

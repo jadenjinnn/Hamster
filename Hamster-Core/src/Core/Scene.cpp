@@ -157,23 +157,20 @@ void Scene::OnRender(bool renderFlat) {
           return lhs.position.z < rhs.position.z;
         });
 
+    auto *renderer = m_App->GetRenderer();
+
     if (!renderFlat) {
-      m_RenderGroup.each([](auto &sprite, auto &transform) {
+      m_RenderGroup.each([renderer](auto &sprite, auto &transform) {
         if (sprite.texture != nullptr) {
-          Renderer::DrawSprite(*sprite.texture, transform.position,
+          renderer->DrawSprite(*sprite.texture, transform.position,
                                transform.size, transform.rotation,
                                sprite.colour);
         }
       });
     } else {
-      // render all sprites as a unique flat colour which can be used to
-      // identify to their id
-
-      // std::cout << "hi" << std::endl;
-
-      m_RenderGroup.each([](auto entity, auto &sprite, auto &transform) {
+      m_RenderGroup.each([renderer](auto entity, auto &sprite, auto &transform) {
         if (sprite.texture != nullptr) {
-          Renderer::DrawFlat(
+          renderer->DrawFlat(
               transform.position, transform.size, transform.rotation,
               Application::IdToColour(entt::to_integral(entity)));
         }

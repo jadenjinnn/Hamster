@@ -6,10 +6,12 @@
 #include <glad/glad.h>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "Core/Application.h"
+#include "Events/WindowEvents.h"
 #include "Utils/AssetManager.h"
 
 namespace Hamster {
-    void Renderer::Init(int viewportHeight, int viewportWidth, AssetManager *assetManager) {
+    Renderer::Renderer(int viewportHeight, int viewportWidth, AssetManager *assetManager) {
         if (!gladLoadGLLoader((GLADloadproc) glfwGetProcAddress)) {
             std::cout << "Failed to initialise glad" << std::endl;
         }
@@ -17,16 +19,11 @@ namespace Hamster {
         m_ViewportHeight = viewportHeight;
         m_ViewportWidth = viewportWidth;
 
-
-        // glEnable(GL_DEPTH_TEST);
         glDisable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-        Renderer::InitRendererData(assetManager);
-    }
-
-    void Renderer::Terminate() {
+        InitRendererData(assetManager);
     }
 
     void Renderer::SetViewport(FramebufferResizeEvent &e) {
@@ -35,7 +32,7 @@ namespace Hamster {
 
         glViewport(0, 0, m_ViewportWidth, m_ViewportHeight);
 
-        Renderer::UpdateViewMatrix();
+        UpdateViewMatrix();
     }
 
     void Renderer::SetViewport(int height, int width) {
@@ -44,7 +41,7 @@ namespace Hamster {
 
         glViewport(0, 0, m_ViewportWidth, m_ViewportHeight);
 
-        Renderer::UpdateViewMatrix();
+        UpdateViewMatrix();
     }
 
     void Renderer::Clear() {
@@ -66,8 +63,8 @@ namespace Hamster {
             "flat", hamsterCorePath + "/Renderer/DefaultShaders/FlatShader.vs",
             hamsterCorePath + "/Renderer/DefaultShaders/FlatShader.fs");
 
-        Renderer::SetViewport(m_ViewportHeight, m_ViewportWidth);
-        Renderer::SetClearColour(0.0f, 0.0f, 0.0f, 1.0f);
+        SetViewport(m_ViewportHeight, m_ViewportWidth);
+        SetClearColour(0.0f, 0.0f, 0.0f, 1.0f);
 
         m_SpriteShader->use();
         m_SpriteShader->setUniformi("image", 0);
@@ -76,9 +73,6 @@ namespace Hamster {
         m_FlatShader->use();
         m_FlatShader->setUniformi("image", 0);
         m_FlatShader->setUniformMat4("projection", m_ViewMatrix);
-
-
-        // AssetManager::AddShader("sprite", shader);
 
         float vertices[] = {
             0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
@@ -101,7 +95,6 @@ namespace Hamster {
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *) 0);
 
-        // Unbind the VAO and VBO
         glBindVertexArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
@@ -112,9 +105,6 @@ namespace Hamster {
 
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(position, 0.0f));
-        //
-        // // Code from learnopengl.com, used to translate sprite so rotation is based
-        // // around centre of sprite
         model = glm::translate(model, glm::vec3(0.5f * size.x, 0.5f * size.y, 0.0f));
         model =
                 glm::rotate(model, glm::radians(rotation), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -133,8 +123,6 @@ namespace Hamster {
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
         glBindVertexArray(0);
-
-        // DrawGuizmo(position, Translate);
     }
 
     void Renderer::DrawFlat(glm::vec2 position, glm::vec2 size, float rotation,
@@ -143,9 +131,6 @@ namespace Hamster {
 
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(position, 0.0f));
-        //
-        // // Code from learnopengl.com, used to translate sprite so rotation is based
-        // // around centre of sprite
         model = glm::translate(model, glm::vec3(0.5f * size.x, 0.5f * size.y, 0.0f));
         model =
                 glm::rotate(model, glm::radians(rotation), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -177,7 +162,6 @@ namespace Hamster {
         model = glm::translate(model, glm::vec3(targetTransform.position.x,
                                                 targetTransform.position.y, 0.0f));
         model = glm::scale(model, glm::vec3(10.0f, 10.0f, 1.0f));
-        // model = glm::scale(model, glm::vec3(1000.0f));
 
         m_FlatShader->setUniformMat4("model", model);
 
@@ -199,7 +183,6 @@ namespace Hamster {
                                                 targetTransform.size.x - 10.0f,
                                                 targetTransform.position.y, 0.0f));
         model = glm::scale(model, glm::vec3(10.0f, 10.0f, 1.0f));
-        // model = glm::scale(model, glm::vec3(1000.0f));
 
         m_FlatShader->setUniformMat4("model", model);
 
@@ -222,7 +205,6 @@ namespace Hamster {
                                                 targetTransform.size.y - 10.0f,
                                                 0.0f));
         model = glm::scale(model, glm::vec3(10.0f, 10.0f, 1.0f));
-        // model = glm::scale(model, glm::vec3(1000.0f));
 
         m_FlatShader->setUniformMat4("model", model);
 
@@ -246,7 +228,6 @@ namespace Hamster {
                       targetTransform.position.y + targetTransform.size.y - 10.0f,
                       0.0f));
         model = glm::scale(model, glm::vec3(10.0f, 10.0f, 1.0f));
-        // model = glm::scale(model, glm::vec3(1000.0f));
 
         m_FlatShader->setUniformMat4("model", model);
 
@@ -265,8 +246,6 @@ namespace Hamster {
     }
 
     void Renderer::UpdateViewMatrix() {
-        // std::cout << m_CameraOffset.x << ", " << m_CameraOffset.y << std::endl;
-
         m_ViewMatrix = glm::ortho(0.0f + m_CameraOffset.x,
                                   static_cast<float>(m_ViewportWidth) / m_Zoom + m_CameraOffset.x,
                                   static_cast<float>(m_ViewportHeight) / m_Zoom + m_CameraOffset.y,
@@ -297,7 +276,6 @@ namespace Hamster {
     glm::vec2 Renderer::ScreenToWorldPos(const glm::vec2 &mousePos) {
         float normalizedX = mousePos.x / static_cast<float>(m_ViewportWidth);
         float normalizedY = mousePos.y / static_cast<float>(m_ViewportHeight);
-
 
         float worldX = m_CameraOffset.x + (normalizedX * m_ViewportWidth) / m_Zoom;
         float worldY = m_CameraOffset.y + (normalizedY * m_ViewportHeight) / m_Zoom;

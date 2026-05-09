@@ -2,7 +2,6 @@
 
 #include <stdint.h>
 
-#include "Core/Application.h"
 #include "Core/Components.h"
 #include "GLFW/glfw3.h"
 #include "Shader.h"
@@ -13,51 +12,50 @@ namespace Hamster {
     enum TransformType { Translate, Rotate, Scale };
 
     class AssetManager;
+    class FramebufferResizeEvent;
 
     class Renderer {
     public:
-        static void Init(int viewportHeight, int viewportWidt, AssetManager *assetManager);
+        Renderer(int viewportHeight, int viewportWidth, AssetManager *assetManager);
 
-        static void Terminate();
+        void SetViewport(FramebufferResizeEvent &e);
 
-        static void SetViewport(FramebufferResizeEvent &e);
+        void SetViewport(int height, int width);
 
-        static void SetViewport(int height, int width);
+        void Clear();
 
-        static void Clear();
+        void SetClearColour(float r, float g, float b, float a);
 
-        static void SetClearColour(float r, float g, float b, float a);
+        void DrawSprite(Texture &texture, glm::vec2 position, glm::vec2 size,
+                        float rotation, glm::vec3 colour);
 
-        static void DrawSprite(Texture &texture, glm::vec2 position, glm::vec2 size,
-                               float rotation, glm::vec3 colour);
+        void DrawFlat(glm::vec2 position, glm::vec2 size, float rotation,
+                      glm::vec3 colour);
 
-        static void DrawFlat(glm::vec2 position, glm::vec2 size, float rotation,
-                             glm::vec3 colour);
+        void DrawGuizmo(Transform targetTransform, TransformType type,
+                        bool selectionColour);
 
-        static void DrawGuizmo(Transform targetTransform, TransformType type,
-                               bool selectionColour);
+        void AdjustZoom(float factor, float mousePosX, float mousePosY);
 
-        static void AdjustZoom(float factor, float mousePosX, float mousePosY);
+        void UpdateViewMatrix();
 
-        static void UpdateViewMatrix();
+        void ChangeCameraOffset(const glm::vec2 &offset);
 
-        static void ChangeCameraOffset(const glm::vec2 &offset);
-
-        static glm::vec2 ScreenToWorldPos(const glm::vec2 &mousePos);
+        glm::vec2 ScreenToWorldPos(const glm::vec2 &mousePos);
 
     private:
-        static void InitRendererData(AssetManager *assetManager);
+        void InitRendererData(AssetManager *assetManager);
 
-        inline static std::shared_ptr<Shader> m_SpriteShader;
-        inline static std::shared_ptr<Shader> m_FlatShader;
-        inline static unsigned int m_VAO;
+        std::shared_ptr<Shader> m_SpriteShader;
+        std::shared_ptr<Shader> m_FlatShader;
+        unsigned int m_VAO = 0;
 
-        inline static int m_ViewportHeight = 1080;
-        inline static int m_ViewportWidth = 1920;
+        int m_ViewportHeight = 1080;
+        int m_ViewportWidth = 1920;
 
-        inline static float m_Zoom = 1.0f;
+        float m_Zoom = 1.0f;
 
-        inline static glm::mat4 m_ViewMatrix;
-        inline static glm::vec2 m_CameraOffset;
+        glm::mat4 m_ViewMatrix;
+        glm::vec2 m_CameraOffset;
     };
 } // namespace Hamster

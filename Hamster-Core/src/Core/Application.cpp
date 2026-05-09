@@ -41,7 +41,7 @@ namespace Hamster {
             AppendToMainThreadQueue(fn);
         });
 
-        Renderer::Init(1920, 1080, m_AssetManager.get());
+        m_Renderer = std::make_unique<Renderer>(1920, 1080, m_AssetManager.get());
 
         m_Dispatcher = std::make_shared<EventDispatcher>();
 
@@ -67,9 +67,10 @@ namespace Hamster {
         // Use of framebuffer resize to support high DPI displays + Linux framebuffer
         // size and window size do not match unlike on Window, window resize callback
         // commented above incase needed for gui resizing
-        m_Dispatcher->Subscribe(FramebufferResize, FORWARD_STATIC_CALLBACK_FUNCTION(
-                                    Renderer::SetViewport,
-                                    FramebufferResizeEvent));
+        m_Dispatcher->Subscribe(FramebufferResize,
+                                [this](Event &e) {
+                                    m_Renderer->SetViewport(dynamic_cast<FramebufferResizeEvent &>(e));
+                                });
 
         glfwSetFramebufferSizeCallback(
             m_Window->GetGLFWWindowPointer(),

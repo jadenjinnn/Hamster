@@ -14,7 +14,7 @@ void Hierarchy::SetSelectedEntity(const entt::entity entity) {
   m_SelectedEntity = entity;
 
   if (entity != entt::null) {
-    Hamster::Renderer::DrawGuizmo(
+    m_Renderer->DrawGuizmo(
         m_Scene->GetRegistry().get<Hamster::Transform>(m_SelectedEntity),
         Hamster::Translate, false);
   }

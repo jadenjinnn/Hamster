@@ -16,10 +16,11 @@
 EditorLayer::EditorLayer(Hamster::Application *app,
                          std::shared_ptr<Hamster::Scene> scene)
     : m_App(app), m_Dispatcher(app->GetEventDispatcher().get()),
-      m_Scene(scene), m_FramebufferTexture(1920, 1080) {
+      m_Renderer(app->GetRenderer()), m_Scene(scene),
+      m_FramebufferTexture(1920, 1080) {
     auto *assetManager = app->GetAssetManager();
     m_PropertyEditor = std::make_unique<PropertyEditor>(m_Dispatcher, m_Scene, assetManager);
-    m_Hierarchy = std::make_unique<Hierarchy>(m_Dispatcher, m_Scene);
+    m_Hierarchy = std::make_unique<Hierarchy>(m_Dispatcher, m_Scene, m_Renderer);
     m_FileBrowser = std::make_unique<FileBrowser>(m_Dispatcher, m_Scene);
     m_AssetBrowser = std::make_unique<AssetBrowser>(m_Dispatcher, m_Scene, assetManager);
     m_StartPauseModal = std::make_unique<StartPauseModal>(m_Dispatcher, m_Scene);
@@ -54,13 +55,13 @@ void EditorLayer::OnUpdate() {
         glScissor(0, 0, m_LevelEditorAvailRegion.x, m_LevelEditorAvailRegion.y);
 
         m_FramebufferTexture.Bind();
-        Hamster::Renderer::Clear();
+        m_Renderer->Clear();
         m_Scene->OnRender(true);
 
         entt::entity selectedEntity = m_Hierarchy->GetSelectedEntity();
 
         if (selectedEntity != entt::null) {
-            Hamster::Renderer::DrawGuizmo(
+            m_Renderer->DrawGuizmo(
                 m_Scene->GetRegistry().get<Hamster::Transform>(selectedEntity),
                 Hamster::Translate, true);
         }
@@ -80,7 +81,7 @@ void EditorLayer::OnUpdate() {
         m_FramebufferTexture.Unbind();
         glDisable(GL_SCISSOR_TEST);
 
-        // Hamster::Renderer::Clear();
+        // m_Renderer->Clear();
 
         int pickedID =
                 Hamster::Application::ColourToId(glm::vec3(data[0], data[1], data[2]));
@@ -205,7 +206,7 @@ void EditorLayer::OnUpdate() {
     // if (ImGui::IsMouseClicked(1) && m_Scene->IsSceneSimulationPaused()) {
     //     std::cout << mouseDelta.x << ", " << mouseDelta.y << std::endl;
     //
-    //     Hamster::Renderer::ChangeCameraOffset(mouseDelta.x * m_MouseDragSpeed, mouseDelta.y * m_MouseDragSpeed);
+    //     m_Renderer->ChangeCameraOffset(mouseDelta.x * m_MouseDragSpeed, mouseDelta.y * m_MouseDragSpeed);
     // }
 
     ImVec2 mouseDelta = ImGui::GetIO().MouseDelta;
@@ -258,7 +259,7 @@ void EditorLayer::OnUpdate() {
         entityTransform->position.x = mouseHeldTransformX + mouseDragDelta.x;
         entityTransform->position.y = mouseHeldTransformY + mouseDragDelta.y;
     } else if (sceneBackgroundHeld) {
-        Hamster::Renderer::ChangeCameraOffset({mouseDelta.x * m_MouseDragSpeed, mouseDelta.y * m_MouseDragSpeed});
+        m_Renderer->ChangeCameraOffset({mouseDelta.x * m_MouseDragSpeed, mouseDelta.y * m_MouseDragSpeed});
     }
 
     m_FramebufferTexture.ResizeFrameBuffer(m_LevelEditorAvailRegion.x,
@@ -270,13 +271,13 @@ void EditorLayer::OnUpdate() {
     m_FramebufferTexture.Bind();
     glViewport(0, 0, m_ViewportWidth, m_ViewportHeight);
 
-    Hamster::Renderer::Clear();
+    m_Renderer->Clear();
     m_Scene->OnRender(false);
 
     entt::entity selectedEntity = m_Hierarchy->GetSelectedEntity();
 
     if (selectedEntity != entt::null) {
-        Hamster::Renderer::DrawGuizmo(
+        m_Renderer->DrawGuizmo(
             m_Scene->GetRegistry().get<Hamster::Transform>(selectedEntity),
             Hamster::Translate, false);
     }
@@ -321,7 +322,7 @@ void EditorLayer::OnImGuiUpdate() {
             float mousePosX = imGuiMousePos.x - m_ViewportOffset.x;
             float mousePosY = imGuiMousePos.y - m_ViewportOffset.y;
 
-            Hamster::Renderer::AdjustZoom(mouseWheelDelta * m_MouseWheelZoomSpeed, mousePosX, mousePosY);
+            m_Renderer->AdjustZoom(mouseWheelDelta * m_MouseWheelZoomSpeed, mousePosX, mousePosY);
         }
     }
 

@@ -43,6 +43,7 @@ private:
 
   Hamster::Application *m_App;
   Hamster::EventDispatcher *m_Dispatcher;
+  Hamster::Renderer *m_Renderer;
   std::shared_ptr<Hamster::Scene> m_Scene;
 
   ImVec2 m_LevelEditorAvailRegion = {0.0f, 0.0f};

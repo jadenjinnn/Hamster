@@ -12,11 +12,15 @@
 #include <Gui/Panel.h>
 #include <Hamster.h>
 
+namespace Hamster { class Renderer; }
+
 class Hierarchy : public Hamster::Panel {
 public:
   Hierarchy(Hamster::EventDispatcher *dispatcher,
-            std::shared_ptr<Hamster::Scene> scene)
-      : Hamster::Panel(dispatcher, scene, true) {};
+            std::shared_ptr<Hamster::Scene> scene,
+            Hamster::Renderer *renderer)
+      : Hamster::Panel(dispatcher, scene, true),
+        m_Renderer(renderer) {};
 
   void SetSelectedEntity(entt::entity entity);
 
@@ -25,6 +29,7 @@ public:
   void Render() override;
 
 private:
+  Hamster::Renderer *m_Renderer;
   entt::entity m_SelectedEntity = entt::null;
   std::shared_ptr<RenameModal> m_RenameModal;
 
