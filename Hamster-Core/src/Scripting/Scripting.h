@@ -17,7 +17,7 @@ class Scripting {
 public:
   static std::filesystem::path GenerateDefaultScript(UUID *uuid);
 
-  static void InitInterpreter();
+  static void InitInterpreter(EventDispatcher *dispatcher);
 
   static void FinaliseInterpreter() {
     if (m_InterpreterInitialised) {

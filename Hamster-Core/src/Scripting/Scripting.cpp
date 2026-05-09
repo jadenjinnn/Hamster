@@ -47,13 +47,13 @@ namespace Hamster {
         return scriptPath;
     }
 
-    void Scripting::InitInterpreter() {
+    void Scripting::InitInterpreter(EventDispatcher *dispatcher) {
         if (!m_InterpreterInitialised) {
             pybind11::initialize_interpreter();
 
             m_InterpreterInitialised = true;
 
-            Application::GetApplicationInstance().GetEventDispatcher()->Subscribe(
+            dispatcher->Subscribe(
                 ProjectOpened, FORWARD_STATIC_CALLBACK_FUNCTION(Scripting::AddPathToPy,
                                                                 ProjectOpenedEvent));
         }

@@ -80,7 +80,7 @@ namespace Hamster {
                 dispatcher->Post<FramebufferResizeEvent>(e);
             });
 
-        Scripting::InitInterpreter();
+        Scripting::InitInterpreter(m_Dispatcher.get());
 
         m_Running = true;
     }
