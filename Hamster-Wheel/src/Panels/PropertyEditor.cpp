@@ -78,12 +78,11 @@ void PropertyEditor::Render() {
 
   // Entity header — icon + editable name
   {
-    float iconSize = ImGui::GetTextLineHeight() * 2.0f;
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.345f, 0.529f, 0.969f, 1.0f));
-    ImGui::SetWindowFontScale(2.0f);
-    ImGui::Text(ICON_FA_CUBE);
-    ImGui::SetWindowFontScale(1.0f);
-    ImGui::PopStyleColor();
+    float iconSize = 36.0f;
+    ImGui::Image((ImTextureID)(intptr_t)m_EntityIcon->GetTextureId(),
+                 {iconSize, iconSize},
+                 {0, 0}, {1, 1},
+                 ImVec4(0.345f, 0.529f, 0.969f, 1.0f));
 
     ImGui::SameLine();
 

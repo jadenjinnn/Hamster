@@ -13,6 +13,7 @@
 
 #include <Gui/Panel.h>
 #include <Hamster.h>
+#include <Renderer/Texture.h>
 
 namespace Hamster { class AssetManager; }
 
@@ -22,7 +23,11 @@ public:
                  std::shared_ptr<Hamster::Scene> scene,
                  Hamster::AssetManager *assetManager)
       : Hamster::Panel(dispatcher, scene, true),
-        m_AssetManager(assetManager) {};
+        m_AssetManager(assetManager) {
+    m_EntityIcon = std::make_unique<Hamster::Texture>(
+        Hamster::Application::GetExecutablePath() +
+        "/../share/Resources/Hamster-Wheel/Resources/Icons/hamster.png");
+  };
 
   void Render() override;
 
@@ -39,6 +44,7 @@ private:
   Hamster::Rigidbody *m_Rigidbody = nullptr;
 
   Hamster::AssetManager *m_AssetManager;
+  std::unique_ptr<Hamster::Texture> m_EntityIcon;
 
   std::shared_ptr<RenameModal> m_RenameModal;
   bool m_RenameModalOpen = false;
