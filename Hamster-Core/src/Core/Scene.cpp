@@ -18,10 +18,11 @@
 #include "Scripting/Scripting.h"
 
 namespace Hamster {
-Scene::Scene() {
+Scene::Scene(EventDispatcher *dispatcher, Application *app)
+    : m_Dispatcher(dispatcher), m_App(app) {
   m_ClientLogger = std::make_shared<Logger>(100);
 
-  Application::GetApplicationInstance().GetEventDispatcher()->Subscribe(
+  m_Dispatcher->Subscribe(
       SceneCreated,
       FORWARD_CALLBACK_FUNCTION(Scene::OnSceneCreated, SceneCreatedEvent));
 
@@ -99,9 +100,7 @@ void Scene::OnPhysicsDetect() {
         if (Physics::IsColliding(transformA, transformB)) {
           CollisionEvent e(idA.uuid, idB.uuid);
 
-          Application::GetApplicationInstance()
-              .GetEventDispatcher()
-              ->Post<CollisionEvent>(e);
+          m_Dispatcher->Post<CollisionEvent>(e);
         }
       }
     });
@@ -217,7 +216,7 @@ void Scene::RunSceneSimulation() {
   if (m_IsSimulationPaused) {
     Project::SaveCurrentProject();
 
-    SaveScene(Application::GetApplicationInstance().GetActiveScene());
+    SaveScene(m_App->GetActiveScene());
 
     auto scriptReloadView = m_Registry.view<Behaviour>();
 
@@ -237,8 +236,8 @@ void Scene::RunSceneSimulation() {
       for (auto const &[uuid, script] : behaviour.scripts) {
         for (auto &obj : script->GetPyObjects()) {
           pybind11::object pyObject = obj(
-              ID.uuid, Application::GetApplicationInstance().GetActiveScene(),
-              &Application::GetApplicationInstance());
+              ID.uuid, m_App->GetActiveScene(),
+              m_App);
 
           behaviour.pyObjects.push_back(pyObject);
 

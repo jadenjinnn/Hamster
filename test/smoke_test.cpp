@@ -29,7 +29,7 @@ int main() {
   pybind11::list path = sys.attr("path");
   path.append(fixtureDir.string());
 
-  auto scene = std::make_shared<Hamster::Scene>();
+  auto scene = std::make_shared<Hamster::Scene>(app.GetEventDispatcher().get(), &app);
   Hamster::UUID entityId = scene->CreateEntity();
   scene->AddEntityComponent<Hamster::Behaviour>(entityId);
 

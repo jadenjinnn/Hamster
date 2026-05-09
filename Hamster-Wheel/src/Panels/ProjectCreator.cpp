@@ -74,7 +74,7 @@ void ProjectCreator::Render() {
       }
 
       if (!m_DirectoryExists && !m_NoDirectorySelected) {
-        Hamster::Project::New(m_ProjectConfig);
+        Hamster::Project::New(m_ProjectConfig, &Hamster::Application::GetApplicationInstance());
 
         std::string hamLibPath =
             Hamster::Application::GetExecutablePath() +

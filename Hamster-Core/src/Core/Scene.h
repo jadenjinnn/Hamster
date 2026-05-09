@@ -22,16 +22,12 @@
 #include "Physics/Physics.h"
 
 namespace Hamster {
+class Application;
 class SceneCreatedEvent;
-// class HamsterBehaviour;
-// class HamsterScript;
-// struct ID;
-// class UUID
-//
 
 class Scene {
 public:
-  Scene();
+  Scene(EventDispatcher *dispatcher, Application *app);
 
   UUID CreateEntity();
 
@@ -135,6 +131,9 @@ private:
   float m_LastFrame = 0.0f;
 
   std::shared_ptr<Logger> m_ClientLogger;
+
+  EventDispatcher *m_Dispatcher;
+  Application *m_App;
 };
 } // namespace Hamster
 

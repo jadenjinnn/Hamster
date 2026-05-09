@@ -18,7 +18,7 @@ namespace Hamster {
         std::filesystem::current_path(config.ProjectDirectory);
     }
 
-    bool Project::New(ProjectConfig &config) {
+    bool Project::New(ProjectConfig &config, Application *app) {
         if (std::filesystem::exists(config.ProjectDirectory) &&
             std::filesystem::is_directory(config.ProjectDirectory)) {
             std::runtime_error("Project directory already exists");
@@ -30,18 +30,18 @@ namespace Hamster {
             Hamster::Project::SaveCurrentProject();
         }
 
-        Application::GetApplicationInstance().StopActiveScene();
+        app->StopActiveScene();
 
-        Application::GetApplicationInstance().RemoveAllScenes();
+        app->RemoveAllScenes();
 
         std::filesystem::create_directory(config.ProjectDirectory);
         std::filesystem::current_path(config.ProjectDirectory);
 
         std::filesystem::create_directory("Scenes");
 
-        std::shared_ptr<Scene> scene = std::make_shared<Scene>();
+        auto scene = std::make_shared<Scene>(app->GetEventDispatcher().get(), app);
 
-        Application::GetApplicationInstance().AddScene(scene);
+        app->AddScene(scene);
 
         std::cout << scene->GetUUID().GetUUID() << std::endl;
 
@@ -57,7 +57,7 @@ namespace Hamster {
 
         config.StartScenePath = scenePath;
 
-        Application::GetApplicationInstance().SetSceneActive(scene->GetUUID());
+        app->SetSceneActive(scene->GetUUID());
 
         s_ActiveProject = std::make_shared<Project>(config);
 
@@ -82,27 +82,26 @@ namespace Hamster {
 
         SaveCurrentProject();
 
-        Application::GetApplicationInstance().AddScene(scene);
-        Application::GetApplicationInstance().SetSceneActive(scene->GetUUID());
+        app->AddScene(scene);
+        app->SetSceneActive(scene->GetUUID());
 
         ProjectOpenedEvent e(config.ProjectDirectory);
 
-        Application::GetApplicationInstance()
-                .GetEventDispatcher()
+        app->GetEventDispatcher()
                 ->Post<ProjectOpenedEvent>(e);
 
 
         return true;
     }
 
-    bool Project::Open(std::filesystem::path projectPath) {
+    bool Project::Open(std::filesystem::path projectPath, Application *app) {
         if (s_ActiveProject != nullptr) {
             Project::SaveCurrentProject();
         }
 
-        Application::GetApplicationInstance().StopActiveScene();
+        app->StopActiveScene();
 
-        Application::GetApplicationInstance().RemoveAllScenes();
+        app->RemoveAllScenes();
 
         std::ifstream projectFile(projectPath, std::ios::binary);
 
@@ -114,7 +113,7 @@ namespace Hamster {
 
         projectFile.close();
 
-        std::shared_ptr<Scene> scene = std::make_shared<Scene>();
+        auto scene = std::make_shared<Scene>(app->GetEventDispatcher().get(), app);
         SceneSerialiser sceneSerialiser(scene);
         std::ifstream sceneIn(config.StartScenePath, std::ios::binary);
         sceneSerialiser.Deserialise(sceneIn);
@@ -122,14 +121,13 @@ namespace Hamster {
 
         s_ActiveProject->SetStartScene(scene);
 
-        Application::GetApplicationInstance().AddScene(scene);
+        app->AddScene(scene);
 
-        Application::GetApplicationInstance().SetSceneActive(scene->GetUUID());
+        app->SetSceneActive(scene->GetUUID());
 
         ProjectOpenedEvent e(projectPath);
 
-        Application::GetApplicationInstance()
-                .GetEventDispatcher()
+        app->GetEventDispatcher()
                 ->Post<ProjectOpenedEvent>(e);
 
         std::filesystem::current_path(config.ProjectDirectory);

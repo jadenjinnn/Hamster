@@ -59,7 +59,7 @@ void ProjectSelector::Render() {
         if (m_ProjectFilePath.empty()) {
             m_NoPathSelected = true;
         } else {
-            Hamster::Project::Open(m_ProjectFilePath);
+            Hamster::Project::Open(m_ProjectFilePath, &Hamster::Application::GetApplicationInstance());
             m_ProjectFilePath.clear();
 
             ClosePanel();

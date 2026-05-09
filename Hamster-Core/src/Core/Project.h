@@ -8,6 +8,7 @@
 #include "Scene.h"
 
 namespace Hamster {
+class Application;
 class Scene;
 
 struct ProjectConfig {
@@ -20,9 +21,9 @@ class Project {
 public:
   Project(const ProjectConfig &config);
 
-  static bool New(ProjectConfig &config);
+  static bool New(ProjectConfig &config, Application *app);
 
-  static bool Open(std::filesystem::path projectPath);
+  static bool Open(std::filesystem::path projectPath, Application *app);
 
   static void SaveCurrentProject();
 
