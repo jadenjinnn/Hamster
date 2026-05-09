@@ -24,9 +24,7 @@ namespace Hamster {
     // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable; // Enable
     // Multi-Viewport / Platform Windows
 
-    // ImGui::StyleColorsDark();
-
-    AttachDefaultColourScheme();
+    // Color scheme applied by HamsterTheme::Apply() in HamsterWheelApp.cpp
 
     // ImGuiStyle &style = ImGui::GetStyle();
     // if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {

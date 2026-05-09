@@ -38,7 +38,11 @@ set(PANELS
         src/Panels/RenameModal.cpp src/Panels/RenameModal.h
 )
 
-add_executable(Hamster-Wheel ${PANELS} src/EditorLayer.cpp src/EditorLayer.h src/HamsterWheelApp.cpp)
+set(THEME
+        src/Theme/HamsterTheme.cpp src/Theme/HamsterTheme.h
+)
+
+add_executable(Hamster-Wheel ${PANELS} ${THEME} src/EditorLayer.cpp src/EditorLayer.h src/HamsterWheelApp.cpp)
 
 target_include_directories(Hamster-Wheel PRIVATE
         src

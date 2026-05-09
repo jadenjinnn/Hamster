@@ -14,19 +14,17 @@
 #include <iostream>
 
 #include "ProjectHubLayer.h"
+#include "Theme/HamsterTheme.h"
 
 int main() {
   auto *app = new Hamster::Application();
 
-  // pybind11::hash()
-
-  std::filesystem::path filePath =
+  std::string resourcePath =
       Hamster::Application::GetExecutablePath() +
-      "/../share/Resources/Hamster-Wheel/Resources/Fonts/segoe-ui-this/"
-      "segoeuithis.ttf";
+      "/../share/Resources/Hamster-Wheel/Resources";
 
   ImGuiIO &io = ImGui::GetIO();
-  io.Fonts->AddFontFromFileTTF(filePath.string().c_str(), 18.0f);
+  HamsterTheme::Apply(io, resourcePath);
 
   ProjectHubLayer *projectHubLayer = new ProjectHubLayer(app);
 
