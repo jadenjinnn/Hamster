@@ -10,13 +10,21 @@
 #include "Scripting/Scripting.h"
 
 namespace Hamster {
+    AssetManager::AssetManager(MainThreadEnqueue enqueue)
+        : m_Enqueue(std::move(enqueue)) {
+    }
+
+    AssetManager::~AssetManager() {
+        m_Textures.clear();
+        m_Shaders.clear();
+        m_Scripts.clear();
+    }
+
     std::shared_ptr<Shader>
     AssetManager::AddShader(std::string name, const std::string &vertexShaderPath,
                             const std::string &fragmentShaderPath) {
         std::shared_ptr<Shader> shader = std::make_shared<Shader>(
             vertexShaderPath.c_str(), fragmentShaderPath.c_str());
-
-        // m_Shaders.emplace(name, shader);
 
         m_Shaders[name] = shader;
 
@@ -56,17 +64,16 @@ namespace Hamster {
 
         std::shared_ptr<Texture> texture = std::make_shared<Texture>();
 
+        // Capture this to access m_Textures on main thread when the async load completes
         m_Enqueue(
-            [futurePtr, texture]() mutable {
+            [this, futurePtr, texture]() mutable {
                 TextureData textData = futurePtr->get();
 
-                texture->Init(textData); {
-                    std::lock_guard<std::mutex> lock(m_TextureLoadMutex);
+                texture->Init(textData);
 
-                    m_Textures.emplace(texture->GetUUID(), texture);
+                m_Textures.emplace(texture->GetUUID(), texture);
 
-                    std::cout << "adding texture" << std::endl;
-                }
+                std::cout << "adding texture" << std::endl;
 
                 stbi_image_free(textData.data);
             });
@@ -79,8 +86,6 @@ namespace Hamster {
 
         std::shared_ptr<Texture> texture =
                 std::make_shared<Texture>(texturePath.c_str());
-
-        std::lock_guard<std::mutex> lock(m_TextureLoadMutex);
 
         m_Textures.emplace(texture->GetUUID(), texture);
 
@@ -164,7 +169,6 @@ namespace Hamster {
         out.write(reinterpret_cast<const char *>(&textureCount),
                   sizeof(textureCount));
 
-        // serialise texture asset manager
         for (auto const &[uuid, texture]: m_Textures) {
             std::cout << "Serialising texture with uuid: " << uuid.GetUUID()
                     << std::endl;
@@ -258,7 +262,7 @@ namespace Hamster {
             std::string scriptPathStr(scriptPathLength, '\0');
             in.read(scriptPathStr.data(), scriptPathLength);
 
-            std::size_t scriptNameLength; // here
+            std::size_t scriptNameLength;
             in.read(reinterpret_cast<char *>(&scriptNameLength),
                     sizeof(scriptNameLength));
 
@@ -275,10 +279,5 @@ namespace Hamster {
 
             AddScript(uuid, path, fileNameStr, scriptNameStr);
         }
-    }
-
-    void AssetManager::Terminate() {
-        m_Textures.clear();
-        m_Shaders.clear();
     }
 } // namespace Hamster

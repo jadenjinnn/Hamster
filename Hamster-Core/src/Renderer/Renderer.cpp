@@ -9,7 +9,7 @@
 #include "Utils/AssetManager.h"
 
 namespace Hamster {
-    void Renderer::Init(int viewportHeight, int viewportWidth) {
+    void Renderer::Init(int viewportHeight, int viewportWidth, AssetManager *assetManager) {
         if (!gladLoadGLLoader((GLADloadproc) glfwGetProcAddress)) {
             std::cout << "Failed to initialise glad" << std::endl;
         }
@@ -23,7 +23,7 @@ namespace Hamster {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-        Renderer::InitRendererData();
+        Renderer::InitRendererData(assetManager);
     }
 
     void Renderer::Terminate() {
@@ -55,14 +55,14 @@ namespace Hamster {
         glClearColor(r, g, b, a);
     }
 
-    void Renderer::InitRendererData() {
+    void Renderer::InitRendererData(AssetManager *assetManager) {
         std::string hamsterCorePath = HAMSTER_CORE_SRC_DIR;
 
-        m_SpriteShader = AssetManager::AddShader(
+        m_SpriteShader = assetManager->AddShader(
             "sprite", hamsterCorePath + "/Renderer/DefaultShaders/SpriteShader.vs",
             hamsterCorePath + "/Renderer/DefaultShaders/SpriteShader.fs");
 
-        m_FlatShader = AssetManager::AddShader(
+        m_FlatShader = assetManager->AddShader(
             "flat", hamsterCorePath + "/Renderer/DefaultShaders/FlatShader.vs",
             hamsterCorePath + "/Renderer/DefaultShaders/FlatShader.fs");
 

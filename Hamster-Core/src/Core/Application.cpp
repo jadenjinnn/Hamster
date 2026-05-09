@@ -37,15 +37,13 @@ namespace Hamster {
         m_InputManager =
                 std::make_unique<InputManager>(m_Window->GetGLFWWindowPointer());
 
-        Renderer::Init(1920, 1080);
-
-        // Global dispatcher for all events, aren't many events posted, may create a
-        // dispatcher for user use serperate from internal use
-        m_Dispatcher = std::make_shared<EventDispatcher>();
-
-        AssetManager::Init([this](std::function<void()> fn) {
+        m_AssetManager = std::make_unique<AssetManager>([this](std::function<void()> fn) {
             AppendToMainThreadQueue(fn);
         });
+
+        Renderer::Init(1920, 1080, m_AssetManager.get());
+
+        m_Dispatcher = std::make_shared<EventDispatcher>();
 
         m_ImGuiLayer.SetWindow(m_Window->GetGLFWWindowPointer());
         PushLayer(&m_ImGuiLayer);
@@ -92,15 +90,13 @@ namespace Hamster {
     Application::~Application() {
         Scripting::FinaliseInterpreter();
 
-        Project::SaveCurrentProject();
+        Project::SaveCurrentProject(m_AssetManager.get());
 
         for (auto const &[uuid, scene]: m_Scenes) {
             std::cout << "Currently saving scene with uuid: " << uuid.GetUUID()
                     << std::endl;
             Scene::SaveScene(scene);
         }
-
-        AssetManager::Terminate();
 
         std::cout << "Application destroyed" << std::endl;
     }

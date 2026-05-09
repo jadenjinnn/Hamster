@@ -119,7 +119,7 @@ void PropertyEditor::Render() {
 
     if (ImGui::BeginPopup("Select Asset")) {
       for (const auto &[uuid, texture] :
-           Hamster::AssetManager::GetTextureMap()) {
+           m_AssetManager->GetTextureMap()) {
         std::string buttonText =
             texture->GetName() + "##" + texture->GetUUID().GetUUIDString();
 
@@ -171,7 +171,7 @@ void PropertyEditor::Render() {
     }
 
     if (ImGui::BeginPopup("Add Script")) {
-      for (const auto &[uuid, script] : Hamster::AssetManager::GetScriptMap()) {
+      for (const auto &[uuid, script] : m_AssetManager->GetScriptMap()) {
         if (m_Behaviour->scripts.count(uuid) == 0) {
           if (ImGui::Selectable(script->GetName().c_str())) {
             m_Behaviour->scripts.emplace(script->GetUUID(), script);

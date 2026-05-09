@@ -214,7 +214,7 @@ void Scene::SetUUID(const UUID &uuid) {
 
 void Scene::RunSceneSimulation() {
   if (m_IsSimulationPaused) {
-    Project::SaveCurrentProject();
+    Project::SaveCurrentProject(m_App->GetAssetManager());
 
     SaveScene(m_App->GetActiveScene());
 

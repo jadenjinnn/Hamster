@@ -14,11 +14,15 @@
 #include <Gui/Panel.h>
 #include <Hamster.h>
 
+namespace Hamster { class AssetManager; }
+
 class PropertyEditor : public Hamster::Panel {
 public:
   PropertyEditor(Hamster::EventDispatcher *dispatcher,
-                 std::shared_ptr<Hamster::Scene> scene)
-      : Hamster::Panel(dispatcher, scene, true) {};
+                 std::shared_ptr<Hamster::Scene> scene,
+                 Hamster::AssetManager *assetManager)
+      : Hamster::Panel(dispatcher, scene, true),
+        m_AssetManager(assetManager) {};
 
   void Render() override;
 
@@ -32,6 +36,8 @@ private:
   Hamster::Sprite *m_Sprite = nullptr;
   Hamster::Behaviour *m_Behaviour = nullptr;
   Hamster::Rigidbody *m_Rigidbody = nullptr;
+
+  Hamster::AssetManager *m_AssetManager;
 
   std::shared_ptr<RenameModal> m_RenameModal;
   bool m_RenameModalOpen = false;

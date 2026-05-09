@@ -13,8 +13,9 @@
 #include <chrono>
 
 namespace Hamster {
-SceneSerialiser::SceneSerialiser(std::shared_ptr<Scene> scene)
-    : m_Scene(std::move(scene)) {}
+SceneSerialiser::SceneSerialiser(std::shared_ptr<Scene> scene,
+                                 AssetManager *assetManager)
+    : m_Scene(std::move(scene)), m_AssetManager(assetManager) {}
 
 void SceneSerialiser::Serialise(std::ostream &out) {
   boost::uuids::uuid uuidValue = m_Scene->GetUUID().GetUUID();
@@ -200,7 +201,7 @@ UUID SceneSerialiser::DeserialiseEntity(std::istream &in) {
 
       if (!UUID::IsNil(textureUUID)) {
         m_Scene->AddEntityComponent<Sprite>(
-            uuid, AssetManager::GetTexture(textureUUID), colour);
+            uuid, m_AssetManager->GetTexture(textureUUID), colour);
       } else {
         m_Scene->AddEntityComponent<Sprite>(uuid, colour);
       }
@@ -241,7 +242,7 @@ UUID SceneSerialiser::DeserialiseEntity(std::istream &in) {
                   << scriptUUID.GetUUIDString() << std::endl;
 
         behaviour.scripts.emplace(scriptUUID,
-                                  AssetManager::GetScript(scriptUUID));
+                                  m_AssetManager->GetScript(scriptUUID));
       }
 
       break;

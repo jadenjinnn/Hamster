@@ -22,6 +22,8 @@
 #include "Utils/InputManager.h"
 
 namespace Hamster {
+    class AssetManager;
+
     class Application {
     public:
         Application();
@@ -80,6 +82,8 @@ namespace Hamster {
 
         void ExecuteMainThread();
 
+        AssetManager *GetAssetManager() { return m_AssetManager.get(); }
+
         static std::string GetExecutablePath();
 
     private:
@@ -101,6 +105,7 @@ namespace Hamster {
         std::unique_ptr<Window> m_Window;
 
         std::unique_ptr<InputManager> m_InputManager;
+        std::unique_ptr<AssetManager> m_AssetManager;
 
         std::unordered_map<UUID, std::shared_ptr<Scene> > m_Scenes;
         std::shared_ptr<Scene> m_ActiveScene = nullptr;

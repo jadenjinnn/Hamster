@@ -16,8 +16,9 @@
 #include <string>
 
 AssetBrowser::AssetBrowser(Hamster::EventDispatcher *dispatcher,
-                           std::shared_ptr<Hamster::Scene> scene)
-  : Hamster::Panel(dispatcher, scene) {
+                           std::shared_ptr<Hamster::Scene> scene,
+                           Hamster::AssetManager *assetManager)
+  : Hamster::Panel(dispatcher, scene), m_AssetManager(assetManager) {
   m_PythonIcon = std::make_unique<Hamster::Texture>(
     Hamster::Application::GetExecutablePath() +
     "/../share/Resources/Hamster-Wheel/Resources/Icons/python.png");
@@ -29,7 +30,7 @@ void AssetBrowser::Render() {
     return;
   }
 
-  for (const auto &[uuid, texture]: Hamster::AssetManager::GetTextureMap()) {
+  for (const auto &[uuid, texture]: m_AssetManager->GetTextureMap()) {
     std::string buttonLabel =
         texture->GetName() + "##" + boost::uuids::to_string(uuid.GetUUID());
 
@@ -49,7 +50,7 @@ void AssetBrowser::Render() {
   ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.f, 0.f, 0.f, 0.f));
   ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.f, 0.f, 0.f, 0.f));
 
-  for (const auto &[uuid, script]: Hamster::AssetManager::GetScriptMap()) {
+  for (const auto &[uuid, script]: m_AssetManager->GetScriptMap()) {
     std::string buttonLabel =
         script->GetName() + "##" + boost::uuids::to_string(uuid.GetUUID());
 
@@ -73,11 +74,11 @@ void AssetBrowser::Render() {
         while (std::getline(pathSS, item, '|')) {
           std::cout << item << std::endl;
 
-          Hamster::AssetManager::AddTextureAsync(item);
+          m_AssetManager->AddTextureAsync(item);
         }
       }
       if (ImGui::MenuItem("New Script")) {
-        Hamster::AssetManager::AddDefaultScript();
+        m_AssetManager->AddDefaultScript();
       }
 
       ImGui::EndMenu();

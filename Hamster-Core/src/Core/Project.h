@@ -9,6 +9,7 @@
 
 namespace Hamster {
 class Application;
+class AssetManager;
 class Scene;
 
 struct ProjectConfig {
@@ -25,7 +26,7 @@ public:
 
   static bool Open(std::filesystem::path projectPath, Application *app);
 
-  static void SaveCurrentProject();
+  static void SaveCurrentProject(AssetManager *assetManager);
 
   void SetStartScene(std::shared_ptr<Scene> scene);
 

@@ -26,8 +26,10 @@ namespace Hamster {
             return false;
         }
 
+        auto *assetManager = app->GetAssetManager();
+
         if (s_ActiveProject != nullptr) {
-            Hamster::Project::SaveCurrentProject();
+            Hamster::Project::SaveCurrentProject(assetManager);
         }
 
         app->StopActiveScene();
@@ -45,7 +47,7 @@ namespace Hamster {
 
         std::cout << scene->GetUUID().GetUUID() << std::endl;
 
-        SceneSerialiser sceneSerialiser(scene);
+        SceneSerialiser sceneSerialiser(scene, assetManager);
 
         std::filesystem::path scenePath = config.ProjectDirectory / scene->GetPath();
 
@@ -65,22 +67,22 @@ namespace Hamster {
                 Hamster::Application::GetExecutablePath() +
                 "/../share/Resources/Hamster-Wheel/Resources/Sprites";
 
-        std::shared_ptr<Hamster::Texture> square = Hamster::AssetManager::AddTexture(
+        std::shared_ptr<Hamster::Texture> square = assetManager->AddTexture(
             spriteFolderPath.string() + "/square.png");
 
         square->SetName("Square");
 
-        std::shared_ptr<Hamster::Texture> triangle = Hamster::AssetManager::AddTexture(
+        std::shared_ptr<Hamster::Texture> triangle = assetManager->AddTexture(
             spriteFolderPath.string() + "/triangle.png");
 
         triangle->SetName("Triangle");
 
-        std::shared_ptr<Hamster::Texture> circle = Hamster::AssetManager::AddTexture(
+        std::shared_ptr<Hamster::Texture> circle = assetManager->AddTexture(
             spriteFolderPath.string() + "/circle.png");
 
         circle->SetName("Circle");
 
-        SaveCurrentProject();
+        SaveCurrentProject(assetManager);
 
         app->AddScene(scene);
         app->SetSceneActive(scene->GetUUID());
@@ -95,8 +97,10 @@ namespace Hamster {
     }
 
     bool Project::Open(std::filesystem::path projectPath, Application *app) {
+        auto *assetManager = app->GetAssetManager();
+
         if (s_ActiveProject != nullptr) {
-            Project::SaveCurrentProject();
+            Project::SaveCurrentProject(assetManager);
         }
 
         app->StopActiveScene();
@@ -109,12 +113,12 @@ namespace Hamster {
 
         s_ActiveProject = std::make_shared<Project>(config);
 
-        AssetManager::Deserialise(projectFile, config);
+        assetManager->Deserialise(projectFile, config);
 
         projectFile.close();
 
         auto scene = std::make_shared<Scene>(app->GetEventDispatcher().get(), app);
-        SceneSerialiser sceneSerialiser(scene);
+        SceneSerialiser sceneSerialiser(scene, assetManager);
         std::ifstream sceneIn(config.StartScenePath, std::ios::binary);
         sceneSerialiser.Deserialise(sceneIn);
         sceneIn.close();
@@ -135,7 +139,7 @@ namespace Hamster {
         return true;
     }
 
-    void Project::SaveCurrentProject() {
+    void Project::SaveCurrentProject(AssetManager *assetManager) {
         if (s_ActiveProject != nullptr) {
             ProjectSerialiser serialiser(s_ActiveProject);
 
@@ -146,7 +150,7 @@ namespace Hamster {
 
             serialiser.Serialise(out);
 
-            AssetManager::Serialise(out);
+            assetManager->Serialise(out);
 
             out.close();
         }

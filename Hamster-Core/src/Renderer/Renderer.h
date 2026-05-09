@@ -12,9 +12,11 @@
 namespace Hamster {
     enum TransformType { Translate, Rotate, Scale };
 
+    class AssetManager;
+
     class Renderer {
     public:
-        static void Init(int viewportHeight, int viewportWidt);
+        static void Init(int viewportHeight, int viewportWidt, AssetManager *assetManager);
 
         static void Terminate();
 
@@ -44,7 +46,7 @@ namespace Hamster {
         static glm::vec2 ScreenToWorldPos(const glm::vec2 &mousePos);
 
     private:
-        static void InitRendererData();
+        static void InitRendererData(AssetManager *assetManager);
 
         inline static std::shared_ptr<Shader> m_SpriteShader;
         inline static std::shared_ptr<Shader> m_FlatShader;

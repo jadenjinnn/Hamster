@@ -9,9 +9,12 @@
 
 namespace Hamster {
 
+class AssetManager;
+
 class SceneSerialiser {
 public:
-  explicit SceneSerialiser(std::shared_ptr<Scene> scene);
+  explicit SceneSerialiser(std::shared_ptr<Scene> scene,
+                           AssetManager *assetManager = nullptr);
 
   void Serialise(std::ostream &out);
   void Deserialise(std::istream &in);
@@ -22,6 +25,7 @@ public:
 
 private:
   std::shared_ptr<Scene> m_Scene;
+  AssetManager *m_AssetManager;
 };
 
 } // namespace Hamster

@@ -9,14 +9,18 @@
 #include <Renderer/Texture.h>
 #include <memory>
 
+namespace Hamster { class AssetManager; }
+
 class AssetBrowser : public Hamster::Panel {
 public:
   AssetBrowser(Hamster::EventDispatcher *dispatcher,
-               std::shared_ptr<Hamster::Scene> scene);
+               std::shared_ptr<Hamster::Scene> scene,
+               Hamster::AssetManager *assetManager);
 
   void Render() override;
 
 private:
+  Hamster::AssetManager *m_AssetManager;
   std::unique_ptr<Hamster::Texture> m_PythonIcon;
 };
 
