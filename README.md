@@ -5,6 +5,7 @@ Hamster is a game engine that is intended to be used in the classroom to teach b
 ## What's new
 
 - **Editor theme**: dark Figma-inspired theme with Inter font, Font Awesome icons, viewport play/pause/stop overlay, and consistent panel styling
+- **Sprite preview**: texture thumbnail with tint, dimensions, and inline color picker in the PropertyEditor
 
 ## Getting Started
 To get started, follow the documentation at https://doritothepug.github.io/Hamster

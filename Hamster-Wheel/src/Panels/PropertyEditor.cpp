@@ -142,13 +142,60 @@ void PropertyEditor::Render() {
     ImGui::SeparatorText(ICON_FA_IMAGE "  Sprite");
     ImGui::Dummy({0, 4});
 
-    ImGui::PushItemWidth(80);
+    constexpr float kThumbSize = 96.0f;
+    auto &colour = m_Sprite->colour;
+    ImVec4 tint(colour.r, colour.g, colour.b, 1.0f);
 
-    if (m_Sprite->texture != nullptr) {
-      ImGui::Text("Current Sprite: ");
-      ImGui::SameLine();
-      ImGui::Text("%s", m_Sprite->texture->GetName().c_str());
+    ImGui::BeginGroup();
+    if (m_Sprite->texture != nullptr && m_Sprite->texture->GetTextureId() != 0) {
+      ImGui::Image(
+          (ImTextureID)(intptr_t)m_Sprite->texture->GetTextureId(),
+          ImVec2(kThumbSize, kThumbSize),
+          ImVec2(0, 0), ImVec2(1, 1),
+          tint);
+    } else {
+      ImVec2 pos = ImGui::GetCursorScreenPos();
+      ImGui::GetWindowDrawList()->AddRectFilled(
+          pos, ImVec2(pos.x + kThumbSize, pos.y + kThumbSize),
+          IM_COL32(40, 40, 40, 255));
+      ImGui::GetWindowDrawList()->AddRect(
+          pos, ImVec2(pos.x + kThumbSize, pos.y + kThumbSize),
+          IM_COL32(80, 80, 80, 255));
+      ImGui::Dummy(ImVec2(kThumbSize, kThumbSize));
     }
+    ImGui::EndGroup();
+
+    ImGui::SameLine();
+
+    ImGui::BeginGroup();
+    if (m_Sprite->texture != nullptr) {
+      ImGui::Text("Name");
+      ImGui::SameLine();
+      ImGui::TextDisabled("%s", m_Sprite->texture->GetName().c_str());
+      ImGui::Text("Size");
+      ImGui::SameLine();
+      ImGui::TextDisabled("%d x %d", m_Sprite->texture->GetWidth(), m_Sprite->texture->GetHeight());
+    } else {
+      ImGui::Text("Name");
+      ImGui::SameLine();
+      ImGui::TextDisabled("None");
+      ImGui::Text("Size");
+      ImGui::SameLine();
+      ImGui::TextDisabled("- x -");
+    }
+    ImGui::Text("Tint");
+    ImGui::SameLine();
+    float col[3] = {colour.r, colour.g, colour.b};
+    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
+    if (ImGui::ColorEdit3("##Tint", col, ImGuiColorEditFlags_NoLabel)) {
+      colour = glm::vec3(col[0], col[1], col[2]);
+    }
+    ImGui::PopItemWidth();
+    ImGui::EndGroup();
+
+    ImGui::Dummy({0, 4});
+
+    ImGui::PushItemWidth(80);
 
     if (ImGui::Button("Select Sprite")) {
       ImGui::OpenPopup("Select Asset");

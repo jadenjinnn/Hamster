@@ -34,8 +34,13 @@ public:
 
   GLuint GetTextureId() { return m_ID; }
 
+  int GetWidth() const { return m_Width; }
+  int GetHeight() const { return m_Height; }
+
 private:
   GLuint m_ID;
+  int m_Width = 0;
+  int m_Height = 0;
   std::string m_TexturePath;
   std::string m_TextureName = "Untitled Texture";
   UUID m_UUID;

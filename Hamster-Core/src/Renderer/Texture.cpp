@@ -45,6 +45,9 @@ Texture::Texture(const std::string &texturePath) : m_TexturePath(texturePath) {
 
   glBindTexture(GL_TEXTURE_2D, 0);
 
+  m_Width = width;
+  m_Height = height;
+
   stbi_image_free(data);
 }
 
@@ -77,6 +80,9 @@ void Texture::Init(const TextureData &textData) {
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
   glBindTexture(GL_TEXTURE_2D, 0);
+
+  m_Width = textData.width;
+  m_Height = textData.height;
 }
 
 void Texture::BindTexture() {
