@@ -3,7 +3,6 @@
 #include "HamsterBehaviour.h"
 
 #include "Core/Application.h"
-#include <box2d/box2d.h>
 
 #include "Events/SceneEvents.h"
 
@@ -64,6 +63,25 @@ void HamsterBehaviour::Log(LogType type, std::string message) {
 //     }
 //   }
 // }
+
+glm::vec2 HamsterBehaviour::GetVelocity() const {
+  if (m_Rigidbody) {
+    return m_Rigidbody->cachedVelocity;
+  }
+  return {0.0f, 0.0f};
+}
+
+void HamsterBehaviour::ApplyForce(float fx, float fy) {
+  if (m_Rigidbody) {
+    m_Rigidbody->pendingForce += glm::vec2(fx, fy);
+  }
+}
+
+void HamsterBehaviour::ApplyImpulse(float ix, float iy) {
+  if (m_Rigidbody) {
+    m_Rigidbody->pendingImpulse += glm::vec2(ix, iy);
+  }
+}
 
 void HamsterBehaviour::AddCollisionEntity(const std::string &uuid) {
   m_CollisionEntities.insert(uuid);

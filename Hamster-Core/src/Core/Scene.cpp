@@ -6,16 +6,21 @@
 
 #include "Scene.h"
 
+#include <box2d/box2d.h>
 #include <pybind11/pybind11.h>
 
 #include "Application.h"
-#include "Physics/Physics.h"
 #include "Project.h"
 #include "Renderer/Renderer.h"
 #include "SceneSerialiser.h"
 
 #include "Scripting/HamsterBehaviour.h"
 #include "Scripting/Scripting.h"
+
+namespace {
+constexpr float PIXELS_PER_METER = 50.0f;
+constexpr int BOX2D_SUB_STEPS = 4;
+}
 
 namespace Hamster {
 Scene::Scene(EventDispatcher *dispatcher, Application *app)
@@ -76,34 +81,161 @@ void Scene::DestroyEntity(UUID entityUUID) {
 // }
 
 void Scene::OnUpdate() {
-  OnPhysicsDetect();
-
   if (!m_IsSimulationPaused) {
     auto currentFrame = static_cast<float>(glfwGetTime());
     m_DeltaTime = currentFrame - m_LastFrame;
     m_LastFrame = currentFrame;
 
+    if (b2World_IsValid(m_PhysicsWorld)) {
+      ApplyPendingForces();
+      StepPhysics();
+      ProcessContactEvents();
+      SyncPhysicsToTransforms();
+      CacheVelocities();
+    }
+
     OnScriptUpdate();
-    OnPhysicsResolve();
   }
 }
 
-void Scene::OnPhysicsDetect() {
-  auto collisionDetect = m_Registry.view<Transform, Rigidbody, ID>();
+void Scene::InitPhysicsWorld() {
+  b2WorldDef worldDef = b2DefaultWorldDef();
+  worldDef.gravity = {0.0f, 10.0f}; // +Y is down in screen coords
 
-  collisionDetect.each([this, collisionDetect](auto entityA, auto &transformA,
-                                               auto &rbA, auto &idA) mutable {
-    collisionDetect.each([this, entityA, &transformA, &idA](
-                             auto entityB, auto &transformB, auto &rbB,
-                             auto &idB) mutable {
-      if (entityA != entityB) {
-        if (Physics::IsColliding(transformA, transformB)) {
-          CollisionEvent e(idA.uuid, idB.uuid);
+  m_PhysicsWorld = b2CreateWorld(&worldDef);
 
-          m_Dispatcher->Post<CollisionEvent>(e);
-        }
-      }
-    });
+  auto view = m_Registry.view<Transform, Rigidbody, ID>();
+
+  view.each([this](auto &transform, auto &rb, auto &id) {
+    b2BodyDef bodyDef = b2DefaultBodyDef();
+
+    switch (rb.bodyType) {
+    case BodyType::Static:
+      bodyDef.type = b2_staticBody;
+      break;
+    case BodyType::Dynamic:
+      bodyDef.type = b2_dynamicBody;
+      break;
+    case BodyType::Kinematic:
+      bodyDef.type = b2_kinematicBody;
+      break;
+    }
+
+    // transform.position is top-left; Box2D wants center
+    bodyDef.position = {(transform.position.x + transform.size.x * 0.5f) / PIXELS_PER_METER,
+                        (transform.position.y + transform.size.y * 0.5f) / PIXELS_PER_METER};
+    bodyDef.rotation =
+        b2MakeRot(glm::radians(transform.rotation));
+    bodyDef.gravityScale = rb.gravityScale;
+
+    // Store pointer to entity UUID for contact event resolution
+    bodyDef.userData = const_cast<void *>(
+        static_cast<const void *>(&id.uuid));
+
+    rb.bodyId = b2CreateBody(m_PhysicsWorld, &bodyDef);
+
+    b2ShapeDef shapeDef = b2DefaultShapeDef();
+    shapeDef.density = rb.density;
+    shapeDef.friction = rb.friction;
+    shapeDef.restitution = rb.restitution;
+    shapeDef.enableContactEvents = true;
+
+    float halfW = std::max(std::abs(transform.size.x) / PIXELS_PER_METER * 0.5f, 0.05f);
+    float halfH = std::max(std::abs(transform.size.y) / PIXELS_PER_METER * 0.5f, 0.05f);
+
+    if (rb.colliderShape == ColliderShape::Circle) {
+      b2Circle circle;
+      circle.center = {0.0f, 0.0f};
+      circle.radius = std::max(halfW, halfH);
+      b2CreateCircleShape(rb.bodyId, &shapeDef, &circle);
+    } else {
+      b2Polygon box = b2MakeBox(halfW, halfH);
+      b2CreatePolygonShape(rb.bodyId, &shapeDef, &box);
+    }
+  });
+}
+
+void Scene::DestroyPhysicsWorld() {
+  if (b2World_IsValid(m_PhysicsWorld)) {
+    // Reset all bodyIds before destroying the world
+    auto view = m_Registry.view<Rigidbody>();
+    view.each([](auto &rb) { rb.bodyId = b2_nullBodyId; });
+
+    b2DestroyWorld(m_PhysicsWorld);
+    m_PhysicsWorld = b2_nullWorldId;
+  }
+}
+
+void Scene::StepPhysics() {
+  b2World_Step(m_PhysicsWorld, m_DeltaTime, BOX2D_SUB_STEPS);
+}
+
+void Scene::SyncPhysicsToTransforms() {
+  auto view = m_Registry.view<Transform, Rigidbody>();
+
+  view.each([](auto &transform, auto &rb) {
+    if (!b2Body_IsValid(rb.bodyId))
+      return;
+
+    // Box2D returns center; transform.position is top-left
+    b2Vec2 pos = b2Body_GetPosition(rb.bodyId);
+    transform.position.x = pos.x * PIXELS_PER_METER - transform.size.x * 0.5f;
+    transform.position.y = pos.y * PIXELS_PER_METER - transform.size.y * 0.5f;
+
+    b2Rot rot = b2Body_GetRotation(rb.bodyId);
+    transform.rotation = glm::degrees(b2Rot_GetAngle(rot));
+  });
+}
+
+void Scene::ProcessContactEvents() {
+  b2ContactEvents events = b2World_GetContactEvents(m_PhysicsWorld);
+
+  for (int i = 0; i < events.beginCount; i++) {
+    b2ContactBeginTouchEvent &evt = events.beginEvents[i];
+
+    b2BodyId bodyA = b2Shape_GetBody(evt.shapeIdA);
+    b2BodyId bodyB = b2Shape_GetBody(evt.shapeIdB);
+
+    auto *uuidA = static_cast<UUID *>(b2Body_GetUserData(bodyA));
+    auto *uuidB = static_cast<UUID *>(b2Body_GetUserData(bodyB));
+
+    if (uuidA && uuidB) {
+      CollisionEvent e(*uuidA, *uuidB);
+      m_Dispatcher->Post<CollisionEvent>(e);
+    }
+  }
+}
+
+void Scene::ApplyPendingForces() {
+  auto view = m_Registry.view<Rigidbody>();
+
+  view.each([](auto &rb) {
+    if (!b2Body_IsValid(rb.bodyId))
+      return;
+
+    if (rb.pendingForce.x != 0.0f || rb.pendingForce.y != 0.0f) {
+      b2Vec2 force = {rb.pendingForce.x, rb.pendingForce.y};
+      b2Body_ApplyForceToCenter(rb.bodyId, force, true);
+      rb.pendingForce = {0.0f, 0.0f};
+    }
+
+    if (rb.pendingImpulse.x != 0.0f || rb.pendingImpulse.y != 0.0f) {
+      b2Vec2 impulse = {rb.pendingImpulse.x, rb.pendingImpulse.y};
+      b2Body_ApplyLinearImpulseToCenter(rb.bodyId, impulse, true);
+      rb.pendingImpulse = {0.0f, 0.0f};
+    }
+  });
+}
+
+void Scene::CacheVelocities() {
+  auto view = m_Registry.view<Rigidbody>();
+
+  view.each([](auto &rb) {
+    if (!b2Body_IsValid(rb.bodyId))
+      return;
+
+    b2Vec2 vel = b2Body_GetLinearVelocity(rb.bodyId);
+    rb.cachedVelocity = {vel.x * PIXELS_PER_METER, vel.y * PIXELS_PER_METER};
   });
 }
 
@@ -131,21 +263,6 @@ void Scene::OnScriptUpdate() {
   if (pythonError) {
     PauseSceneSimulation();
   }
-}
-
-void Scene::OnPhysicsResolve() {
-  auto physicsUpdate = m_Registry.view<Transform, Rigidbody>();
-
-  physicsUpdate.each(
-      [physicsUpdate](auto entityA, auto &transformA, auto &rbA) mutable {
-        physicsUpdate.each([entityA, &transformA, &rbA](auto entityB,
-                                                      auto &transformB,
-                                                      auto &rbB) mutable {
-          if (entityA != entityB) {
-            Physics::ResolveCollision(transformA, rbA, transformB, rbB);
-          }
-        });
-      });
 }
 
 void Scene::OnRender(bool renderFlat) {
@@ -223,6 +340,9 @@ void Scene::RunSceneSimulation() {
     });
 
     m_IsSimulationPaused = false;
+    m_LastFrame = static_cast<float>(glfwGetTime());
+
+    InitPhysicsWorld();
 
     auto view = m_Registry.view<ID, Behaviour>();
 
@@ -254,6 +374,8 @@ void Scene::RunSceneSimulation() {
 
 void Scene::PauseSceneSimulation() {
   if (!m_IsSimulationPaused) {
+    DestroyPhysicsWorld();
+
     m_IsSimulationPaused = true;
 
     std::cout << "Scene paused" << std::endl;

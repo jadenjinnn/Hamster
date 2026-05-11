@@ -140,8 +140,14 @@ void SceneSerialiser::SerialiseEntity(std::ostream &out,
 
     Rigidbody &rb = m_Scene->GetEntityComponent<Rigidbody>(entity_uuid);
 
-    out.write(reinterpret_cast<const char *>(&rb.isStatic),
-              sizeof(rb.isStatic));
+    int bodyType = static_cast<int>(rb.bodyType);
+    int colliderShape = static_cast<int>(rb.colliderShape);
+    out.write(reinterpret_cast<const char *>(&bodyType), sizeof(bodyType));
+    out.write(reinterpret_cast<const char *>(&colliderShape), sizeof(colliderShape));
+    out.write(reinterpret_cast<const char *>(&rb.density), sizeof(rb.density));
+    out.write(reinterpret_cast<const char *>(&rb.friction), sizeof(rb.friction));
+    out.write(reinterpret_cast<const char *>(&rb.restitution), sizeof(rb.restitution));
+    out.write(reinterpret_cast<const char *>(&rb.gravityScale), sizeof(rb.gravityScale));
   }
 
   if (m_Scene->EntityHasComponent<Behaviour>(entity_uuid)) {
@@ -220,10 +226,24 @@ UUID SceneSerialiser::DeserialiseEntity(std::istream &in) {
       break;
     }
     case Rigidbody_ID: {
-      bool isStatic;
-      in.read(reinterpret_cast<char *>(&isStatic), sizeof(isStatic));
+      int bodyType, colliderShape;
+      float density, friction, restitution, gravityScale;
+      in.read(reinterpret_cast<char *>(&bodyType), sizeof(bodyType));
+      in.read(reinterpret_cast<char *>(&colliderShape), sizeof(colliderShape));
+      in.read(reinterpret_cast<char *>(&density), sizeof(density));
+      in.read(reinterpret_cast<char *>(&friction), sizeof(friction));
+      in.read(reinterpret_cast<char *>(&restitution), sizeof(restitution));
+      in.read(reinterpret_cast<char *>(&gravityScale), sizeof(gravityScale));
 
-      m_Scene->AddEntityComponent<Rigidbody>(uuid, isStatic);
+      Rigidbody rb;
+      rb.bodyType = static_cast<BodyType>(bodyType);
+      rb.colliderShape = static_cast<ColliderShape>(colliderShape);
+      rb.density = density;
+      rb.friction = friction;
+      rb.restitution = restitution;
+      rb.gravityScale = gravityScale;
+
+      m_Scene->AddEntityComponent<Rigidbody>(uuid, rb);
 
       break;
     }

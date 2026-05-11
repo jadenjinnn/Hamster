@@ -53,9 +53,22 @@ struct Name {
   std::string name = "Entity";
 };
 
-// Contains a Box2D id for physics simulation
+enum class BodyType { Static = 0, Dynamic = 1, Kinematic = 2 };
+enum class ColliderShape { Box = 0, Circle = 1 };
+
 struct Rigidbody {
-  bool isStatic = true;
+  BodyType bodyType = BodyType::Static;
+  ColliderShape colliderShape = ColliderShape::Box;
+  float density = 1.0f;
+  float friction = 0.3f;
+  float restitution = 0.0f;
+  float gravityScale = 1.0f;
+
+  // Runtime only — not serialized
+  b2BodyId bodyId = b2_nullBodyId;
+  glm::vec2 pendingForce = glm::vec2(0.0f);
+  glm::vec2 pendingImpulse = glm::vec2(0.0f);
+  glm::vec2 cachedVelocity = glm::vec2(0.0f);
 };
 
 // All entities must also have an ID which contains the UUID used to identify

@@ -19,7 +19,6 @@
 #include "Events/ApplicationEvents.h"
 #include "Events/WindowEvents.h"
 #include "Log.h"
-#include "Physics/Physics.h"
 
 namespace Hamster {
 class Application;
@@ -63,9 +62,15 @@ public:
   }
 
   void OnUpdate();
-  void OnPhysicsDetect();
   void OnScriptUpdate();
-  void OnPhysicsResolve();
+
+  void InitPhysicsWorld();
+  void DestroyPhysicsWorld();
+  void StepPhysics();
+  void SyncPhysicsToTransforms();
+  void ProcessContactEvents();
+  void ApplyPendingForces();
+  void CacheVelocities();
 
   void OnRender(bool renderFlat);
 
@@ -129,6 +134,8 @@ private:
 
   float m_DeltaTime = 0.0f;
   float m_LastFrame = 0.0f;
+
+  b2WorldId m_PhysicsWorld = b2_nullWorldId;
 
   std::shared_ptr<Logger> m_ClientLogger;
 

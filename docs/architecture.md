@@ -4,7 +4,7 @@
 
 ## One-paragraph overview
 
-Hamster is a Windows-targeted 2D game engine with an embedded Python scripting layer, designed so that game authors write gameplay logic in Python against a C++ runtime. Three CMake subprojects make up the whole system: **Hamster-Core** (static C++ library — application loop, ECS via EnTT, OpenGL renderer, custom AABB physics, ImGui GUI integration, pybind11 interpreter lifecycle); **Hamster-Py** (a pybind11 extension module that exposes C++ types to Python under the `Hamster` namespace); and **Hamster-Wheel** (the editor executable — ImGui-based scene editor with hierarchy, property editor, asset browser, file browser, console, and project hub). Entities carry Transform, Sprite, Name, Rigidbody, ID, and Behaviour components; the Behaviour component stores instantiated Python objects (subclasses of `HamsterBehaviour`) that receive per-frame callbacks and engine events. A separate runtime-only player (no editor) is planned but not yet implemented.
+Hamster is a Windows-targeted 2D game engine with an embedded Python scripting layer, designed so that game authors write gameplay logic in Python against a C++ runtime. Three CMake subprojects make up the whole system: **Hamster-Core** (static C++ library — application loop, ECS via EnTT, OpenGL renderer, Box2D 3.x physics, ImGui GUI integration, pybind11 interpreter lifecycle); **Hamster-Py** (a pybind11 extension module that exposes C++ types to Python under the `Hamster` namespace); and **Hamster-Wheel** (the editor executable — ImGui-based scene editor with hierarchy, property editor, asset browser, file browser, console, and project hub). Entities carry Transform, Sprite, Name, Rigidbody, ID, and Behaviour components; the Behaviour component stores instantiated Python objects (subclasses of `HamsterBehaviour`) that receive per-frame callbacks and engine events. A separate runtime-only player (no editor) is planned but not yet implemented.
 
 ## Entry points
 
@@ -17,7 +17,7 @@ Hamster is a Windows-targeted 2D game engine with an embedded Python scripting l
 - `Hamster-Core/src/Core/` — `Application` singleton + main loop, `Window` (GLFW wrapper), `LayerStack`, `Scene` + ECS façade, `Project` + `ProjectSerialiser`, `SceneSerialiser`, `UUID`, `Log`/`Logger`, `Components.h` (all component structs)
 - `Hamster-Core/src/Events/` — `EventType` enum, `Event` base class, `EventDispatcher` (subscribe-only observer), all concrete event types (`WindowEvents`, `ApplicationEvents`, `InputEvents`, `SceneEvents`, `GuiEvents`)
 - `Hamster-Core/src/Renderer/` — `Renderer` (instance owned by Application, OpenGL draw calls, camera/zoom), `Shader`, `Texture`, `FramebufferTexture`, two built-in GLSL shaders (`SpriteShader`, `FlatShader`)
-- `Hamster-Core/src/Physics/` — `Physics` (static, custom AABB `IsColliding` + `ResolveCollision`)
+- `Hamster-Core/src/Physics/` — gutted; Box2D 3.x replaces the old custom AABB system. Physics world lifecycle and stepping live in `Scene`.
 - `Hamster-Core/src/Scripting/` — `Scripting` (interpreter lifecycle, default script generation), `HamsterBehaviour` (C++ base class Python scripts inherit from), `HamsterScript` (Python module loader + class scanner)
 - `Hamster-Core/src/Gui/` — `ImGuiLayer` (begin/end frame wrapper), `Panel` + `Modal` base classes
 - `Hamster-Core/src/Utils/` — `AssetManager` (textures + scripts, UUID-keyed, instance owned by Application), `InputManager` (GLFW key polling)
@@ -37,9 +37,11 @@ Hamster is a Windows-targeted 2D game engine with an embedded Python scripting l
 4. **`ImGuiLayer::Begin()`**
 5. **`Layer::OnImGuiUpdate()`** on every layer — all panels and the scene viewport image are drawn here
 6. **`ImGuiLayer::End()`** — submits ImGui draw commands to OpenGL
-7. **`Scene::OnUpdate()`** on the active scene (if any):
-   - `OnPhysicsDetect()`: O(n²) loop over all entities with `Rigidbody` — calls `Physics::IsColliding`, posts `CollisionEvent` on the injected dispatcher. Runs even when simulation is paused.
-   - If simulation is **not** paused: `OnScriptUpdate()` calls `obj.attr("on_update")(delta_time)` on each Python behaviour; then `OnPhysicsResolve()` runs a second O(n²) pass to adjust positions via `Physics::ResolveCollision`.
+7. **`Scene::OnUpdate()`** on the active scene (if any, and only when simulation is running):
+   - `StepPhysics()`: `b2World_Step` with 4 sub-steps
+   - `ProcessContactEvents()`: reads `b2World_GetContactEvents`, resolves entity UUIDs via `b2Body_GetUserData`, posts `CollisionEvent`
+   - `SyncPhysicsToTransforms()`: copies Box2D body positions/rotations back to Transform components (with pixels-per-meter conversion)
+   - `OnScriptUpdate()`: calls `obj.attr("on_update")(delta_time)` on each Python behaviour — scripts can call `self.apply_force()`, `self.apply_impulse()`, read `self.velocity`
    - Python errors are caught; first exception pauses the simulation and logs to the scene's client logger
 8. **`Window::Update`** — `glfwSwapBuffers` + `glfwPollEvents`
 
@@ -103,14 +105,14 @@ glfwPollEvents
 EditorLayer::OnUpdate
   └─ Mouse click: render to FBO with flat colours → glReadPixels → entity selection
 
-Scene::OnUpdate
-  ├─ OnPhysicsDetect: O(n²) IsColliding → post CollisionEvent on injected dispatcher
+Scene::OnUpdate [if simulation running]
+  ├─ b2World_Step (4 sub-steps)
+  ├─ ProcessContactEvents: b2World_GetContactEvents → resolve UUID via userData → post CollisionEvent
   │     └─ HamsterBehaviour::OnCollision: fills m_CollisionEntities
-  └─ [if simulation running]
-        ├─ OnScriptUpdate: obj.on_update(dt) for each Python behaviour
-        │     scripts read self.transform / self.key_pressed / self.colliding
-        │     scripts write self.transform = ...
-        └─ OnPhysicsResolve: O(n²) ResolveCollision (adjusts positions)
+  ├─ SyncPhysicsToTransforms: b2Body_GetPosition/Rotation → Transform (× PPM, rad→deg)
+  └─ OnScriptUpdate: obj.on_update(dt) for each Python behaviour
+        scripts read self.transform / self.velocity / self.key_pressed / self.colliding
+        scripts call self.apply_force(fx, fy) / self.apply_impulse(ix, iy)
 
 ImGui panels render scene viewport (FramebufferTexture → AddImage)
 glfwSwapBuffers
@@ -137,7 +139,7 @@ See `docs/build.md` for the full build recipe (populated in Phase 2). Shape:
 | GLAD | generated | OpenGL function loader | vendored copy (`Hamster-Core/Vendor/glad`) |
 | GLM | submodule | Math (vec2/3/4, mat4) | git submodule (`Hamster-Core/Vendor/glm`) |
 | Dear ImGui | copy | Immediate-mode GUI; backends: GLFW + OpenGL3 | vendored directory copy (`Hamster-Core/Vendor/imgui`) |
-| Box2D | submodule | Physics — vendored but unused; planned for rigid-body dynamics | git submodule (`Hamster-Core/Vendor/box2d`) |
+| Box2D | submodule (3.0.1) | 2D rigid-body physics — world step, collision detection, forces/impulses | git submodule (`Hamster-Core/Vendor/box2d`) |
 | stb_image | submodule | PNG/JPG loading | git submodule (`Hamster-Core/Vendor/stb`) |
 | tinyfiledialogs | copy | Native file open/save dialogs | vendored copy (`Hamster-Wheel/Vendor/tinyfiledialogs`) |
 | Boost 1.86.0 | copy | UUID generation + container hash | vendored header-only copy (`Hamster-Core/Vendor/boost_1_86_0`); **planned for replacement** with a lighter UUID header |
@@ -167,5 +169,5 @@ See `docs/build.md` for the full build recipe (populated in Phase 2). Shape:
 - ~~What Python version will be used on Windows?~~ Resolved: Python 3.11.
 - ~~What is the intended `HamsterPCK` deployment strategy?~~ Resolved: simplified to `import Hamster`; `.pyd` copied flat into project directory, project directory on `sys.path`.
 - ~~Should `ScriptingEventDispatcher` be implemented or removed?~~ Resolved: removed in Phase 2 along with `HamsterBehaviour::Subscribe/Post`.
-- When Box2D rigid-body dynamics are added, does it replace the custom AABB system entirely, or will both coexist?
+- ~~When Box2D rigid-body dynamics are added, does it replace the custom AABB system entirely, or will both coexist?~~ Resolved: Box2D replaces it entirely. Old `Physics::IsColliding`/`ResolveCollision` removed.
 - Should the serialization format be made portable before scene data accumulates (i.e., during refactor phase)?

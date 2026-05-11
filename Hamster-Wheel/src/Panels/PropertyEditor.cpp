@@ -308,16 +308,55 @@ void PropertyEditor::Render() {
     if (HamsterTheme::GetHeaderFont()) ImGui::PopFont();
     ImGui::Dummy({0, 6});
 
-    ImGui::AlignTextToFramePadding();
+    const char *bodyTypeLabels[] = {"Static", "Dynamic", "Kinematic"};
+    int bodyTypeIdx = static_cast<int>(m_Rigidbody->bodyType);
     if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-    ImGui::Text("Is Static");
+    ImGui::Text("Body Type");
     if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
     ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::Combo("##bodytype", &bodyTypeIdx, bodyTypeLabels, 3)) {
+      m_Rigidbody->bodyType = static_cast<Hamster::BodyType>(bodyTypeIdx);
+    }
 
-    ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(0.345f, 0.529f, 0.969f, 1.0f));
-    ImGui::Checkbox("##dynamicbodycheckbox", &m_Rigidbody->isStatic);
+    const char *shapeLabels[] = {"Box", "Circle"};
+    int shapeIdx = static_cast<int>(m_Rigidbody->colliderShape);
+    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
+    ImGui::Text("Collider");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::Combo("##collidershape", &shapeIdx, shapeLabels, 2)) {
+      m_Rigidbody->colliderShape = static_cast<Hamster::ColliderShape>(shapeIdx);
+    }
 
-    ImGui::PopStyleColor();
+    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
+    ImGui::Text("Density");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1);
+    ImGui::DragFloat("##density", &m_Rigidbody->density, 0.05f, 0.0f, 100.0f);
+
+    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
+    ImGui::Text("Friction");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1);
+    ImGui::DragFloat("##friction", &m_Rigidbody->friction, 0.01f, 0.0f, 1.0f);
+
+    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
+    ImGui::Text("Restitution");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1);
+    ImGui::DragFloat("##restitution", &m_Rigidbody->restitution, 0.01f, 0.0f, 1.0f);
+
+    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
+    ImGui::Text("Gravity Scale");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1);
+    ImGui::DragFloat("##gravityscale", &m_Rigidbody->gravityScale, 0.05f, -10.0f, 10.0f);
   }
 
   ImGui::Dummy({0, 16});

@@ -58,6 +58,10 @@ public:
 
   void Log(LogType type, std::string message);
 
+  glm::vec2 GetVelocity() const;
+  void ApplyForce(float fx, float fy);
+  void ApplyImpulse(float ix, float iy);
+
 private:
   UUID m_UUID;
   std::shared_ptr<Scene> m_Scene;

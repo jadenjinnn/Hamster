@@ -724,7 +724,12 @@ void EditorLayer::OnImGuiUpdate() {
                 if (m_Scene->EntityHasComponent<Hamster::Rigidbody>(entityUUID)) {
                     auto &srcRb = m_Scene->GetEntityComponent<Hamster::Rigidbody>(entityUUID);
                     Hamster::Rigidbody newRb;
-                    newRb.isStatic = srcRb.isStatic;
+                    newRb.bodyType = srcRb.bodyType;
+                    newRb.colliderShape = srcRb.colliderShape;
+                    newRb.density = srcRb.density;
+                    newRb.friction = srcRb.friction;
+                    newRb.restitution = srcRb.restitution;
+                    newRb.gravityScale = srcRb.gravityScale;
                     m_Scene->AddEntityComponent<Hamster::Rigidbody>(newUUID, newRb);
                 }
             }

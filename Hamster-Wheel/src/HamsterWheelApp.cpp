@@ -8,7 +8,6 @@
 #include <Core/SceneSerialiser.h>
 #include <Core/UUID.h>
 #include <EditorLayer.h>
-#include <Physics/Physics.h>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
