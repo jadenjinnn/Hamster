@@ -28,6 +28,7 @@ set(PANELS
         src/Panels/ProjectSelector.cpp
         src/Panels/ProjectSelector.h
         src/ProjectHubLayer.cpp src/ProjectHubLayer.h
+        src/ProjectRegistry.cpp src/ProjectRegistry.h
         src/Panels/FileBrowser.cpp
         src/Panels/FileBrowser.h
         src/Panels/AssetBrowser.cpp
@@ -50,6 +51,7 @@ target_include_directories(Hamster-Wheel PRIVATE
         ${CMAKE_SOURCE_DIR}/Hamster-Core/Vendor/imgui
         ${CMAKE_SOURCE_DIR}/Hamster-Core/Vendor/box2d/include
         Vendor/tinyfiledialogs
+        Vendor
         ${CMAKE_SOURCE_DIR}/Hamster-Py/Vendor/pybind11/include
         ${Python_INCLUDE_DIRS}
 )

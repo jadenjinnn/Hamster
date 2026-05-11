@@ -130,6 +130,7 @@ static void ApplyStyle() {
 
 static ImFont *s_BoldFont = nullptr;
 static ImFont *s_HeaderFont = nullptr;
+static ImFont *s_TitleFont = nullptr;
 
 static void MergeIcons(ImGuiIO &io, const std::string &iconPath, float size) {
     if (!std::filesystem::exists(iconPath)) return;
@@ -167,6 +168,12 @@ static void LoadFonts(ImGuiIO &io, const std::string &resourcePath) {
         s_HeaderFont = io.Fonts->AddFontFromFileTTF(interBold.c_str(), 18.0f);
         MergeIcons(io, iconPath, 18.0f);
     }
+
+    // Bold 28px — for page titles (project hub "Projects" heading)
+    if (std::filesystem::exists(interBold)) {
+        s_TitleFont = io.Fonts->AddFontFromFileTTF(interBold.c_str(), 28.0f);
+        MergeIcons(io, iconPath, 28.0f);
+    }
 }
 
 void Apply(ImGuiIO &io, const std::string &resourcePath) {
@@ -177,5 +184,6 @@ void Apply(ImGuiIO &io, const std::string &resourcePath) {
 
 ImFont *GetBoldFont() { return s_BoldFont; }
 ImFont *GetHeaderFont() { return s_HeaderFont; }
+ImFont *GetTitleFont() { return s_TitleFont; }
 
 } // namespace HamsterTheme

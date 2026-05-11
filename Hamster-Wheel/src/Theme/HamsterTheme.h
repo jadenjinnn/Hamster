@@ -10,6 +10,7 @@ void Apply(ImGuiIO &io, const std::string &resourcePath);
 
 ImFont *GetBoldFont();
 ImFont *GetHeaderFont();
+ImFont *GetTitleFont();
 
 } // namespace HamsterTheme
 

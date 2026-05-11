@@ -1,31 +1,62 @@
-//
-// Created by Jaden on 01/09/2024.
-//
-
 #ifndef PROJECTHUBLAYER_H
 #define PROJECTHUBLAYER_H
 
 #include <Hamster.h>
+#include <filesystem>
 
 #include "EditorLayer.h"
-#include "Panels/ProjectSelector.h"
-
+#include "ProjectRegistry.h"
 
 class ProjectHubLayer : public Hamster::Layer {
 public:
-    explicit ProjectHubLayer(Hamster::Application *app);
+  explicit ProjectHubLayer(Hamster::Application *app);
 
-    void OnAttach() override;
-
-    void OnImGuiUpdate() override;
+  void OnAttach() override;
+  void OnImGuiUpdate() override;
 
 private:
-    Hamster::Application *m_App;
-    Hamster::EventDispatcher *m_Dispatcher;
-    std::unique_ptr<ProjectSelector> m_ProjectSelector;
-    std::unique_ptr<ProjectCreator> m_ProjectCreator;
-    EditorLayer *m_EditorLayer = nullptr;
+  void RenderTopBar(float width);
+  void RenderHeader(float width);
+  void RenderCardGrid(float width, float startY, float height);
+  void RenderCreateModal();
+  void RenderRenameModal();
+  void RenderDeleteConfirmation();
+  void RenderMissingProjectDialog();
+  void OpenProjectDialog();
+  void OpenProject(const std::filesystem::path &path);
+
+  std::string FormatTimestamp(const std::string &iso) const;
+
+  Hamster::Application *m_App;
+  Hamster::EventDispatcher *m_Dispatcher;
+  EditorLayer *m_EditorLayer = nullptr;
+  ProjectRegistry m_Registry;
+
+  // Create modal state
+  bool m_ShowCreateModal = false;
+  char m_ProjectName[128] = "Untitled";
+  char m_SearchBuffer[128] = {};
+  std::filesystem::path m_ProjectDirectory;
+  int m_SelectedTemplate = 0;
+  bool m_NoDirectorySelected = false;
+  bool m_DirectoryExists = false;
+
+  // Ellipsis / context menu state
+  int m_ContextMenuIndex = -1;
+
+  // Rename modal state
+  bool m_ShowRenameModal = false;
+  int m_RenameIndex = -1;
+  char m_RenameBuffer[128] = {};
+  bool m_RenameError = false;
+
+  // Delete confirmation state
+  bool m_ShowDeleteConfirm = false;
+  int m_DeleteIndex = -1;
+
+  // Missing project dialog state
+  bool m_ShowMissingDialog = false;
+  int m_MissingIndex = -1;
 };
 
-
-#endif //PROJECTHUBLAYER_H
+#endif // PROJECTHUBLAYER_H
