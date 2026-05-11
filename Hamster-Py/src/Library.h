@@ -33,7 +33,10 @@ void Vec2Binding(py::module_ &m) {
 
       .def(py::self - py::self)
 
-      .def(py::self * float());
+      .def(py::self * float())
+      .def("__repr__", [](const glm::vec2 &v) {
+          return "vec2(" + std::to_string(v.x) + ", " + std::to_string(v.y) + ")";
+      });
 
   /*.def("__add__",
 
@@ -84,5 +87,8 @@ void Vec3Binding(py::module_ &m) {
 
       .def("__mul__",
 
-           [](const glm::vec3 &a, const glm::vec3 &b) { return a * b; });
+           [](const glm::vec3 &a, const glm::vec3 &b) { return a * b; })
+      .def("__repr__", [](const glm::vec3 &v) {
+          return "vec3(" + std::to_string(v.x) + ", " + std::to_string(v.y) + ", " + std::to_string(v.z) + ")";
+      });
 }

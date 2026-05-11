@@ -37,5 +37,11 @@ void HamsterBehaviourBinding(pybind11::module_ m) {
                              &Hamster::HamsterBehaviour::GetCollisionEntites)
       .def("reset_collision_entities",
            &Hamster::HamsterBehaviour::EmptyCollisionEntity)
-      .def("log", &Hamster::HamsterBehaviour::Log);
+      .def("log", [](Hamster::HamsterBehaviour &self, pybind11::object msg, Hamster::LogType type) {
+          self.Log(type, pybind11::str(msg).cast<std::string>());
+      }, pybind11::arg("msg"), pybind11::arg("type") = Hamster::LogType::Info)
+      .def_property_readonly("velocity",
+                             &Hamster::HamsterBehaviour::GetVelocity)
+      .def("apply_force", &Hamster::HamsterBehaviour::ApplyForce)
+      .def("apply_impulse", &Hamster::HamsterBehaviour::ApplyImpulse);
 }

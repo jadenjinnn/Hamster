@@ -823,19 +823,23 @@ void ProjectHubLayer::OpenProjectDialog() {
 }
 
 void ProjectHubLayer::OpenProject(const std::filesystem::path &projDir) {
-  // Find the .hamproj file inside the project directory
-  for (auto &f : std::filesystem::directory_iterator(projDir)) {
-    if (f.path().extension() == ".hamproj") {
-      m_Registry.UpdateTimestamp(projDir);
-      Hamster::Project::Open(
-          f.path(), &Hamster::Application::GetApplicationInstance());
-      return;
+  try {
+    for (auto &f : std::filesystem::directory_iterator(projDir)) {
+      if (f.path().extension() == ".hamproj") {
+        m_Registry.UpdateTimestamp(projDir);
+        Hamster::Project::Open(
+            f.path(), &Hamster::Application::GetApplicationInstance());
+        return;
+      }
     }
-  }
 
-  tinyfd_messageBox("Open Failed",
-                    "No .hamproj file found in the project directory.",
-                    "ok", "error", 1);
+    tinyfd_messageBox("Open Failed",
+                      "No .hamproj file found in the project directory.",
+                      "ok", "error", 1);
+  } catch (const std::exception &e) {
+    std::cerr << "Failed to open project: " << e.what() << std::endl;
+    tinyfd_messageBox("Open Failed", e.what(), "ok", "error", 1);
+  }
 }
 
 std::string

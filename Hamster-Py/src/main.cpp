@@ -15,9 +15,9 @@ PYBIND11_MODULE(Hamster, m) {
   Vec3Binding(m);
   UUIDBinding(m);
   TransformBinding(m);
+  KeyCodeEnumBinding(m);
+  LoggingEnumBinding(m);
   HamsterBehaviourBinding(m);
   ScenePtrBinding(m);
   AppInstanceBinding(m);
-  KeyCodeEnumBinding(m);
-  LoggingEnumBinding(m);
 }
