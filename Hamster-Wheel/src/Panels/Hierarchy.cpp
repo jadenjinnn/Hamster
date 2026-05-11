@@ -5,7 +5,10 @@
 #include "Hierarchy.h"
 
 #include "RenameModal.h"
+#include "Theme/HamsterTheme.h"
+#include "Theme/IconsFontAwesome6.h"
 
+#include <cstring>
 #include <utility>
 
 entt::entity Hierarchy::GetSelectedEntity() const { return m_SelectedEntity; }
@@ -26,18 +29,32 @@ void Hierarchy::Render() {
     return;
   }
 
+  // Search bar
+  float avail = ImGui::GetContentRegionAvail().x;
+  ImGui::PushItemWidth(avail);
+  ImGui::InputTextWithHint("##HierarchySearch", ICON_FA_MAGNIFYING_GLASS "  Search entities...", m_SearchBuffer, sizeof(m_SearchBuffer));
+  ImGui::PopItemWidth();
+  ImGui::Dummy({0, 4});
+
   const auto view = m_Scene->GetRegistry().view<Hamster::Name>();
 
   view.each([&](auto entity, auto &name) {
+    if (m_SearchBuffer[0] != '\0') {
+      std::string lower = name.name;
+      std::string filter = m_SearchBuffer;
+      for (auto &ch : lower) ch = static_cast<char>(std::tolower(ch));
+      for (auto &ch : filter) ch = static_cast<char>(std::tolower(ch));
+      if (lower.find(filter) == std::string::npos) return;
+    }
+
     ImGui::PushID(entt::to_integral(entity));
 
-    if (entity == m_SelectedEntity) {
-      ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-    }
+    bool isSelected = (entity == m_SelectedEntity);
 
-    if (ImGui::TreeNode(name.name.c_str())) {
-      ImGui::TreePop();
-    }
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanAvailWidth;
+    if (isSelected) flags |= ImGuiTreeNodeFlags_Selected;
+
+    ImGui::TreeNodeEx(name.name.c_str(), flags);
 
     if (ImGui::IsItemClicked()) {
       SetSelectedEntity(entity);
@@ -51,9 +68,9 @@ void Hierarchy::Render() {
     ImGui::PopID();
   });
 
-  ImGui::Separator();
+  ImGui::Dummy({0, 8});
 
-  if (ImGui::Button("Add")) {
+  if (ImGui::Button(ICON_FA_PLUS "  Add Entity")) {
     m_Scene->CreateEntity();
   }
 

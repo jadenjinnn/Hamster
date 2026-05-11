@@ -34,6 +34,7 @@ private:
   std::shared_ptr<RenameModal> m_RenameModal;
 
   bool m_RenameModalOpen = false;
+  char m_SearchBuffer[128] = {};
 };
 
 #endif // HIERARCHY_H

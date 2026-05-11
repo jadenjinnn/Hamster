@@ -13,6 +13,7 @@
 #include <box2d/box2d.h>
 
 #include "Theme/IconsFontAwesome6.h"
+#include "Theme/HamsterTheme.h"
 
 static constexpr ImVec4 kAxisRed       = {0.878f, 0.290f, 0.310f, 1.0f};
 static constexpr ImVec4 kAxisRedHov    = {0.920f, 0.360f, 0.380f, 1.0f};
@@ -106,31 +107,39 @@ void PropertyEditor::Render() {
   ImGui::Dummy({0, 8});
 
   if (m_Transform != nullptr) {
-    ImGui::SeparatorText(ICON_FA_UP_DOWN_LEFT_RIGHT "  Transform");
-    ImGui::Dummy({0, 4});
+    if (ImFont *hdr = HamsterTheme::GetHeaderFont()) ImGui::PushFont(hdr);
+    ImGui::Text(ICON_FA_UP_DOWN_LEFT_RIGHT "  Transform");
+    if (HamsterTheme::GetHeaderFont()) ImGui::PopFont();
+    ImGui::Dummy({0, 6});
 
     // Position
     ImGui::AlignTextToFramePadding();
+    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
     ImGui::Text("Position");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
     ImGui::SameLine(kLabelColumnWidth);
     DrawAxisFloat("X##P", "##XP", &m_Transform->position.x, kAxisRed, kAxisRedHov, kAxisRedAct, kAxisInputWidth);
     DrawAxisFloat("Y##P", "##YP", &m_Transform->position.y, kAxisGreen, kAxisGreenHov, kAxisGreenAct, kAxisInputWidth);
     DrawAxisFloat("Z##P", "##ZP", &m_Transform->position.z, kAxisBlue, kAxisBlueHov, kAxisBlueAct, kAxisInputWidth);
     ImGui::NewLine();
-    ImGui::Dummy({0, 4});
+    ImGui::Dummy({0, 6});
 
     // Scale
     ImGui::AlignTextToFramePadding();
+    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
     ImGui::Text("Scale");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
     ImGui::SameLine(kLabelColumnWidth);
     DrawAxisFloat("X##S", "##XS", &m_Transform->size.x, kAxisRed, kAxisRedHov, kAxisRedAct, kAxisInputWidth);
     DrawAxisFloat("Y##S", "##YS", &m_Transform->size.y, kAxisGreen, kAxisGreenHov, kAxisGreenAct, kAxisInputWidth);
     ImGui::NewLine();
-    ImGui::Dummy({0, 4});
+    ImGui::Dummy({0, 6});
 
     // Rotation
     ImGui::AlignTextToFramePadding();
+    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
     ImGui::Text("Rotation");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
     ImGui::SameLine(kLabelColumnWidth);
     ImGui::PushItemWidth(kAxisInputWidth + ImGui::GetFrameHeight());
     ImGui::InputFloat("##XR", &m_Transform->rotation);
@@ -138,9 +147,11 @@ void PropertyEditor::Render() {
   }
 
   if (m_Sprite != nullptr) {
-    ImGui::Dummy({0, 8});
-    ImGui::SeparatorText(ICON_FA_IMAGE "  Sprite");
-    ImGui::Dummy({0, 4});
+    ImGui::Dummy({0, 12});
+    if (ImFont *hdr = HamsterTheme::GetHeaderFont()) ImGui::PushFont(hdr);
+    ImGui::Text(ICON_FA_IMAGE "  Sprite");
+    if (HamsterTheme::GetHeaderFont()) ImGui::PopFont();
+    ImGui::Dummy({0, 6});
 
     constexpr float kThumbSize = 96.0f;
     auto &colour = m_Sprite->colour;
@@ -169,21 +180,31 @@ void PropertyEditor::Render() {
 
     ImGui::BeginGroup();
     if (m_Sprite->texture != nullptr) {
+      if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
       ImGui::Text("Name");
+      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
       ImGui::SameLine();
       ImGui::TextDisabled("%s", m_Sprite->texture->GetName().c_str());
+      if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
       ImGui::Text("Size");
+      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
       ImGui::SameLine();
       ImGui::TextDisabled("%d x %d", m_Sprite->texture->GetWidth(), m_Sprite->texture->GetHeight());
     } else {
+      if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
       ImGui::Text("Name");
+      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
       ImGui::SameLine();
       ImGui::TextDisabled("None");
+      if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
       ImGui::Text("Size");
+      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
       ImGui::SameLine();
       ImGui::TextDisabled("- x -");
     }
+    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
     ImGui::Text("Tint");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
     ImGui::SameLine();
     float col[3] = {colour.r, colour.g, colour.b};
     ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
@@ -217,9 +238,11 @@ void PropertyEditor::Render() {
   }
 
   if (m_Behaviour != nullptr) {
-    ImGui::Dummy({0, 8});
-    ImGui::SeparatorText(ICON_FA_CODE "  Scripts");
-    ImGui::Dummy({0, 4});
+    ImGui::Dummy({0, 12});
+    if (ImFont *hdr = HamsterTheme::GetHeaderFont()) ImGui::PushFont(hdr);
+    ImGui::Text(ICON_FA_CODE "  Scripts");
+    if (HamsterTheme::GetHeaderFont()) ImGui::PopFont();
+    ImGui::Dummy({0, 6});
 
     ImGui::PushItemWidth(80);
 
@@ -279,12 +302,16 @@ void PropertyEditor::Render() {
   }
 
   if (m_Rigidbody != nullptr) {
-    ImGui::Dummy({0, 8});
-    ImGui::SeparatorText(ICON_FA_SHAPES "  Rigidbody");
-    ImGui::Dummy({0, 4});
+    ImGui::Dummy({0, 12});
+    if (ImFont *hdr = HamsterTheme::GetHeaderFont()) ImGui::PushFont(hdr);
+    ImGui::Text(ICON_FA_SHAPES "  Rigidbody");
+    if (HamsterTheme::GetHeaderFont()) ImGui::PopFont();
+    ImGui::Dummy({0, 6});
 
     ImGui::AlignTextToFramePadding();
+    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
     ImGui::Text("Is Static");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
     ImGui::SameLine();
 
     ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(0.345f, 0.529f, 0.969f, 1.0f));

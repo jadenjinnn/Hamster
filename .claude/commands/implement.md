@@ -10,8 +10,7 @@ Ask me which feature spec we're implementing (file name in `docs/features/active
 
 Read the spec. Verify:
 
-1. The "Why this approach" section is filled in by me (not a `<!-- AUTHOR -->` placeholder, not Claude-drafted prose). If it's still empty, stop and tell me to write it before implementation can start.
-2. The "Risks", "Success criteria", and "Test extensions required" sections are filled in.
+1. The "Why this approach", "Risks", "Success criteria", and "Test extensions required" sections are filled in.
 3. The status line says "approved" (not "draft").
 
 If any of these fail, stop and surface what's missing. Do not start coding.

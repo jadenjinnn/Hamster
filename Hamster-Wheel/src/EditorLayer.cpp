@@ -13,6 +13,7 @@
 #include <Renderer/Renderer.h>
 
 #include "Core/Application.h"
+#include "Theme/IconsFontAwesome6.h"
 
 EditorLayer::EditorLayer(Hamster::Application *app,
                          std::shared_ptr<Hamster::Scene> scene)
@@ -499,36 +500,41 @@ void EditorLayer::OnImGuiUpdate() {
         }
     }
 
-    // Zoom slider overlay — top-right, custom dot-and-line style
+    // Zoom slider overlay — bottom-right, pill track with magnifying glass icon
     {
-        const float trackW = 140.0f;
-        const float margin = 12.0f;
-        const float dotRadius = 7.0f;
-        const float trackThickness = 3.0f;
+        const float trackW = 120.0f;
+        const float trackH = 4.0f;
+        const float dotRadius = 6.0f;
         const float zoomMin = 0.1f;
         const float zoomMax = 5.0f;
+        const float margin = 16.0f;
 
         float zoom = m_Renderer->GetZoom();
         char zoomLabel[16];
         snprintf(zoomLabel, sizeof(zoomLabel), "%.0f%%", zoom * 100.0f);
         ImVec2 textSize = ImGui::CalcTextSize(zoomLabel);
 
-        const float totalW = textSize.x + 8.0f + trackW;
-        const float overlayX = pos.x + m_LevelEditorAvailRegion.x - totalW - 32.0f;
-        const float overlayY = pos.y + 32.0f + 40.0f + 8.0f + 16.0f;
+        const char *icon = ICON_FA_MAGNIFYING_GLASS;
+        ImVec2 iconSize = ImGui::CalcTextSize(icon);
+
+        const float totalW = iconSize.x + 8.0f + trackW + 10.0f + textSize.x;
+        const float overlayX = pos.x + m_LevelEditorAvailRegion.x - totalW - margin;
+        const float overlayY = pos.y + m_LevelEditorAvailRegion.y - margin - dotRadius;
 
         ImDrawList *drawList = ImGui::GetWindowDrawList();
 
-        drawList->AddText(ImVec2(overlayX, overlayY - textSize.y * 0.5f),
-                          IM_COL32(255, 255, 255, 200), zoomLabel);
+        // Magnifying glass icon
+        drawList->AddText(ImVec2(overlayX, overlayY - iconSize.y * 0.5f),
+                          IM_COL32(255, 255, 255, 160), icon);
 
-        float trackX = overlayX + textSize.x + 8.0f;
+        // Track (pill-shaped)
+        float trackX = overlayX + iconSize.x + 8.0f;
         float trackY = overlayY;
 
-        drawList->AddLine(
-            ImVec2(trackX, trackY),
-            ImVec2(trackX + trackW, trackY),
-            IM_COL32(255, 255, 255, 100), trackThickness);
+        drawList->AddRectFilled(
+            ImVec2(trackX, trackY - trackH * 0.5f),
+            ImVec2(trackX + trackW, trackY + trackH * 0.5f),
+            IM_COL32(255, 255, 255, 60), trackH * 0.5f);
 
         float t = (zoom - zoomMin) / (zoomMax - zoomMin);
         float dotX = trackX + t * trackW;
@@ -562,22 +568,22 @@ void EditorLayer::OnImGuiUpdate() {
         ImU32 dotColor = zoomSliderDragging ? IM_COL32(255, 255, 255, 255)
                                             : IM_COL32(255, 255, 255, 200);
         drawList->AddCircleFilled(ImVec2(dotX, trackY), dotRadius, dotColor);
+
+        // Percentage label
+        drawList->AddText(ImVec2(trackX + trackW + 10.0f, overlayY - textSize.y * 0.5f),
+                          IM_COL32(255, 255, 255, 200), zoomLabel);
     }
 
-    // Axis gizmo overlay — top-right, above zoom slider
-    // L-shaped: origin at bottom-left corner, X arrow goes right, Y arrow goes up
+    // Axis gizmo overlay — bottom-right, above zoom slider
     {
         const float armLength = 40.0f;
         const float lineThickness = 3.0f;
         const float arrowSize = 8.0f;
-
-        const float sliderTotalW = 140.0f + 50.0f;
-        const float sliderLeftX = pos.x + m_LevelEditorAvailRegion.x - sliderTotalW - 32.0f;
-        const float sliderCenterX = sliderLeftX + sliderTotalW * 0.5f;
+        const float margin = 16.0f;
 
         const float gizmoW = armLength + arrowSize;
-        const float originX = sliderCenterX - gizmoW * 0.5f;
-        const float originY = pos.y + 32.0f + armLength;
+        const float originX = pos.x + m_LevelEditorAvailRegion.x - margin - gizmoW * 0.5f - 20.0f;
+        const float originY = pos.y + m_LevelEditorAvailRegion.y - margin - 30.0f;
 
         ImDrawList *drawList = ImGui::GetWindowDrawList();
 

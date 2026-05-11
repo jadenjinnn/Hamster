@@ -8,6 +8,9 @@ namespace HamsterTheme {
 
 void Apply(ImGuiIO &io, const std::string &resourcePath);
 
+ImFont *GetBoldFont();
+ImFont *GetHeaderFont();
+
 } // namespace HamsterTheme
 
 #endif // HAMSTER_THEME_H

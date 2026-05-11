@@ -41,7 +41,7 @@ Wait for me to confirm or override the classification before drafting the spec.
 
 Create `docs/features/active/<feature-name>.md` from the template at `.claude/templates/feature-spec.md`.
 
-Fill in every section EXCEPT "Why this approach" — leave that section with a placeholder telling me to write it myself. Do not draft it. Do not summarize what I said earlier into prose for me to edit. Leave it blank with a `<!-- AUTHOR: write your rationale here -->` marker.
+Fill in every section including "Why this approach" — draft it based on the design conversation.
 
 If I'm at the Sketch tier, omit the Design and Full spec sections.
 If I'm at the Design tier, include Design but omit Full spec.
@@ -50,7 +50,6 @@ If I'm at the Design tier, include Design but omit Full spec.
 
 When the draft is ready, tell me:
 - Where the spec file is
-- That I need to write the "Why this approach" section myself before approval
 - That no code will be written until I explicitly say "spec approved"
 
 Stop there. Wait for me.

@@ -107,17 +107,12 @@ If yes, migration plan. If no, state how compatibility is preserved. -->
 
 ---
 
-## Why this approach (AUTHOR WRITES THIS — Claude must not draft)
+## Why this approach
 
-<!-- The author explains, in their own words:
+<!-- Explain:
 - What alternatives were considered
 - Why this one was picked
-- What tradeoffs are being accepted
-
-This is the section interviewers will ask about. It's also the section that
-proves the author drove the design rather than rubber-stamping AI output.
-
-If Claude drafts this, the spec is invalid. -->
+- What tradeoffs are being accepted -->
 
 ## Risks / what could go wrong
 

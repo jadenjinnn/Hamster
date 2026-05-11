@@ -25,64 +25,79 @@ FileBrowser::FileBrowser(Hamster::EventDispatcher *dispatcher,
       "/../share/Resources/Hamster-Wheel/Resources/Icons/file.png");
 }
 
+static void DrawFileCard(const char *id, ImTextureID texId, const char *label,
+                         float cardSize, float iconSize) {
+    ImGui::PushID(id);
+    ImGui::BeginGroup();
+
+    float padSide = (cardSize - iconSize) * 0.5f;
+    ImVec2 cursor = ImGui::GetCursorScreenPos();
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+    ImVec2 cardEnd = {cursor.x + cardSize, cursor.y + cardSize + 20.0f};
+
+    ImGui::InvisibleButton("##card", {cardSize, cardSize + 20.0f});
+    bool hovered = ImGui::IsItemHovered();
+
+    dl->AddRect(cursor, cardEnd, IM_COL32(255, 255, 255, 30), 6.0f);
+
+    if (hovered) {
+        dl->AddRectFilled(cursor, cardEnd,
+                          IM_COL32(255, 255, 255, 15), 6.0f);
+    }
+
+    ImVec2 iconPos = {cursor.x + padSide, cursor.y + 8.0f};
+    dl->AddImage(texId, iconPos,
+                 {iconPos.x + iconSize, iconPos.y + iconSize});
+
+    float maxTextW = cardSize - 8.0f;
+    float textY = cursor.y + 8.0f + iconSize + 4.0f;
+    std::string display = label;
+    ImVec2 textSize = ImGui::CalcTextSize(display.c_str());
+    if (textSize.x > maxTextW) {
+        ImVec2 ellipsis = ImGui::CalcTextSize("...");
+        while (display.size() > 1 && ImGui::CalcTextSize(display.c_str()).x + ellipsis.x > maxTextW)
+            display.pop_back();
+        display += "...";
+        textSize = ImGui::CalcTextSize(display.c_str());
+    }
+    float textX = cursor.x + (cardSize - textSize.x) * 0.5f;
+    dl->AddText({textX, textY}, IM_COL32(238, 238, 238, 255), display.c_str());
+
+    ImGui::EndGroup();
+    ImGui::PopID();
+}
+
 void FileBrowser::Render() {
   if (!ImGui::Begin("File Browser", &m_WindowOpen)) {
     ImGui::End();
     return;
   }
 
-  // std::cout <<
-  // Hamster::Project::GetCurrentProject()->GetConfig().ProjectDirectory <<
-  // std::endl;
-
   std::filesystem::path projectDir =
       Hamster::Project::GetCurrentProject()->GetConfig().ProjectDirectory;
 
   float browserWidth = ImGui::GetContentRegionAvail().x;
-  float columnNum = (int)(browserWidth / (m_IconSize + m_Padding));
+  float cellSize = m_IconSize + m_Padding + 32.0f;
+  int columns = static_cast<int>(browserWidth / cellSize);
+  if (columns < 1) columns = 1;
 
-  if (columnNum < 1) {
-    columnNum = 1;
-  }
-
-  ImGui::Columns(columnNum, 0, false);
+  ImGui::Columns(columns, "##FileGrid", false);
 
   for (auto &directory : std::filesystem::directory_iterator(projectDir)) {
-    std::string dirPath = directory.path().string();
+    std::string label = directory.is_directory()
+        ? std::filesystem::relative(directory.path(), projectDir).string()
+        : directory.path().filename().string();
 
-    std::string relativePath =
-        std::filesystem::relative(dirPath, projectDir).string();
+    ImTextureID icon = directory.is_directory()
+        ? (ImTextureID)(intptr_t)m_FolderIcon->GetTextureId()
+        : (ImTextureID)(intptr_t)m_FileIcon->GetTextureId();
 
-    // ImGui::Button(relativePath.c_str());
-
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, {0.0f, 0.0f});
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.f, 0.f, 0.f, 0.f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.f, 0.f, 0.f, 0.f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.f, 0.f, 0.f, 0.f));
-
-    if (directory.is_directory()) {
-      ImGui::ImageButton(relativePath.c_str(),
-                         (ImTextureID)(intptr_t)m_FolderIcon->GetTextureId(),
-                         {64.0f, 64.0f}, {0.0f, 0.0f}, {1.0f, 1.0f},
-                         {0.0f, 0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f, 1.0f});
-
-      ImGui::TextWrapped("%s", relativePath.c_str());
-    } else {
-
-      ImGui::ImageButton(relativePath.c_str(),
-                         (ImTextureID)(intptr_t)m_FileIcon->GetTextureId(),
-                         {64.0f, 64.0f}, {0, 0}, {1, 1}, {0, 0, 0, 0});
-
-      ImGui::TextWrapped("%s", directory.path().filename().string().c_str());
-    }
-
-    ImGui::PopStyleColor(3);
-    ImGui::PopStyleVar();
+    DrawFileCard(label.c_str(), icon, label.c_str(),
+                 m_IconSize + 32.0f, m_IconSize);
 
     ImGui::NextColumn();
-
-    // std::cout << directory.path().string() << std::endl;
   }
 
+  ImGui::Columns(1);
   ImGui::End();
 }

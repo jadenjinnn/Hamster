@@ -1,5 +1,15 @@
 # Session handoff
 
+## 2026-05-11 — UI polish pass shipped
+
+- Bold font variants loaded (Inter-Bold 16px + 18px) for typographic hierarchy
+- Property editor: bold section headers and field labels, increased spacing between component sections
+- Hierarchy: flat entity list (no root node), search bar with filter, full-width selection highlight
+- Asset browser + file browser: grid card layout with icons, centered labels, faint borders, ellipsis truncation
+- Zoom slider: moved to bottom-right, magnifying glass icon, pill-shaped track, percentage label
+- Axis gizmo: repositioned to bottom-right above zoom slider
+- Feature workflow updated: Claude now drafts "Why this approach" section (author reviews during approval)
+
 ## 2026-05-11 — Scene viewer improvements shipped
 
 - Scene viewer feature complete: dot grid, right-click context menus, zoom slider, axis gizmo, 8-handle selection box

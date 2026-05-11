@@ -22,6 +22,11 @@ public:
 private:
   Hamster::AssetManager *m_AssetManager;
   std::unique_ptr<Hamster::Texture> m_PythonIcon;
+  std::unique_ptr<Hamster::Texture> m_FolderIcon;
+  std::unique_ptr<Hamster::Texture> m_FileIcon;
+
+  float m_CardSize = 96.0f;
+  float m_CardPadding = 12.0f;
 };
 
 #endif // ASSETBROWSER_H

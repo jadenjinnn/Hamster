@@ -6,7 +6,7 @@ This doc governs how new features are designed, specified, and implemented (Phas
 
 - **The author makes all design decisions.** Claude advises but does not decide.
 - **Claude's job is to elicit, clarify, lay out tradeoffs, and document.** Not to drive.
-- **The author writes the rationale ("Why this approach") section in every spec, in their own words.** Claude must not draft this section. If asked to, refuse and explain why.
+- **Claude drafts the "Why this approach" section** based on the design conversation. The author reviews and edits as needed before approval.
 
 ## Advice modes
 
@@ -46,7 +46,7 @@ Use the template at `.claude/templates/feature-spec.md`, filled to the depth req
 
 Hard rules for every spec, all tiers:
 
-1. **The author writes the "Why this approach" section.** Claude does not draft it. Claude may quote back what the author said earlier in the conversation, but in a clearly-marked block: `> [author said earlier]: ...` — never as the author's voice.
+1. **Claude drafts the "Why this approach" section** based on the design conversation. The author reviews it during spec approval.
 2. **The spec must include a "Risks / what could go wrong" section.** Concrete, not generic. "Performance might be bad" is not a risk; "the per-frame allocation in the hot loop could push us past frame budget at 60fps with 1000+ entities" is a risk.
 3. **The spec must include a "Success criteria" section.** What does "this works" mean, in observable terms? "Feels good" is not a success criterion. "The smoke test exits cleanly with the new Python module loaded, and a manual test of <specific scenario> produces <specific result>" is.
 4. **The spec must specify test extensions.** What does the smoke test need to gain to cover this feature? If nothing — say so explicitly and justify why this feature doesn't need test coverage.

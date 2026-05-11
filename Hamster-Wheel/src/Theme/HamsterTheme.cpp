@@ -128,30 +128,44 @@ static void ApplyStyle() {
     s.TabRounding       = 6.0f;
 }
 
+static ImFont *s_BoldFont = nullptr;
+static ImFont *s_HeaderFont = nullptr;
+
+static void MergeIcons(ImGuiIO &io, const std::string &iconPath, float size) {
+    if (!std::filesystem::exists(iconPath)) return;
+    static const ImWchar iconRanges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
+    ImFontConfig iconCfg;
+    iconCfg.MergeMode = true;
+    iconCfg.PixelSnapH = true;
+    iconCfg.GlyphMinAdvanceX = size;
+    io.Fonts->AddFontFromFileTTF(iconPath.c_str(), size - 1.0f, &iconCfg, iconRanges);
+}
+
 static void LoadFonts(ImGuiIO &io, const std::string &resourcePath) {
     std::string fontsDir = resourcePath + "/Fonts/";
+    std::string interRegular = fontsDir + "Inter-Regular.ttf";
+    std::string interBold = fontsDir + "Inter-Bold.ttf";
+    std::string iconPath = fontsDir + "fa-solid-900.ttf";
 
-    std::string interPath = fontsDir + "Inter-Regular.ttf";
-    if (std::filesystem::exists(interPath)) {
-        io.Fonts->AddFontFromFileTTF(interPath.c_str(), 16.0f);
+    // Regular 16px (default font)
+    if (std::filesystem::exists(interRegular)) {
+        io.Fonts->AddFontFromFileTTF(interRegular.c_str(), 16.0f);
     } else {
-        std::cerr << "[HamsterTheme] Inter-Regular.ttf not found at " << interPath
-                  << ", falling back to default font\n";
+        std::cerr << "[HamsterTheme] Inter-Regular.ttf not found, falling back to default\n";
         io.Fonts->AddFontDefault();
     }
+    MergeIcons(io, iconPath, 16.0f);
 
-    // Merge icon font into the same atlas
-    std::string iconPath = fontsDir + "fa-solid-900.ttf";
-    if (std::filesystem::exists(iconPath)) {
-        static const ImWchar iconRanges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
-        ImFontConfig iconCfg;
-        iconCfg.MergeMode = true;
-        iconCfg.PixelSnapH = true;
-        iconCfg.GlyphMinAdvanceX = 16.0f;
-        io.Fonts->AddFontFromFileTTF(iconPath.c_str(), 15.0f, &iconCfg, iconRanges);
-    } else {
-        std::cerr << "[HamsterTheme] fa-solid-900.ttf not found at " << iconPath
-                  << ", icons will show as missing glyphs\n";
+    // Bold 16px — for section headers, labels
+    if (std::filesystem::exists(interBold)) {
+        s_BoldFont = io.Fonts->AddFontFromFileTTF(interBold.c_str(), 16.0f);
+        MergeIcons(io, iconPath, 16.0f);
+    }
+
+    // Bold 18px — for panel/component headers
+    if (std::filesystem::exists(interBold)) {
+        s_HeaderFont = io.Fonts->AddFontFromFileTTF(interBold.c_str(), 18.0f);
+        MergeIcons(io, iconPath, 18.0f);
     }
 }
 
@@ -160,5 +174,8 @@ void Apply(ImGuiIO &io, const std::string &resourcePath) {
     ApplyStyle();
     LoadFonts(io, resourcePath);
 }
+
+ImFont *GetBoldFont() { return s_BoldFont; }
+ImFont *GetHeaderFont() { return s_HeaderFont; }
 
 } // namespace HamsterTheme
