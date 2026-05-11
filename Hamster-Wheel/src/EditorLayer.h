@@ -22,6 +22,7 @@
 #include "Panels/Hierarchy.h"
 #include "Panels/MenuBar.h"
 #include "Panels/PropertyEditor.h"
+#include "Panels/RenameModal.h"
 #include "Theme/IconsFontAwesome6.h"
 
 class EditorLayer : public Hamster::Layer {
@@ -78,6 +79,10 @@ private:
   bool topRightGrabberHeld = false;
   bool bottomLeftGrabberHeld = false;
   bool bottomRightGrabberHeld = false;
+  bool topGrabberHeld = false;
+  bool rightGrabberHeld = false;
+  bool bottomGrabberHeld = false;
+  bool leftGrabberHeld = false;
   bool sceneBackgroundHeld = false;
 
   float mouseHeldOffsetX = 0.0f;
@@ -85,6 +90,20 @@ private:
 
   float mouseHeldTransformX = 0.0f;
   float mouseHeldTransformY = 0.0f;
+
+  ImVec2 m_RightClickStartPos = {0.0f, 0.0f};
+  bool m_RightClickDragged = false;
+  glm::vec2 m_ContextMenuWorldPos = {0.0f, 0.0f};
+  entt::entity m_ContextMenuEntity = entt::null;
+  bool m_OpenSceneContextMenu = false;
+  bool m_OpenEntityContextMenu = false;
+
+  std::shared_ptr<RenameModal> m_ViewportRenameModal;
+  bool m_ViewportRenameModalOpen = false;
+
+  bool m_AxisGizmoDraggingX = false;
+  bool m_AxisGizmoDraggingY = false;
+  bool m_AxisWrapSkipFrame = false;
 };
 
 #endif // EDITOR_H

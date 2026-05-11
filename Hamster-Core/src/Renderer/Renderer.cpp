@@ -73,6 +73,10 @@ namespace Hamster {
         m_FlatShader->use();
         m_FlatShader->setUniformi("image", 0);
         m_FlatShader->setUniformMat4("projection", m_ViewMatrix);
+        m_FlatShader->setUniformf("alpha", 1.0f);
+        m_FlatShader->setUniformi("borderMode", 0);
+        m_FlatShader->setUniformf("borderWidthX", 0.0f);
+        m_FlatShader->setUniformf("borderWidthY", 0.0f);
 
         float vertices[] = {
             0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
@@ -128,6 +132,8 @@ namespace Hamster {
     void Renderer::DrawFlat(glm::vec2 position, glm::vec2 size, float rotation,
                             glm::vec3 colour) {
         m_FlatShader->use();
+        m_FlatShader->setUniformf("alpha", 1.0f);
+        m_FlatShader->setUniformi("borderMode", 0);
 
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(position, 0.0f));
@@ -152,97 +158,106 @@ namespace Hamster {
                               bool selectionColour) {
         m_FlatShader->use();
 
+        float cx = targetTransform.position.x + targetTransform.size.x * 0.5f;
+        float cy = targetTransform.position.y + targetTransform.size.y * 0.5f;
+        float hw = targetTransform.size.x * 0.5f;
+        float hh = targetTransform.size.y * 0.5f;
 
-        glm::mat4 model = glm::mat4(1.0f);
+        float rad = glm::radians(targetTransform.rotation);
+        float cosR = std::cos(rad);
+        float sinR = std::sin(rad);
 
+        glm::vec2 offsets[8] = {
+            {-hw, -hh}, {hw, -hh}, {-hw, hh}, {hw, hh},
+            {0, -hh}, {hw, 0}, {0, hh}, {-hw, 0}
+        };
+        uint32_t ids[8] = {
+            TopLeftGrabberID, TopRightGrabberID,
+            BottomLeftGrabberID, BottomRightGrabberID,
+            TopGrabberID, RightGrabberID,
+            BottomGrabberID, LeftGrabberID
+        };
 
-        glBindVertexArray(0);
+        if (!selectionColour) {
+            glm::vec3 blue(0.45f, 0.72f, 1.0f);
+            glm::vec3 white(1.0f, 1.0f, 1.0f);
 
-        model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(targetTransform.position.x,
-                                                targetTransform.position.y, 0.0f));
-        model = glm::scale(model, glm::vec3(10.0f, 10.0f, 1.0f));
+            // Entity outline
+            m_FlatShader->setUniformi("borderMode", 1);
+            m_FlatShader->setUniformf("alpha", 0.8f);
+            float outlinePx = 1.5f;
+            m_FlatShader->setUniformf("borderWidthX", outlinePx / targetTransform.size.x);
+            m_FlatShader->setUniformf("borderWidthY", outlinePx / targetTransform.size.y);
+            m_FlatShader->setUniformVec3("colour", blue);
 
-        m_FlatShader->setUniformMat4("model", model);
+            glm::mat4 outlineModel = glm::mat4(1.0f);
+            outlineModel = glm::translate(outlineModel, targetTransform.position);
+            outlineModel = glm::translate(outlineModel, glm::vec3(hw, hh, 0.0f));
+            outlineModel = glm::rotate(outlineModel, rad, glm::vec3(0.0f, 0.0f, 1.0f));
+            outlineModel = glm::translate(outlineModel, glm::vec3(-hw, -hh, 0.0f));
+            outlineModel = glm::scale(outlineModel, glm::vec3(targetTransform.size, 1.0f));
 
-        if (selectionColour) {
-            m_FlatShader->setUniformVec3("colour",
-                                         Application::IdToColour(TopLeftGrabberID));
+            m_FlatShader->setUniformMat4("model", outlineModel);
+            glBindVertexArray(m_VAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+
+            // 8 grabber squares: white fill + blue border
+            const float grabSize = 8.0f;
+            const float grabHalf = grabSize * 0.5f;
+            const float borderPx = 1.0f;
+            float bwUV = borderPx / grabSize;
+
+            for (int i = 0; i < 8; i++) {
+                float rx = offsets[i].x * cosR - offsets[i].y * sinR;
+                float ry = offsets[i].x * sinR + offsets[i].y * cosR;
+
+                glm::mat4 model = glm::mat4(1.0f);
+                model = glm::translate(model, glm::vec3(cx + rx - grabHalf, cy + ry - grabHalf, 0.0f));
+                model = glm::scale(model, glm::vec3(grabSize, grabSize, 1.0f));
+                m_FlatShader->setUniformMat4("model", model);
+
+                // White fill
+                m_FlatShader->setUniformi("borderMode", 0);
+                m_FlatShader->setUniformf("alpha", 1.0f);
+                m_FlatShader->setUniformVec3("colour", white);
+                glBindVertexArray(m_VAO);
+                glDrawArrays(GL_TRIANGLES, 0, 6);
+                glBindVertexArray(0);
+
+                // Blue border
+                m_FlatShader->setUniformi("borderMode", 1);
+                m_FlatShader->setUniformf("borderWidthX", bwUV);
+                m_FlatShader->setUniformf("borderWidthY", bwUV);
+                m_FlatShader->setUniformVec3("colour", blue);
+                glBindVertexArray(m_VAO);
+                glDrawArrays(GL_TRIANGLES, 0, 6);
+                glBindVertexArray(0);
+            }
         } else {
-            m_FlatShader->setUniformVec3(
-                "colour", glm::vec3(60.0f / 255.0f, 219.0f / 255.0f, 211.0f / 255.0f));
+            // Pick pass: filled squares with selection colors
+            m_FlatShader->setUniformi("borderMode", 0);
+            m_FlatShader->setUniformf("alpha", 1.0f);
+
+            const float pickSize = 24.0f;
+            const float pickHalf = pickSize * 0.5f;
+
+            for (int i = 0; i < 8; i++) {
+                float rx = offsets[i].x * cosR - offsets[i].y * sinR;
+                float ry = offsets[i].x * sinR + offsets[i].y * cosR;
+
+                glm::mat4 model = glm::mat4(1.0f);
+                model = glm::translate(model, glm::vec3(cx + rx - pickHalf, cy + ry - pickHalf, 0.0f));
+                model = glm::scale(model, glm::vec3(pickSize, pickSize, 1.0f));
+
+                m_FlatShader->setUniformMat4("model", model);
+                m_FlatShader->setUniformVec3("colour", Application::IdToColour(ids[i]));
+
+                glBindVertexArray(m_VAO);
+                glDrawArrays(GL_TRIANGLES, 0, 6);
+                glBindVertexArray(0);
+            }
         }
-
-        glBindVertexArray(m_VAO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-
-        glBindVertexArray(0);
-
-        model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(targetTransform.position.x +
-                                                targetTransform.size.x - 10.0f,
-                                                targetTransform.position.y, 0.0f));
-        model = glm::scale(model, glm::vec3(10.0f, 10.0f, 1.0f));
-
-        m_FlatShader->setUniformMat4("model", model);
-
-        if (selectionColour) {
-            m_FlatShader->setUniformVec3("colour",
-                                         Application::IdToColour(TopRightGrabberID));
-        } else {
-            m_FlatShader->setUniformVec3(
-                "colour", glm::vec3(60.0f / 255.0f, 219.0f / 255.0f, 211.0f / 255.0f));
-        }
-
-        glBindVertexArray(m_VAO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-
-        glBindVertexArray(0);
-
-        model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(targetTransform.position.x,
-                                                targetTransform.position.y +
-                                                targetTransform.size.y - 10.0f,
-                                                0.0f));
-        model = glm::scale(model, glm::vec3(10.0f, 10.0f, 1.0f));
-
-        m_FlatShader->setUniformMat4("model", model);
-
-        if (selectionColour) {
-            m_FlatShader->setUniformVec3("colour",
-                                         Application::IdToColour(BottomLeftGrabberID));
-        } else {
-            m_FlatShader->setUniformVec3(
-                "colour", glm::vec3(60.0f / 255.0f, 219.0f / 255.0f, 211.0f / 255.0f));
-        }
-
-        glBindVertexArray(m_VAO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-
-        glBindVertexArray(0);
-
-        model = glm::mat4(1.0f);
-        model = glm::translate(
-            model,
-            glm::vec3(targetTransform.position.x + targetTransform.size.x - 10.0f,
-                      targetTransform.position.y + targetTransform.size.y - 10.0f,
-                      0.0f));
-        model = glm::scale(model, glm::vec3(10.0f, 10.0f, 1.0f));
-
-        m_FlatShader->setUniformMat4("model", model);
-
-        if (selectionColour) {
-            m_FlatShader->setUniformVec3("colour",
-                                         Application::IdToColour(BottomRightGrabberID));
-        } else {
-            m_FlatShader->setUniformVec3(
-                "colour", glm::vec3(60.0f / 255.0f, 219.0f / 255.0f, 211.0f / 255.0f));
-        }
-
-        glBindVertexArray(m_VAO);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-
-        glBindVertexArray(0);
     }
 
     void Renderer::UpdateViewMatrix() {
@@ -281,6 +296,13 @@ namespace Hamster {
         float worldY = m_CameraOffset.y + (normalizedY * m_ViewportHeight) / m_Zoom;
 
         return {worldX, worldY};
+    }
+
+    void Renderer::SetZoom(float zoom) {
+        m_Zoom = zoom;
+        if (m_Zoom < 0.1f) m_Zoom = 0.1f;
+        if (m_Zoom > 5.0f) m_Zoom = 5.0f;
+        UpdateViewMatrix();
     }
 
     void Renderer::ChangeCameraOffset(const glm::vec2 &offset) {

@@ -1,19 +1,20 @@
 #version 400 core
 
-// in vec2 TexCoords;
+in vec2 TexCoords;
 uniform vec3 colour;
+uniform float alpha;
+uniform int borderMode;
+uniform float borderWidthX;
+uniform float borderWidthY;
 
 out vec4 FragColour;
 
-// uniform sampler2D image;
-// uniform vec3 spriteColour;
-
 void main()
 {
-//     FragColour = vec4(spriteColour, 1.0) * texture(image, TexCoords);
-
-    FragColour = vec4(colour, 1.0);
-
-//     FragColour = vec4(1.0f, 0.5f, 0.2f, 1.0f);
+    if (borderMode != 0) {
+        if (TexCoords.x > borderWidthX && TexCoords.x < 1.0 - borderWidthX &&
+            TexCoords.y > borderWidthY && TexCoords.y < 1.0 - borderWidthY)
+            discard;
+    }
+    FragColour = vec4(colour, alpha);
 }
-

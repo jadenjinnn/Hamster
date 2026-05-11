@@ -24,4 +24,8 @@
 #define TopRightGrabberID 16777211
 #define BottomLeftGrabberID 16777210
 #define BottomRightGrabberID 16777209
+#define TopGrabberID 16777208
+#define RightGrabberID 16777207
+#define BottomGrabberID 16777206
+#define LeftGrabberID 16777205
 #define GrabberGuizmoID 16777200

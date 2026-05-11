@@ -43,6 +43,12 @@ namespace Hamster {
 
         glm::vec2 ScreenToWorldPos(const glm::vec2 &mousePos);
 
+        float GetZoom() const { return m_Zoom; }
+        void SetZoom(float zoom);
+        glm::vec2 GetCameraOffset() const { return m_CameraOffset; }
+        int GetViewportWidth() const { return m_ViewportWidth; }
+        int GetViewportHeight() const { return m_ViewportHeight; }
+
     private:
         void InitRendererData(AssetManager *assetManager);
 

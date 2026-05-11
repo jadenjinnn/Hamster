@@ -4,6 +4,7 @@
 
 #include "EditorLayer.h"
 
+#include <cmath>
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -60,9 +61,11 @@ void EditorLayer::OnUpdate() {
         entt::entity selectedEntity = m_Hierarchy->GetSelectedEntity();
 
         if (selectedEntity != entt::null) {
+            glDisable(GL_BLEND);
             m_Renderer->DrawGuizmo(
                 m_Scene->GetRegistry().get<Hamster::Transform>(selectedEntity),
                 Hamster::Translate, true);
+            glEnable(GL_BLEND);
         }
 
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -80,13 +83,8 @@ void EditorLayer::OnUpdate() {
         m_FramebufferTexture.Unbind();
         glDisable(GL_SCISSOR_TEST);
 
-        // m_Renderer->Clear();
-
         int pickedID =
                 Hamster::Application::ColourToId(glm::vec3(data[0], data[1], data[2]));
-
-        // std::cout << (float)data[0] << ", " << (float)data[1] << ", " <<
-        // (float)data[2] << std::endl;
 
         auto pickedEntity = static_cast<entt::entity>(pickedID);
 
@@ -157,8 +155,22 @@ void EditorLayer::OnUpdate() {
             }
             case BottomRightGrabberID: {
                 bottomRightGrabberHeld = true;
-
-                // mouseHeldOffsetX = mousePosX;
+                break;
+            }
+            case TopGrabberID: {
+                topGrabberHeld = true;
+                break;
+            }
+            case RightGrabberID: {
+                rightGrabberHeld = true;
+                break;
+            }
+            case BottomGrabberID: {
+                bottomGrabberHeld = true;
+                break;
+            }
+            case LeftGrabberID: {
+                leftGrabberHeld = true;
                 break;
             }
             default: {
@@ -180,7 +192,18 @@ void EditorLayer::OnUpdate() {
     }
 
     if (ImGui::IsMouseClicked(1)) {
+        m_RightClickStartPos = ImGui::GetMousePos();
+        m_RightClickDragged = false;
         sceneBackgroundHeld = true;
+    }
+
+    if (sceneBackgroundHeld && !m_RightClickDragged) {
+        ImVec2 currentPos = ImGui::GetMousePos();
+        float dx = currentPos.x - m_RightClickStartPos.x;
+        float dy = currentPos.y - m_RightClickStartPos.y;
+        if (dx * dx + dy * dy > 25.0f) {
+            m_RightClickDragged = true;
+        }
     }
 
     if (ImGui::IsMouseReleased(0)) {
@@ -194,6 +217,10 @@ void EditorLayer::OnUpdate() {
         topRightGrabberHeld = false;
         bottomLeftGrabberHeld = false;
         bottomRightGrabberHeld = false;
+        topGrabberHeld = false;
+        rightGrabberHeld = false;
+        bottomGrabberHeld = false;
+        leftGrabberHeld = false;
     }
 
     if (ImGui::IsMouseReleased(1)) {
@@ -233,8 +260,6 @@ void EditorLayer::OnUpdate() {
                 &m_Scene->GetRegistry().get<Hamster::Transform>(
                     m_Hierarchy->GetSelectedEntity());
 
-        std::cout << ImGui::GetMouseDragDelta().x << std::endl;
-
         entityTransform->size.x += mouseDelta.x;
         entityTransform->size.y -= mouseDelta.y;
 
@@ -248,6 +273,32 @@ void EditorLayer::OnUpdate() {
         entityTransform->size.y += mouseDelta.y;
 
         entityTransform->position.x += mouseDelta.x;
+    } else if (topGrabberHeld) {
+        Hamster::Transform *entityTransform =
+                &m_Scene->GetRegistry().get<Hamster::Transform>(
+                    m_Hierarchy->GetSelectedEntity());
+
+        entityTransform->size.y -= mouseDelta.y;
+        entityTransform->position.y += mouseDelta.y;
+    } else if (bottomGrabberHeld) {
+        Hamster::Transform *entityTransform =
+                &m_Scene->GetRegistry().get<Hamster::Transform>(
+                    m_Hierarchy->GetSelectedEntity());
+
+        entityTransform->size.y += mouseDelta.y;
+    } else if (rightGrabberHeld) {
+        Hamster::Transform *entityTransform =
+                &m_Scene->GetRegistry().get<Hamster::Transform>(
+                    m_Hierarchy->GetSelectedEntity());
+
+        entityTransform->size.x += mouseDelta.x;
+    } else if (leftGrabberHeld) {
+        Hamster::Transform *entityTransform =
+                &m_Scene->GetRegistry().get<Hamster::Transform>(
+                    m_Hierarchy->GetSelectedEntity());
+
+        entityTransform->size.x -= mouseDelta.x;
+        entityTransform->position.x += mouseDelta.x;
     } else if (entityHeld) {
         Hamster::Transform *entityTransform =
                 &m_Scene->GetRegistry().get<Hamster::Transform>(
@@ -257,7 +308,7 @@ void EditorLayer::OnUpdate() {
 
         entityTransform->position.x = mouseHeldTransformX + mouseDragDelta.x;
         entityTransform->position.y = mouseHeldTransformY + mouseDragDelta.y;
-    } else if (sceneBackgroundHeld) {
+    } else if (sceneBackgroundHeld && m_RightClickDragged) {
         m_Renderer->ChangeCameraOffset({mouseDelta.x * m_MouseDragSpeed, mouseDelta.y * m_MouseDragSpeed});
     }
 
@@ -292,10 +343,13 @@ void EditorLayer::OnImGuiUpdate() {
     ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
 
 
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     if (!ImGui::Begin("Level Editor", &m_WindowOpen)) {
         ImGui::End();
+        ImGui::PopStyleVar();
         return;
     }
+    ImGui::PopStyleVar();
 
     m_WindowFocused = ImGui::IsWindowFocused();
 
@@ -314,7 +368,6 @@ void EditorLayer::OnImGuiUpdate() {
     if (ImGui::IsWindowHovered()) {
         float mouseWheelDelta = ImGui::GetIO().MouseWheel;
 
-
         if (mouseWheelDelta != 0.0f) {
             const ImVec2 imGuiMousePos = ImGui::GetMousePos();
 
@@ -322,6 +375,35 @@ void EditorLayer::OnImGuiUpdate() {
             float mousePosY = imGuiMousePos.y - m_ViewportOffset.y;
 
             m_Renderer->AdjustZoom(mouseWheelDelta * m_MouseWheelZoomSpeed, mousePosX, mousePosY);
+        }
+
+        if (ImGui::IsMouseReleased(1) && !m_RightClickDragged) {
+            float mousePosX = m_RightClickStartPos.x - m_ViewportOffset.x;
+            float mousePosY = m_RightClickStartPos.y - m_ViewportOffset.y;
+
+            m_ContextMenuWorldPos = m_Renderer->ScreenToWorldPos({mousePosX, mousePosY});
+
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(0, 0, m_LevelEditorAvailRegion.x, m_LevelEditorAvailRegion.y);
+            m_FramebufferTexture.Bind();
+            m_Renderer->Clear();
+            m_Scene->OnRender(true);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            unsigned char data[4];
+            glReadPixels(mousePosX, m_ViewportHeight - mousePosY, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, data);
+            m_FramebufferTexture.Unbind();
+            glDisable(GL_SCISSOR_TEST);
+
+            int pickedID = Hamster::Application::ColourToId(glm::vec3(data[0], data[1], data[2]));
+            auto pickedEntity = static_cast<entt::entity>(pickedID);
+
+            if (pickedID != -1 && m_Scene->GetRegistry().valid(pickedEntity)) {
+                m_ContextMenuEntity = pickedEntity;
+                m_OpenEntityContextMenu = true;
+            } else {
+                m_ContextMenuEntity = entt::null;
+                m_OpenSceneContextMenu = true;
+            }
         }
     }
 
@@ -350,7 +432,7 @@ void EditorLayer::OnImGuiUpdate() {
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, {4, 4});
 
         if (paused) {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.337f, 0.576f, 0.439f, 0.90f));
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.337f, 0.576f, 0.439f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.400f, 0.660f, 0.510f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.260f, 0.490f, 0.360f, 1.0f));
             if (ImGui::Button(ICON_FA_PLAY "##play", {btnSize, btnSize})) {
@@ -358,7 +440,7 @@ void EditorLayer::OnImGuiUpdate() {
             }
             ImGui::PopStyleColor(3);
         } else {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.337f, 0.576f, 0.439f, 0.90f));
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.337f, 0.576f, 0.439f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.400f, 0.660f, 0.510f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.260f, 0.490f, 0.360f, 1.0f));
             if (ImGui::Button(ICON_FA_PAUSE "##pause", {btnSize, btnSize})) {
@@ -369,7 +451,7 @@ void EditorLayer::OnImGuiUpdate() {
 
         ImGui::SameLine(0, spacing);
 
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.878f, 0.290f, 0.310f, 0.90f));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.878f, 0.290f, 0.310f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.920f, 0.360f, 0.380f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.780f, 0.220f, 0.240f, 1.0f));
         if (ImGui::Button(ICON_FA_STOP "##stop", {btnSize, btnSize})) {
@@ -378,6 +460,279 @@ void EditorLayer::OnImGuiUpdate() {
         ImGui::PopStyleColor(3);
 
         ImGui::PopStyleVar(2);
+    }
+
+    // Dot grid overlay
+    {
+        ImDrawList *drawList = ImGui::GetWindowDrawList();
+        const float gridSpacing = 20.0f;
+
+        glm::vec2 camOffset = m_Renderer->GetCameraOffset();
+        float zoom = m_Renderer->GetZoom();
+
+        float dotRadius = 1.5f * zoom;
+        if (dotRadius < 0.5f) dotRadius = 0.5f;
+        if (dotRadius > 2.0f) dotRadius = 2.0f;
+        int alpha = static_cast<int>(80 * zoom);
+        if (alpha < 20) alpha = 20;
+        if (alpha > 80) alpha = 80;
+        const ImU32 dotColor = IM_COL32(255, 255, 255, alpha);
+
+        float worldLeft = camOffset.x;
+        float worldTop = camOffset.y;
+        float worldRight = camOffset.x + m_LevelEditorAvailRegion.x / zoom;
+        float worldBottom = camOffset.y + m_LevelEditorAvailRegion.y / zoom;
+
+        float startX = std::floor(worldLeft / gridSpacing) * gridSpacing;
+        float startY = std::floor(worldTop / gridSpacing) * gridSpacing;
+
+        for (float wy = startY; wy <= worldBottom; wy += gridSpacing) {
+            for (float wx = startX; wx <= worldRight; wx += gridSpacing) {
+                float screenX = pos.x + (wx - camOffset.x) * zoom;
+                float screenY = pos.y + (wy - camOffset.y) * zoom;
+
+                if (screenX >= pos.x && screenX <= pos.x + m_LevelEditorAvailRegion.x &&
+                    screenY >= pos.y && screenY <= pos.y + m_LevelEditorAvailRegion.y) {
+                    drawList->AddCircleFilled(ImVec2(screenX, screenY), dotRadius, dotColor);
+                }
+            }
+        }
+    }
+
+    // Zoom slider overlay — top-right, custom dot-and-line style
+    {
+        const float trackW = 140.0f;
+        const float margin = 12.0f;
+        const float dotRadius = 7.0f;
+        const float trackThickness = 3.0f;
+        const float zoomMin = 0.1f;
+        const float zoomMax = 5.0f;
+
+        float zoom = m_Renderer->GetZoom();
+        char zoomLabel[16];
+        snprintf(zoomLabel, sizeof(zoomLabel), "%.0f%%", zoom * 100.0f);
+        ImVec2 textSize = ImGui::CalcTextSize(zoomLabel);
+
+        const float totalW = textSize.x + 8.0f + trackW;
+        const float overlayX = pos.x + m_LevelEditorAvailRegion.x - totalW - 32.0f;
+        const float overlayY = pos.y + 32.0f + 40.0f + 8.0f + 16.0f;
+
+        ImDrawList *drawList = ImGui::GetWindowDrawList();
+
+        drawList->AddText(ImVec2(overlayX, overlayY - textSize.y * 0.5f),
+                          IM_COL32(255, 255, 255, 200), zoomLabel);
+
+        float trackX = overlayX + textSize.x + 8.0f;
+        float trackY = overlayY;
+
+        drawList->AddLine(
+            ImVec2(trackX, trackY),
+            ImVec2(trackX + trackW, trackY),
+            IM_COL32(255, 255, 255, 100), trackThickness);
+
+        float t = (zoom - zoomMin) / (zoomMax - zoomMin);
+        float dotX = trackX + t * trackW;
+
+        ImVec2 mousePos = ImGui::GetMousePos();
+        bool hovered = mousePos.x >= trackX - dotRadius &&
+                       mousePos.x <= trackX + trackW + dotRadius &&
+                       mousePos.y >= trackY - dotRadius * 2 &&
+                       mousePos.y <= trackY + dotRadius * 2;
+
+        static bool zoomSliderDragging = false;
+
+        if (hovered && ImGui::IsMouseClicked(0)) {
+            zoomSliderDragging = true;
+        }
+        if (ImGui::IsMouseReleased(0)) {
+            zoomSliderDragging = false;
+        }
+
+        if (zoomSliderDragging) {
+            float newT = (mousePos.x - trackX) / trackW;
+            if (newT < 0.0f) newT = 0.0f;
+            if (newT > 1.0f) newT = 1.0f;
+            float newZoom = zoomMin + newT * (zoomMax - zoomMin);
+
+            float centerX = m_LevelEditorAvailRegion.x * 0.5f;
+            float centerY = m_LevelEditorAvailRegion.y * 0.5f;
+            m_Renderer->AdjustZoom(newZoom - zoom, centerX, centerY);
+        }
+
+        ImU32 dotColor = zoomSliderDragging ? IM_COL32(255, 255, 255, 255)
+                                            : IM_COL32(255, 255, 255, 200);
+        drawList->AddCircleFilled(ImVec2(dotX, trackY), dotRadius, dotColor);
+    }
+
+    // Axis gizmo overlay — top-right, above zoom slider
+    // L-shaped: origin at bottom-left corner, X arrow goes right, Y arrow goes up
+    {
+        const float armLength = 40.0f;
+        const float lineThickness = 3.0f;
+        const float arrowSize = 8.0f;
+
+        const float sliderTotalW = 140.0f + 50.0f;
+        const float sliderLeftX = pos.x + m_LevelEditorAvailRegion.x - sliderTotalW - 32.0f;
+        const float sliderCenterX = sliderLeftX + sliderTotalW * 0.5f;
+
+        const float gizmoW = armLength + arrowSize;
+        const float originX = sliderCenterX - gizmoW * 0.5f;
+        const float originY = pos.y + 32.0f + armLength;
+
+        ImDrawList *drawList = ImGui::GetWindowDrawList();
+
+        ImVec2 origin(originX, originY);
+        ImVec2 xEnd(originX + armLength, originY);
+        ImVec2 yEnd(originX, originY - armLength);
+
+        ImU32 xColor = m_AxisGizmoDraggingX ? IM_COL32(255, 120, 120, 255) : IM_COL32(220, 80, 80, 220);
+        ImU32 yColor = m_AxisGizmoDraggingY ? IM_COL32(120, 255, 120, 255) : IM_COL32(80, 200, 80, 220);
+
+        drawList->AddLine(origin, xEnd, xColor, lineThickness);
+        drawList->AddTriangleFilled(
+            ImVec2(xEnd.x, xEnd.y - arrowSize * 0.6f),
+            ImVec2(xEnd.x, xEnd.y + arrowSize * 0.6f),
+            ImVec2(xEnd.x + arrowSize, xEnd.y),
+            xColor);
+
+        drawList->AddLine(origin, yEnd, yColor, lineThickness);
+        drawList->AddTriangleFilled(
+            ImVec2(yEnd.x - arrowSize * 0.6f, yEnd.y),
+            ImVec2(yEnd.x + arrowSize * 0.6f, yEnd.y),
+            ImVec2(yEnd.x, yEnd.y - arrowSize),
+            yColor);
+
+        drawList->AddText(ImVec2(xEnd.x + arrowSize + 2.0f, xEnd.y - 7.0f), xColor, "X");
+        drawList->AddText(ImVec2(yEnd.x - 4.0f, yEnd.y - arrowSize - 14.0f), yColor, "Y");
+
+        ImVec2 mousePos = ImGui::GetMousePos();
+        ImVec2 mouseDelta = ImGui::GetIO().MouseDelta;
+
+        float xDistY = std::abs(mousePos.y - origin.y);
+        bool xHovered = mousePos.x >= origin.x - 6.0f &&
+                        mousePos.x <= xEnd.x + arrowSize + 4.0f &&
+                        xDistY < 10.0f;
+
+        float yDistX = std::abs(mousePos.x - origin.x);
+        bool yHovered = mousePos.y >= yEnd.y - arrowSize - 4.0f &&
+                        mousePos.y <= origin.y + 6.0f &&
+                        yDistX < 10.0f;
+
+        if (ImGui::IsMouseClicked(0)) {
+            if (xHovered) m_AxisGizmoDraggingX = true;
+            else if (yHovered) m_AxisGizmoDraggingY = true;
+        }
+
+        if (ImGui::IsMouseReleased(0)) {
+            m_AxisGizmoDraggingX = false;
+            m_AxisGizmoDraggingY = false;
+        }
+
+        if (m_AxisGizmoDraggingX || m_AxisGizmoDraggingY) {
+            if (m_AxisWrapSkipFrame) {
+                m_AxisWrapSkipFrame = false;
+            } else {
+                GLFWwindow *window = m_App->GetWindow();
+                double cx, cy;
+                glfwGetCursorPos(window, &cx, &cy);
+                int winW, winH;
+                glfwGetWindowSize(window, &winW, &winH);
+
+                bool wrapped = false;
+                if (cx <= 1.0) { cx = winW - 2.0; wrapped = true; }
+                else if (cx >= winW - 1.0) { cx = 2.0; wrapped = true; }
+                if (cy <= 1.0) { cy = winH - 2.0; wrapped = true; }
+                else if (cy >= winH - 1.0) { cy = 2.0; wrapped = true; }
+
+                if (wrapped) {
+                    glfwSetCursorPos(window, cx, cy);
+                    m_AxisWrapSkipFrame = true;
+                } else {
+                    if (m_AxisGizmoDraggingX) {
+                        m_Renderer->ChangeCameraOffset({mouseDelta.x * m_MouseDragSpeed, 0.0f});
+                    }
+                    if (m_AxisGizmoDraggingY) {
+                        m_Renderer->ChangeCameraOffset({0.0f, mouseDelta.y * m_MouseDragSpeed});
+                    }
+                }
+            }
+        }
+    }
+
+    // Context menus
+    if (m_OpenSceneContextMenu) {
+        ImGui::OpenPopup("##SceneContextMenu");
+        m_OpenSceneContextMenu = false;
+    }
+    if (m_OpenEntityContextMenu) {
+        ImGui::OpenPopup("##EntityContextMenu");
+        m_OpenEntityContextMenu = false;
+    }
+
+    if (ImGui::BeginPopup("##SceneContextMenu")) {
+        if (ImGui::MenuItem(ICON_FA_PLUS "  New Entity")) {
+            Hamster::UUID newUUID = m_Scene->CreateEntity();
+            auto &transform = m_Scene->GetEntityComponent<Hamster::Transform>(newUUID);
+            transform.position.x = m_ContextMenuWorldPos.x;
+            transform.position.y = m_ContextMenuWorldPos.y;
+        }
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::BeginPopup("##EntityContextMenu")) {
+        if (m_ContextMenuEntity != entt::null && m_Scene->GetRegistry().valid(m_ContextMenuEntity)) {
+            Hamster::UUID entityUUID = m_Scene->GetEntityUUID(m_ContextMenuEntity);
+
+            if (ImGui::MenuItem(ICON_FA_TRASH "  Delete")) {
+                if (m_Hierarchy->GetSelectedEntity() == m_ContextMenuEntity) {
+                    m_Hierarchy->SetSelectedEntity(entt::null);
+                    m_PropertyEditor->SetSelectedEntity(boost::uuids::nil_uuid());
+                }
+                m_Scene->DestroyEntity(entityUUID);
+            }
+
+            if (ImGui::MenuItem(ICON_FA_PEN "  Rename")) {
+                auto &name = m_Scene->GetEntityComponent<Hamster::Name>(entityUUID);
+                m_ViewportRenameModal = std::make_shared<RenameModal>(name.name);
+                m_ViewportRenameModalOpen = true;
+            }
+
+            if (ImGui::MenuItem(ICON_FA_CLONE "  Duplicate")) {
+                Hamster::UUID newUUID = m_Scene->CreateEntity();
+
+                auto &srcTransform = m_Scene->GetEntityComponent<Hamster::Transform>(entityUUID);
+                auto &dstTransform = m_Scene->GetEntityComponent<Hamster::Transform>(newUUID);
+                dstTransform.position = srcTransform.position + glm::vec3(10.0f, 10.0f, 0.0f);
+                dstTransform.rotation = srcTransform.rotation;
+                dstTransform.size = srcTransform.size;
+
+                auto &srcName = m_Scene->GetEntityComponent<Hamster::Name>(entityUUID);
+                auto &dstName = m_Scene->GetEntityComponent<Hamster::Name>(newUUID);
+                dstName.name = srcName.name + " Copy";
+
+                if (m_Scene->EntityHasComponent<Hamster::Sprite>(entityUUID)) {
+                    auto &srcSprite = m_Scene->GetEntityComponent<Hamster::Sprite>(entityUUID);
+                    m_Scene->AddEntityComponent<Hamster::Sprite>(newUUID, srcSprite.texture, srcSprite.colour);
+                }
+
+                if (m_Scene->EntityHasComponent<Hamster::Rigidbody>(entityUUID)) {
+                    auto &srcRb = m_Scene->GetEntityComponent<Hamster::Rigidbody>(entityUUID);
+                    Hamster::Rigidbody newRb;
+                    newRb.isStatic = srcRb.isStatic;
+                    m_Scene->AddEntityComponent<Hamster::Rigidbody>(newUUID, newRb);
+                }
+            }
+        }
+        ImGui::EndPopup();
+    }
+
+    if (m_ViewportRenameModalOpen) {
+        ImGui::OpenPopup("Rename Window");
+        m_ViewportRenameModalOpen = false;
+    }
+
+    if (m_ViewportRenameModal) {
+        m_ViewportRenameModal->Render();
     }
 
     ImGui::End();
