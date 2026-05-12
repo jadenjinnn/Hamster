@@ -2,6 +2,7 @@
 
 #include <Core/UUID.h>
 #include <Scripting/HamsterBehaviour.h>
+#include "EntityHandle.h"
 
 class PyHamsterBehaviour : Hamster::HamsterBehaviour {
 public:
@@ -44,5 +45,12 @@ void HamsterBehaviourBinding(pybind11::module_ m) {
                              &Hamster::HamsterBehaviour::GetVelocity)
       .def("apply_force", &Hamster::HamsterBehaviour::ApplyForce)
       .def("apply_impulse", &Hamster::HamsterBehaviour::ApplyImpulse)
-      .def("set_velocity", &Hamster::HamsterBehaviour::SetVelocity);
+      .def("set_velocity", &Hamster::HamsterBehaviour::SetVelocity)
+      .def("create_entity", [](Hamster::HamsterBehaviour &self,
+                                const std::string &name,
+                                const Hamster::Transform &transform) {
+          Hamster::UUID uuid = self.CreateEntityRuntime(name, transform);
+          return EntityHandle{uuid, self.GetScene()};
+      })
+      .def("destroy_entity", &Hamster::HamsterBehaviour::DestroyEntityRuntime);
 }

@@ -69,6 +69,101 @@ void Scene::DestroyEntity(UUID entityUUID) {
   m_Entities.erase(entityUUID);
 }
 
+UUID Scene::CreateEntityRuntime(const std::string &name, const Transform &transform) {
+  if (m_IsSimulationPaused) {
+    m_ClientLogger->Log(Error, "create_entity can only be called during simulation");
+    return UUID::GetNil();
+  }
+
+  UUID uuid = CreateEntity();
+  GetEntityComponent<Name>(uuid).name = name;
+  GetEntityComponent<Transform>(uuid) = transform;
+  return uuid;
+}
+
+void Scene::QueueDestroyEntity(UUID entityUUID) {
+  m_DestroyQueue.push_back(entityUUID);
+}
+
+void Scene::FlushDestroyQueue() {
+  for (auto &uuid : m_DestroyQueue) {
+    if (m_Entities.find(uuid) == m_Entities.end())
+      continue;
+
+    if (EntityHasComponent<Rigidbody>(uuid)) {
+      auto &rb = GetEntityComponent<Rigidbody>(uuid);
+      if (b2Body_IsValid(rb.bodyId)) {
+        b2DestroyBody(rb.bodyId);
+      }
+    }
+
+    m_Registry.destroy(m_Entities[uuid]);
+    m_Entities.erase(uuid);
+  }
+  m_DestroyQueue.clear();
+}
+
+void Scene::CreatePendingBodies() {
+  for (auto &uuid : m_PendingBodies) {
+    if (m_Entities.find(uuid) == m_Entities.end())
+      continue;
+    if (!EntityHasComponent<Rigidbody>(uuid))
+      continue;
+
+    auto &rb = GetEntityComponent<Rigidbody>(uuid);
+    auto &transform = GetEntityComponent<Transform>(uuid);
+    auto &id = GetEntityComponent<ID>(uuid);
+
+    b2BodyDef bodyDef = b2DefaultBodyDef();
+
+    switch (rb.bodyType) {
+    case BodyType::Static:
+      bodyDef.type = b2_staticBody;
+      break;
+    case BodyType::Dynamic:
+      bodyDef.type = b2_dynamicBody;
+      break;
+    case BodyType::Kinematic:
+      bodyDef.type = b2_kinematicBody;
+      break;
+    }
+
+    bodyDef.position = {(transform.position.x + transform.size.x * 0.5f) / PIXELS_PER_METER,
+                        (transform.position.y + transform.size.y * 0.5f) / PIXELS_PER_METER};
+    bodyDef.rotation = b2MakeRot(glm::radians(transform.rotation));
+    bodyDef.gravityScale = rb.gravityScale;
+    bodyDef.userData = const_cast<void *>(static_cast<const void *>(&id.uuid));
+
+    rb.bodyId = b2CreateBody(m_PhysicsWorld, &bodyDef);
+
+    b2ShapeDef shapeDef = b2DefaultShapeDef();
+    shapeDef.density = rb.density;
+    shapeDef.friction = rb.friction;
+    shapeDef.restitution = rb.restitution;
+    shapeDef.enableContactEvents = true;
+
+    glm::vec2 colSize = (rb.colliderSize.x > 0.0f && rb.colliderSize.y > 0.0f)
+        ? rb.colliderSize : transform.size;
+
+    float halfW = std::max(std::abs(colSize.x) / PIXELS_PER_METER * 0.5f, 0.05f);
+    float halfH = std::max(std::abs(colSize.y) / PIXELS_PER_METER * 0.5f, 0.05f);
+
+    b2Vec2 shapeOffset = {rb.colliderOffset.x / PIXELS_PER_METER,
+                          rb.colliderOffset.y / PIXELS_PER_METER};
+
+    if (rb.colliderShape == ColliderShape::Circle) {
+      b2Circle circle;
+      circle.center = shapeOffset;
+      circle.radius = std::max(halfW, halfH);
+      b2CreateCircleShape(rb.bodyId, &shapeDef, &circle);
+    } else {
+      b2Polygon box = b2MakeOffsetBox(halfW, halfH, shapeOffset, 0.0f);
+      b2CreatePolygonShape(rb.bodyId, &shapeDef, &box);
+    }
+  }
+  m_PendingBodies.clear();
+}
+
 // template<typename T>
 // T Scene::GetEntityComponent(UUID uuid) {
 //     return m_Registry.get<T>(uuid);
@@ -87,6 +182,7 @@ void Scene::OnUpdate() {
     m_LastFrame = currentFrame;
 
     if (b2World_IsValid(m_PhysicsWorld)) {
+      CreatePendingBodies();
       ApplyPendingForces();
       StepPhysics();
       ProcessContactEvents();
@@ -95,6 +191,7 @@ void Scene::OnUpdate() {
     }
 
     OnScriptUpdate();
+    FlushDestroyQueue();
   }
 }
 
@@ -389,6 +486,9 @@ void Scene::RunSceneSimulation() {
 void Scene::PauseSceneSimulation() {
   if (!m_IsSimulationPaused) {
     DestroyPhysicsWorld();
+
+    m_PendingBodies.clear();
+    m_DestroyQueue.clear();
 
     m_IsSimulationPaused = true;
 

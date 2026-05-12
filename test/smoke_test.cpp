@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <thread>
 
 #include <box2d/box2d.h>
 #include <glad/glad.h>
@@ -96,7 +97,9 @@ int main() {
   float startY = physScene->GetEntityComponent<Hamster::Transform>(dynamicId).position.y;
 
   // Step a few frames — gravity should pull the dynamic entity down (+Y is down)
+  // Sleep briefly so glfwGetTime delta is non-zero between frames
   for (int i = 0; i < 10; i++) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
     physScene->OnUpdate();
   }
 
@@ -141,6 +144,7 @@ int main() {
 
   // Step a few frames — force_script calls self.apply_force(500, 0) each frame
   for (int i = 0; i < 5; i++) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
     forceScene->OnUpdate();
   }
 
@@ -155,5 +159,66 @@ int main() {
   }
 
   std::cout << "PASS: Python apply_force executed (x moved to " << forceEndX << ")" << std::endl;
+
+  // --- Runtime entity creation/destruction test ---
+  auto runtimeScene = std::make_shared<Hamster::Scene>(app.GetEventDispatcher().get(), &app);
+
+  // Create a manager entity that will spawn entities via Python
+  Hamster::UUID managerId = runtimeScene->CreateEntity();
+  runtimeScene->AddEntityComponent<Hamster::Behaviour>(managerId);
+  auto spawnScript = std::make_shared<Hamster::HamsterScript>(
+      fixtureDir / "spawn_script.py", "spawn_script");
+  auto &managerBehaviour = runtimeScene->GetEntityComponent<Hamster::Behaviour>(managerId);
+  managerBehaviour.scripts[spawnScript->GetUUID()] = spawnScript;
+
+  app.AddScene(runtimeScene);
+  app.SetSceneActive(runtimeScene->GetUUID());
+  runtimeScene->RunScene();
+
+  std::filesystem::create_directories(markerDir);
+  std::filesystem::remove(markerDir / "spawn_created.ok");
+  std::filesystem::remove(markerDir / "spawn_destroyed.ok");
+
+  runtimeScene->RunSceneSimulation();
+
+  // on_create already ran — check entity was spawned
+  bool spawnCreated = std::filesystem::exists(markerDir / "spawn_created.ok");
+  uint32_t countAfterSpawn = runtimeScene->GetEntityCount();
+
+  if (!spawnCreated) {
+    std::cerr << "FAIL: spawn_script on_create did not run" << std::endl;
+    return 1;
+  }
+
+  // Manager + spawned entity = 2
+  if (countAfterSpawn < 2) {
+    std::cerr << "FAIL: expected at least 2 entities after spawn, got " << countAfterSpawn << std::endl;
+    return 1;
+  }
+
+  std::cout << "PASS: runtime entity created (count: " << countAfterSpawn << ")" << std::endl;
+
+  // Frame 1: on_update runs, destroys the entity (deferred to end of frame)
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  runtimeScene->OnUpdate();
+
+  bool spawnDestroyed = std::filesystem::exists(markerDir / "spawn_destroyed.ok");
+  uint32_t countAfterDestroy = runtimeScene->GetEntityCount();
+
+  if (!spawnDestroyed) {
+    std::cerr << "FAIL: spawn_script on_update did not run" << std::endl;
+    return 1;
+  }
+
+  // Back to 1 (just the manager)
+  if (countAfterDestroy != 1) {
+    std::cerr << "FAIL: expected 1 entity after destroy, got " << countAfterDestroy << std::endl;
+    return 1;
+  }
+
+  std::cout << "PASS: runtime entity destroyed (count: " << countAfterDestroy << ")" << std::endl;
+
+  std::filesystem::remove_all(markerDir);
+
   return 0;
 }

@@ -90,6 +90,14 @@ void HamsterBehaviour::ApplyImpulse(float ix, float iy) {
   }
 }
 
+UUID HamsterBehaviour::CreateEntityRuntime(const std::string &name, const Transform &transform) {
+  return m_Scene->CreateEntityRuntime(name, transform);
+}
+
+void HamsterBehaviour::DestroyEntityRuntime(UUID uuid) {
+  m_Scene->QueueDestroyEntity(uuid);
+}
+
 void HamsterBehaviour::AddCollisionEntity(const std::string &uuid) {
   m_CollisionEntities.insert(uuid);
 

@@ -4,6 +4,7 @@
 
 #include "Components.h"
 #include "Core.h"
+#include "EntityHandle.h"
 #include "HamsterBehaviour.h"
 #include "Input.h"
 #include "Library.h"
@@ -15,6 +16,11 @@ PYBIND11_MODULE(Hamster, m) {
   Vec3Binding(m);
   UUIDBinding(m);
   TransformBinding(m);
+  BodyTypeBinding(m);
+  ColliderShapeBinding(m);
+  SpriteBinding(m);
+  RigidbodyBinding(m);
+  EntityHandleBinding(m);
   KeyCodeEnumBinding(m);
   LoggingEnumBinding(m);
   HamsterBehaviourBinding(m);

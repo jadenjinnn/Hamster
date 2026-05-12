@@ -29,10 +29,14 @@ public:
   Scene(EventDispatcher *dispatcher, Application *app);
 
   UUID CreateEntity();
+  UUID CreateEntityRuntime(const std::string &name, const Transform &transform);
 
   void CreateEntityWithUUID(UUID uuid);
 
   void DestroyEntity(UUID entityUUID);
+  void QueueDestroyEntity(UUID entityUUID);
+  void FlushDestroyQueue();
+  void CreatePendingBodies();
 
   entt::entity &GetEntity(UUID entityUUID) { return m_Entities[entityUUID]; }
 
@@ -107,6 +111,8 @@ public:
 
   std::shared_ptr<Logger> GetClientLogger() { return m_ClientLogger; }
 
+  std::vector<UUID> &GetPendingBodies() { return m_PendingBodies; }
+
 private:
   bool m_IsRunning = false;
   bool m_IsSimulationPaused = true;
@@ -136,6 +142,9 @@ private:
   float m_LastFrame = 0.0f;
 
   b2WorldId m_PhysicsWorld = b2_nullWorldId;
+
+  std::vector<UUID> m_DestroyQueue;
+  std::vector<UUID> m_PendingBodies;
 
   std::shared_ptr<Logger> m_ClientLogger;
 

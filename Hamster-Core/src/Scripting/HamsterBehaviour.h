@@ -63,6 +63,11 @@ public:
   void ApplyForce(float fx, float fy);
   void ApplyImpulse(float ix, float iy);
 
+  UUID CreateEntityRuntime(const std::string &name, const Transform &transform);
+  void DestroyEntityRuntime(UUID uuid);
+
+  std::shared_ptr<Scene> GetScene() const { return m_Scene; }
+
 private:
   UUID m_UUID;
   std::shared_ptr<Scene> m_Scene;
