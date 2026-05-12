@@ -15,6 +15,7 @@
 #include <Hamster.h>
 #include <Renderer/Texture.h>
 
+class AssetBrowser;
 class ColliderEditor;
 namespace Hamster { class AssetManager; }
 
@@ -35,6 +36,7 @@ public:
   void Render() override;
 
   void SetSelectedEntity(Hamster::UUID uuid);
+  void SetAssetBrowser(AssetBrowser *browser) { m_AssetBrowser = browser; }
 
 private:
   void OpenFile(std::filesystem::path path);
@@ -47,6 +49,7 @@ private:
   Hamster::Rigidbody *m_Rigidbody = nullptr;
 
   Hamster::AssetManager *m_AssetManager;
+  AssetBrowser *m_AssetBrowser = nullptr;
   ColliderEditor *m_ColliderEditor = nullptr;
   std::unique_ptr<Hamster::Texture> m_EntityIcon;
 

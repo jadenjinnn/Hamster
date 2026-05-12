@@ -24,8 +24,8 @@ EditorLayer::EditorLayer(Hamster::Application *app,
     m_ColliderEditor = std::make_unique<ColliderEditor>();
     m_PropertyEditor = std::make_unique<PropertyEditor>(m_Dispatcher, m_Scene, assetManager, m_ColliderEditor.get());
     m_Hierarchy = std::make_unique<Hierarchy>(m_Dispatcher, m_Scene, m_Renderer);
-    m_FileBrowser = std::make_unique<FileBrowser>(m_Dispatcher, m_Scene);
     m_AssetBrowser = std::make_unique<AssetBrowser>(m_Dispatcher, m_Scene, assetManager);
+    m_PropertyEditor->SetAssetBrowser(m_AssetBrowser.get());
     m_MenuBar = std::make_unique<MenuBar>(m_Dispatcher, m_Scene);
     m_Console = std::make_unique<Console>(m_Dispatcher, m_Scene);
 }
@@ -767,10 +767,6 @@ void EditorLayer::OnImGuiUpdate() {
         }
 
         m_PropertyEditor->Render();
-    }
-
-    if (m_FileBrowser->IsPanelOpen()) {
-        m_FileBrowser->Render();
     }
 
     if (m_AssetBrowser->IsPanelOpen()) {

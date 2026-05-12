@@ -159,6 +159,17 @@ namespace Hamster {
         return scriptUUID;
     }
 
+    void AssetManager::RemoveScript(UUID uuid) {
+        auto it = m_Scripts.find(uuid);
+        if (it == m_Scripts.end()) return;
+
+        std::filesystem::path path = it->second->GetScriptPath();
+        m_Scripts.erase(it);
+
+        std::error_code ec;
+        std::filesystem::remove(path, ec);
+    }
+
     std::shared_ptr<HamsterScript> AssetManager::GetScript(UUID uuid) {
         return m_Scripts.at(uuid);
     }

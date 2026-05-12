@@ -51,6 +51,8 @@ namespace Hamster {
 
         UUID AddDefaultScript();
 
+        void RemoveScript(UUID uuid);
+
         std::shared_ptr<HamsterScript> GetScript(UUID uuid);
 
         const std::unordered_map<UUID, std::shared_ptr<HamsterScript> > &

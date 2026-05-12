@@ -29,8 +29,6 @@ set(PANELS
         src/Panels/ProjectSelector.h
         src/ProjectHubLayer.cpp src/ProjectHubLayer.h
         src/ProjectRegistry.cpp src/ProjectRegistry.h
-        src/Panels/FileBrowser.cpp
-        src/Panels/FileBrowser.h
         src/Panels/AssetBrowser.cpp
         src/Panels/AssetBrowser.h
         src/Panels/Console.h src/Panels/Console.cpp

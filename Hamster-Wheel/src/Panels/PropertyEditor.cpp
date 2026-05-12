@@ -12,6 +12,7 @@
 
 #include <box2d/box2d.h>
 
+#include "AssetBrowser.h"
 #include "ColliderEditor.h"
 #include "Theme/IconsFontAwesome6.h"
 #include "Theme/HamsterTheme.h"
@@ -250,15 +251,14 @@ void PropertyEditor::Render() {
     Hamster::UUID removeScriptUUID = Hamster::UUID::GetNil();
 
     for (auto &[uuid, script] : m_Behaviour->scripts) {
-      if (ImGui::Button(script->GetName().c_str())) {
+      std::string uuidStr = boost::uuids::to_string(uuid.GetUUID());
+      std::string btnId = script->GetName() + "##" + uuidStr;
+      if (ImGui::Button(btnId.c_str())) {
         OpenFile(script->GetScriptPath());
       };
 
-      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
-        ImGui::BeginPopup("Script Actions");
-      }
-
-      if (ImGui::BeginPopupContextItem()) {
+      std::string popupId = "##ScriptCtx_" + uuidStr;
+      if (ImGui::BeginPopupContextItem(popupId.c_str())) {
         if (ImGui::Selectable("Remove")) {
           removeScriptUUID = uuid;
         }
@@ -281,6 +281,19 @@ void PropertyEditor::Render() {
     }
 
     if (ImGui::BeginPopup("Add Script")) {
+      if (ImGui::Selectable(ICON_FA_PLUS "  New Script")) {
+        Hamster::UUID newId = m_AssetManager->AddDefaultScript();
+        auto newScript = m_AssetManager->GetScript(newId);
+        m_Behaviour->scripts.emplace(newId, newScript);
+        if (m_AssetBrowser) {
+          m_AssetBrowser->StartRename(newId);
+        }
+      }
+
+      if (m_AssetManager->GetScriptCount() > 0) {
+        ImGui::Separator();
+      }
+
       for (const auto &[uuid, script] : m_AssetManager->GetScriptMap()) {
         if (m_Behaviour->scripts.count(uuid) == 0) {
           if (ImGui::Selectable(script->GetName().c_str())) {
