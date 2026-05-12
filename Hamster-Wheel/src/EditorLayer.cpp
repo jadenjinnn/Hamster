@@ -464,6 +464,19 @@ void EditorLayer::OnImGuiUpdate() {
         ImGui::PopStyleVar(2);
     }
 
+    // FPS counter — top-right of viewport, visible only during simulation
+    if (m_Scene->IsSceneRunning()) {
+        char fpsBuf[32];
+        snprintf(fpsBuf, sizeof(fpsBuf), "%.0f FPS", ImGui::GetIO().Framerate);
+        ImVec2 textSize = ImGui::CalcTextSize(fpsBuf);
+        float fpsX = pos.x + m_LevelEditorAvailRegion.x - textSize.x - 12.0f;
+        float fpsY = pos.y + 12.0f;
+        ImDrawList *dl = ImGui::GetWindowDrawList();
+        dl->AddRectFilled({fpsX - 6, fpsY - 3}, {fpsX + textSize.x + 6, fpsY + textSize.y + 3},
+                          IM_COL32(0, 0, 0, 140), 4.0f);
+        dl->AddText({fpsX, fpsY}, IM_COL32(255, 255, 255, 220), fpsBuf);
+    }
+
     // Dot grid overlay
     {
         ImDrawList *drawList = ImGui::GetWindowDrawList();
