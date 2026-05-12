@@ -11,6 +11,7 @@ Hamster is a game engine that is intended to be used in the classroom to teach b
 - **Project hub redesign**: fullscreen card-grid hub with top bar, search, template-based create modal, and open-project flow
 - **Project registry**: persistent project list with create, open, rename, and delete from the hub
 - **Box2D physics**: gravity, velocity, forces/impulses, body types (static/dynamic/kinematic), box and circle colliders with density, friction, restitution, and gravity scale
+- **Collider editor**: visual editor for adjusting collider offset and size independently from sprite bounds, with drag handles for box and circle shapes
 
 ## Getting Started
 To get started, follow the documentation at https://doritothepug.github.io/Hamster

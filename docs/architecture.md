@@ -24,7 +24,7 @@ Hamster is a Windows-targeted 2D game engine with an embedded Python scripting l
 - `Hamster-Py/src/` — pybind11 bindings: `main.cpp` (module entry point), `HamsterBehaviour.h` (trampoline + binding), `Library.h` (vec2/vec3), `Core.h` (Scene/Application/EventDispatcher — opaque), `Input.h` (KeyCodes enum), `UUID.h`, `Log.h`
 - `Hamster-Wheel/src/` — `HamsterWheelApp.cpp` (main), `EditorLayer` (scene viewport + entity picking + play/pause/stop overlay), `ProjectHubLayer` (project open/create flow + card grid with CRUD), `ProjectRegistry` (persistent JSON project list at `%APPDATA%/Hamster/projects.json`)
 - `Hamster-Wheel/src/Theme/` — `HamsterTheme` (centralized ImGui color/style/font config, applies Figma-inspired dark theme with Inter font + Font Awesome icons)
-- `Hamster-Wheel/src/Panels/` — `Hierarchy`, `PropertyEditor`, `FileBrowser`, `AssetBrowser`, `Console`, `MenuBar`, `ProjectSelector`, `ProjectCreator`, `RenameModal`
+- `Hamster-Wheel/src/Panels/` — `Hierarchy`, `PropertyEditor`, `FileBrowser`, `AssetBrowser`, `Console`, `MenuBar`, `ProjectSelector`, `ProjectCreator`, `RenameModal`, `ColliderEditor`
 
 ## Main loop
 
