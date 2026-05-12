@@ -324,6 +324,32 @@ void EditorLayer::OnUpdate() {
     glViewport(0, 0, m_ViewportWidth, m_ViewportHeight);
 
     m_Renderer->Clear();
+
+    // Dot grid — rendered into the framebuffer so it sits behind all sprites
+    {
+        const float gridSpacing = 20.0f;
+        const float dotSize = 2.0f;
+        const glm::vec3 dotColor = {0.25f, 0.25f, 0.25f};
+
+        glm::vec2 camOffset = m_Renderer->GetCameraOffset();
+        float zoom = m_Renderer->GetZoom();
+
+        float worldLeft = camOffset.x;
+        float worldTop = camOffset.y;
+        float worldRight = camOffset.x + static_cast<float>(m_ViewportWidth) / zoom;
+        float worldBottom = camOffset.y + static_cast<float>(m_ViewportHeight) / zoom;
+
+        float startX = std::floor(worldLeft / gridSpacing) * gridSpacing;
+        float startY = std::floor(worldTop / gridSpacing) * gridSpacing;
+
+        for (float wy = startY; wy <= worldBottom; wy += gridSpacing) {
+            for (float wx = startX; wx <= worldRight; wx += gridSpacing) {
+                m_Renderer->DrawFlat({wx - dotSize * 0.5f, wy - dotSize * 0.5f},
+                                     {dotSize, dotSize}, 0.0f, dotColor);
+            }
+        }
+    }
+
     m_Scene->OnRender(false);
 
     entt::entity selectedEntity = m_Hierarchy->GetSelectedEntity();
@@ -475,43 +501,6 @@ void EditorLayer::OnImGuiUpdate() {
         dl->AddRectFilled({fpsX - 6, fpsY - 3}, {fpsX + textSize.x + 6, fpsY + textSize.y + 3},
                           IM_COL32(0, 0, 0, 140), 4.0f);
         dl->AddText({fpsX, fpsY}, IM_COL32(255, 255, 255, 220), fpsBuf);
-    }
-
-    // Dot grid overlay
-    {
-        ImDrawList *drawList = ImGui::GetWindowDrawList();
-        const float gridSpacing = 20.0f;
-
-        glm::vec2 camOffset = m_Renderer->GetCameraOffset();
-        float zoom = m_Renderer->GetZoom();
-
-        float dotRadius = 1.5f * zoom;
-        if (dotRadius < 0.5f) dotRadius = 0.5f;
-        if (dotRadius > 2.0f) dotRadius = 2.0f;
-        int alpha = static_cast<int>(80 * zoom);
-        if (alpha < 20) alpha = 20;
-        if (alpha > 80) alpha = 80;
-        const ImU32 dotColor = IM_COL32(255, 255, 255, alpha);
-
-        float worldLeft = camOffset.x;
-        float worldTop = camOffset.y;
-        float worldRight = camOffset.x + m_LevelEditorAvailRegion.x / zoom;
-        float worldBottom = camOffset.y + m_LevelEditorAvailRegion.y / zoom;
-
-        float startX = std::floor(worldLeft / gridSpacing) * gridSpacing;
-        float startY = std::floor(worldTop / gridSpacing) * gridSpacing;
-
-        for (float wy = startY; wy <= worldBottom; wy += gridSpacing) {
-            for (float wx = startX; wx <= worldRight; wx += gridSpacing) {
-                float screenX = pos.x + (wx - camOffset.x) * zoom;
-                float screenY = pos.y + (wy - camOffset.y) * zoom;
-
-                if (screenX >= pos.x && screenX <= pos.x + m_LevelEditorAvailRegion.x &&
-                    screenY >= pos.y && screenY <= pos.y + m_LevelEditorAvailRegion.y) {
-                    drawList->AddCircleFilled(ImVec2(screenX, screenY), dotRadius, dotColor);
-                }
-            }
-        }
     }
 
     // Zoom slider overlay — bottom-right, pill track with magnifying glass icon
