@@ -43,5 +43,6 @@ void HamsterBehaviourBinding(pybind11::module_ m) {
       .def_property_readonly("velocity",
                              &Hamster::HamsterBehaviour::GetVelocity)
       .def("apply_force", &Hamster::HamsterBehaviour::ApplyForce)
-      .def("apply_impulse", &Hamster::HamsterBehaviour::ApplyImpulse);
+      .def("apply_impulse", &Hamster::HamsterBehaviour::ApplyImpulse)
+      .def("set_velocity", &Hamster::HamsterBehaviour::SetVelocity);
 }

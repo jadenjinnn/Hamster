@@ -72,6 +72,8 @@ struct Rigidbody {
   b2BodyId bodyId = b2_nullBodyId;
   glm::vec2 pendingForce = glm::vec2(0.0f);
   glm::vec2 pendingImpulse = glm::vec2(0.0f);
+  glm::vec2 pendingVelocity = glm::vec2(0.0f);
+  bool hasPendingVelocity = false;
   glm::vec2 cachedVelocity = glm::vec2(0.0f);
 };
 

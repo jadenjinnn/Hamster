@@ -219,6 +219,14 @@ void Scene::ApplyPendingForces() {
     if (!b2Body_IsValid(rb.bodyId))
       return;
 
+    if (rb.hasPendingVelocity) {
+      b2Vec2 vel = {rb.pendingVelocity.x / PIXELS_PER_METER,
+                    rb.pendingVelocity.y / PIXELS_PER_METER};
+      b2Body_SetLinearVelocity(rb.bodyId, vel);
+      rb.hasPendingVelocity = false;
+      rb.pendingVelocity = {0.0f, 0.0f};
+    }
+
     if (rb.pendingForce.x != 0.0f || rb.pendingForce.y != 0.0f) {
       b2Vec2 force = {rb.pendingForce.x, rb.pendingForce.y};
       b2Body_ApplyForceToCenter(rb.bodyId, force, true);

@@ -71,6 +71,13 @@ glm::vec2 HamsterBehaviour::GetVelocity() const {
   return {0.0f, 0.0f};
 }
 
+void HamsterBehaviour::SetVelocity(float vx, float vy) {
+  if (m_Rigidbody) {
+    m_Rigidbody->pendingVelocity = glm::vec2(vx, vy);
+    m_Rigidbody->hasPendingVelocity = true;
+  }
+}
+
 void HamsterBehaviour::ApplyForce(float fx, float fy) {
   if (m_Rigidbody) {
     m_Rigidbody->pendingForce += glm::vec2(fx, fy);
