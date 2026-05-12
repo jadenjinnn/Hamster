@@ -15,15 +15,18 @@
 #include <Hamster.h>
 #include <Renderer/Texture.h>
 
+class ColliderEditor;
 namespace Hamster { class AssetManager; }
 
 class PropertyEditor : public Hamster::Panel {
 public:
   PropertyEditor(Hamster::EventDispatcher *dispatcher,
                  std::shared_ptr<Hamster::Scene> scene,
-                 Hamster::AssetManager *assetManager)
+                 Hamster::AssetManager *assetManager,
+                 ColliderEditor *colliderEditor)
       : Hamster::Panel(dispatcher, scene, true),
-        m_AssetManager(assetManager) {
+        m_AssetManager(assetManager),
+        m_ColliderEditor(colliderEditor) {
     m_EntityIcon = std::make_unique<Hamster::Texture>(
         Hamster::Application::GetExecutablePath() +
         "/../share/Resources/Hamster-Wheel/Resources/Icons/hamster.png");
@@ -44,6 +47,7 @@ private:
   Hamster::Rigidbody *m_Rigidbody = nullptr;
 
   Hamster::AssetManager *m_AssetManager;
+  ColliderEditor *m_ColliderEditor = nullptr;
   std::unique_ptr<Hamster::Texture> m_EntityIcon;
 
   std::shared_ptr<RenameModal> m_RenameModal;

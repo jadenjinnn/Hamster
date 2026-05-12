@@ -12,6 +12,7 @@
 
 #include <box2d/box2d.h>
 
+#include "ColliderEditor.h"
 #include "Theme/IconsFontAwesome6.h"
 #include "Theme/HamsterTheme.h"
 
@@ -357,6 +358,13 @@ void PropertyEditor::Render() {
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-1);
     ImGui::DragFloat("##gravityscale", &m_Rigidbody->gravityScale, 0.05f, -10.0f, 10.0f);
+
+    ImGui::Dummy({0, 6});
+    if (ImGui::Button(ICON_FA_VECTOR_SQUARE "  Edit Collider")) {
+      if (m_ColliderEditor) {
+        m_ColliderEditor->Open(m_SelectedEntity, m_Scene);
+      }
+    }
   }
 
   ImGui::Dummy({0, 16});
