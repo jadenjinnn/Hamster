@@ -148,6 +148,11 @@ void SceneSerialiser::SerialiseEntity(std::ostream &out,
     out.write(reinterpret_cast<const char *>(&rb.friction), sizeof(rb.friction));
     out.write(reinterpret_cast<const char *>(&rb.restitution), sizeof(rb.restitution));
     out.write(reinterpret_cast<const char *>(&rb.gravityScale), sizeof(rb.gravityScale));
+
+    int colliderId = static_cast<int>(Collider_ID);
+    out.write(reinterpret_cast<const char *>(&colliderId), sizeof(colliderId));
+    SerialiseVec2(out, rb.colliderOffset);
+    SerialiseVec2(out, rb.colliderSize);
   }
 
   if (m_Scene->EntityHasComponent<Behaviour>(entity_uuid)) {
@@ -263,6 +268,18 @@ UUID SceneSerialiser::DeserialiseEntity(std::istream &in) {
 
         behaviour.scripts.emplace(scriptUUID,
                                   m_AssetManager->GetScript(scriptUUID));
+      }
+
+      break;
+    }
+    case Collider_ID: {
+      glm::vec2 offset = DeserialiseVec2(in);
+      glm::vec2 size = DeserialiseVec2(in);
+
+      if (m_Scene->EntityHasComponent<Rigidbody>(uuid)) {
+        Rigidbody &rb = m_Scene->GetEntityComponent<Rigidbody>(uuid);
+        rb.colliderOffset = offset;
+        rb.colliderSize = size;
       }
 
       break;

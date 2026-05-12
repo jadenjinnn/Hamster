@@ -21,7 +21,8 @@ enum ComponentID {
   Name_ID = 3,
   Rigidbody_ID = 4,
   ID_ID = 5,
-  Behaviour_ID
+  Behaviour_ID,
+  Collider_ID = 7
 };
 
 // Transform component holding all needed transforms, ntities wanting to be
@@ -63,6 +64,9 @@ struct Rigidbody {
   float friction = 0.3f;
   float restitution = 0.0f;
   float gravityScale = 1.0f;
+
+  glm::vec2 colliderOffset = glm::vec2(0.0f);
+  glm::vec2 colliderSize = glm::vec2(0.0f); // (0,0) means "use transform size"
 
   // Runtime only — not serialized
   b2BodyId bodyId = b2_nullBodyId;

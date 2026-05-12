@@ -140,16 +140,22 @@ void Scene::InitPhysicsWorld() {
     shapeDef.restitution = rb.restitution;
     shapeDef.enableContactEvents = true;
 
-    float halfW = std::max(std::abs(transform.size.x) / PIXELS_PER_METER * 0.5f, 0.05f);
-    float halfH = std::max(std::abs(transform.size.y) / PIXELS_PER_METER * 0.5f, 0.05f);
+    glm::vec2 colSize = (rb.colliderSize.x > 0.0f && rb.colliderSize.y > 0.0f)
+        ? rb.colliderSize : transform.size;
+
+    float halfW = std::max(std::abs(colSize.x) / PIXELS_PER_METER * 0.5f, 0.05f);
+    float halfH = std::max(std::abs(colSize.y) / PIXELS_PER_METER * 0.5f, 0.05f);
+
+    b2Vec2 shapeOffset = {rb.colliderOffset.x / PIXELS_PER_METER,
+                          rb.colliderOffset.y / PIXELS_PER_METER};
 
     if (rb.colliderShape == ColliderShape::Circle) {
       b2Circle circle;
-      circle.center = {0.0f, 0.0f};
+      circle.center = shapeOffset;
       circle.radius = std::max(halfW, halfH);
       b2CreateCircleShape(rb.bodyId, &shapeDef, &circle);
     } else {
-      b2Polygon box = b2MakeBox(halfW, halfH);
+      b2Polygon box = b2MakeOffsetBox(halfW, halfH, shapeOffset, 0.0f);
       b2CreatePolygonShape(rb.bodyId, &shapeDef, &box);
     }
   });

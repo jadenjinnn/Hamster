@@ -730,6 +730,8 @@ void EditorLayer::OnImGuiUpdate() {
                     newRb.friction = srcRb.friction;
                     newRb.restitution = srcRb.restitution;
                     newRb.gravityScale = srcRb.gravityScale;
+                    newRb.colliderOffset = srcRb.colliderOffset;
+                    newRb.colliderSize = srcRb.colliderSize;
                     m_Scene->AddEntityComponent<Hamster::Rigidbody>(newUUID, newRb);
                 }
             }
