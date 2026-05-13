@@ -22,7 +22,8 @@ enum ComponentID {
   Rigidbody_ID = 4,
   ID_ID = 5,
   Behaviour_ID,
-  Collider_ID = 7
+  Collider_ID = 7,
+  Animation_ID = 8
 };
 
 // Transform component holding all needed transforms, ntities wanting to be
@@ -81,6 +82,31 @@ struct Rigidbody {
 // the entity
 struct ID {
   UUID uuid;
+};
+
+struct AnimationKeyframe {
+  float time;
+  UUID textureUUID;
+};
+
+struct AnimationData {
+  std::string name;
+  std::vector<AnimationKeyframe> keyframes;
+  float duration = 0.0f;
+};
+
+struct Animation {
+  std::unordered_map<std::string, UUID> animations;
+  std::string defaultAnimation;
+  bool loop = true;
+
+  // Runtime only — not serialized
+  std::string currentAnimation;
+  float currentTime = 0.0f;
+  bool playing = false;
+  bool runtimeLoop = true;
+  std::shared_ptr<Texture> originalTexture = nullptr;
+  std::vector<std::string> completedAnimations;
 };
 
 // Stores a map of scripts and a vector of classes that derive HamsterBehaviour

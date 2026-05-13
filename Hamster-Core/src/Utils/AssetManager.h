@@ -6,6 +6,7 @@
 #include "Renderer/Shader.h"
 #include "Renderer/Texture.h"
 
+#include "Core/Components.h"
 #include "Core/Project.h"
 #include "Scripting/HamsterScript.h"
 
@@ -51,6 +52,7 @@ namespace Hamster {
 
         UUID AddDefaultScript();
 
+        void RemoveTexture(UUID uuid);
         void RemoveScript(UUID uuid);
 
         std::shared_ptr<HamsterScript> GetScript(UUID uuid);
@@ -64,6 +66,23 @@ namespace Hamster {
             return static_cast<uint32_t>(m_Scripts.size());
         }
 
+        UUID AddAnimation(const std::string &name,
+                          const std::vector<AnimationKeyframe> &keyframes);
+
+        void AddAnimation(UUID uuid, const AnimationData &data);
+
+        std::shared_ptr<AnimationData> GetAnimation(UUID uuid);
+
+        void RemoveAnimation(UUID uuid);
+
+        const std::unordered_map<UUID, std::shared_ptr<AnimationData>> &
+        GetAnimationMap() {
+            return m_Animations;
+        }
+
+        void SaveAnimationFile(UUID uuid, const std::filesystem::path &path);
+        UUID LoadAnimationFile(const std::filesystem::path &path);
+
         void Serialise(std::ostream &out);
 
         void Deserialise(std::istream &in, const ProjectConfig &config);
@@ -74,6 +93,7 @@ namespace Hamster {
         std::unordered_map<std::string, std::shared_ptr<Shader> > m_Shaders;
         std::unordered_map<UUID, std::shared_ptr<Texture> > m_Textures;
         std::unordered_map<UUID, std::shared_ptr<HamsterScript> > m_Scripts;
+        std::unordered_map<UUID, std::shared_ptr<AnimationData>> m_Animations;
         MainThreadEnqueue m_Enqueue;
     };
 } // namespace Hamster

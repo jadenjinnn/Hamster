@@ -34,6 +34,7 @@ set(PANELS
         src/Panels/Console.h src/Panels/Console.cpp
         src/Panels/RenameModal.cpp src/Panels/RenameModal.h
         src/Panels/ColliderEditor.cpp src/Panels/ColliderEditor.h
+        src/Panels/AnimationPanel.cpp src/Panels/AnimationPanel.h
 )
 
 set(THEME

@@ -28,6 +28,7 @@ EditorLayer::EditorLayer(Hamster::Application *app,
     m_PropertyEditor->SetAssetBrowser(m_AssetBrowser.get());
     m_MenuBar = std::make_unique<MenuBar>(m_Dispatcher, m_Scene);
     m_Console = std::make_unique<Console>(m_Dispatcher, m_Scene);
+    m_AnimationPanel = std::make_unique<AnimationPanel>(m_Dispatcher, m_Scene, assetManager);
 }
 
 void EditorLayer::OnAttach() {
@@ -779,6 +780,10 @@ void EditorLayer::OnImGuiUpdate() {
 
     if (m_ColliderEditor->IsOpen()) {
         m_ColliderEditor->Render();
+    }
+
+    if (m_AnimationPanel->IsPanelOpen()) {
+        m_AnimationPanel->Render();
     }
 
     m_MenuBar->Render();

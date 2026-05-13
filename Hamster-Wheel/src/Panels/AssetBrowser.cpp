@@ -234,7 +234,47 @@ void AssetBrowser::Render() {
         ? (ImTextureID)(intptr_t)texture->GetTextureId()
         : (ImTextureID)(intptr_t)m_FileIcon->GetTextureId();
 
-    DrawCard(id.c_str(), texId, texture->GetName().c_str(), m_CardSize);
+    bool isRenaming = !Hamster::UUID::IsNil(m_RenamingUUID) &&
+                      uuid.GetUUID() == m_RenamingUUID.GetUUID();
+
+    if (isRenaming && m_RenameFocusPending) {
+      strncpy(m_RenameBuffer, texture->GetName().c_str(),
+              sizeof(m_RenameBuffer) - 1);
+      m_RenameBuffer[sizeof(m_RenameBuffer) - 1] = '\0';
+    }
+
+    char labelBuf[128];
+    if (!isRenaming) {
+      strncpy(labelBuf, texture->GetName().c_str(), sizeof(labelBuf) - 1);
+      labelBuf[sizeof(labelBuf) - 1] = '\0';
+    }
+
+    bool renameFinished = false;
+    bool rightClicked = DrawCardRenameable(
+        id.c_str(), texId, m_CardSize,
+        isRenaming,
+        isRenaming ? m_RenameBuffer : labelBuf,
+        isRenaming ? sizeof(m_RenameBuffer) : sizeof(labelBuf),
+        isRenaming && m_RenameFocusPending,
+        renameFinished);
+
+    if (isRenaming) {
+      m_RenameFocusPending = false;
+
+      if (renameFinished) {
+        if (strlen(m_RenameBuffer) > 0) {
+          texture->SetName(m_RenameBuffer);
+        }
+        m_RenamingUUID = Hamster::UUID::GetNil();
+      }
+    }
+
+    if (rightClicked && !isRenaming) {
+      m_ContextMenuUUID = uuid;
+      m_ContextMenuIsTexture = true;
+      ImGui::OpenPopup("##TextureContextMenu");
+    }
+
     ImGui::NextColumn();
   }
 
@@ -280,12 +320,26 @@ void AssetBrowser::Render() {
 
     if (rightClicked && !isRenaming) {
       m_ContextMenuUUID = uuid;
+      m_ContextMenuIsTexture = false;
       ImGui::OpenPopup("##ScriptContextMenu");
     }
 
     ImGui::NextColumn();
   }
 
+  // Texture context menu
+  if (ImGui::BeginPopup("##TextureContextMenu")) {
+    if (ImGui::Selectable("Rename")) {
+      StartRename(m_ContextMenuUUID);
+    }
+    if (ImGui::Selectable("Delete")) {
+      m_AssetManager->RemoveTexture(m_ContextMenuUUID);
+      m_ContextMenuUUID = Hamster::UUID::GetNil();
+    }
+    ImGui::EndPopup();
+  }
+
+  // Script context menu
   if (ImGui::BeginPopup("##ScriptContextMenu")) {
     if (ImGui::Selectable("Rename")) {
       StartRename(m_ContextMenuUUID);

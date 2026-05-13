@@ -380,6 +380,85 @@ void PropertyEditor::Render() {
     }
   }
 
+  if (m_Animation != nullptr) {
+    ImGui::Dummy({0, 12});
+    if (ImFont *hdr = HamsterTheme::GetHeaderFont()) ImGui::PushFont(hdr);
+    ImGui::Text(ICON_FA_FILM "  Animation");
+    if (HamsterTheme::GetHeaderFont()) ImGui::PopFont();
+    ImGui::Dummy({0, 6});
+
+    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
+    ImGui::Text("Loop");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+    ImGui::SameLine();
+    ImGui::Checkbox("##animloop", &m_Animation->loop);
+
+    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
+    ImGui::Text("Default");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1);
+
+    if (ImGui::BeginCombo("##defaultanim",
+                          m_Animation->defaultAnimation.empty()
+                              ? "None"
+                              : m_Animation->defaultAnimation.c_str())) {
+      if (ImGui::Selectable("None", m_Animation->defaultAnimation.empty())) {
+        m_Animation->defaultAnimation.clear();
+      }
+      for (auto &[name, uuid] : m_Animation->animations) {
+        bool selected = (name == m_Animation->defaultAnimation);
+        if (ImGui::Selectable(name.c_str(), selected)) {
+          m_Animation->defaultAnimation = name;
+        }
+      }
+      ImGui::EndCombo();
+    }
+
+    ImGui::Dummy({0, 4});
+    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
+    ImGui::Text("Animations");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+
+    std::string removeKey;
+    for (auto &[name, uuid] : m_Animation->animations) {
+      ImGui::BulletText("%s", name.c_str());
+      ImGui::SameLine();
+      std::string removeId = ICON_FA_TRASH "##rm_" + name;
+      if (ImGui::SmallButton(removeId.c_str())) {
+        removeKey = name;
+      }
+    }
+    if (!removeKey.empty()) {
+      m_Animation->animations.erase(removeKey);
+      if (m_Animation->defaultAnimation == removeKey) {
+        m_Animation->defaultAnimation.clear();
+      }
+    }
+
+    if (ImGui::Button(ICON_FA_PLUS "  Add Animation")) {
+      ImGui::OpenPopup("Add Animation Asset");
+    }
+
+    if (ImGui::BeginPopup("Add Animation Asset")) {
+      for (auto &[uuid, animData] : m_AssetManager->GetAnimationMap()) {
+        bool alreadyAdded = false;
+        for (auto &[name, existingUUID] : m_Animation->animations) {
+          if (existingUUID.GetUUID() == uuid.GetUUID()) {
+            alreadyAdded = true;
+            break;
+          }
+        }
+        if (!alreadyAdded) {
+          if (ImGui::Selectable(animData->name.c_str())) {
+            m_Animation->animations[animData->name] = uuid;
+          }
+        }
+      }
+      ImGui::EndPopup();
+    }
+  }
+
   ImGui::Dummy({0, 16});
   float btnWidth = ImGui::CalcTextSize("Add Component").x + ImGui::GetStyle().FramePadding.x * 2;
   ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - btnWidth) * 0.5f + ImGui::GetCursorPosX());
@@ -402,12 +481,16 @@ void PropertyEditor::Render() {
       }
     }
 
-    // if (!m_Scene->EntityHasComponent<Hamster::Script>(m_SelectedEntity)) {
     if (ImGui::Selectable(("Script"))) {
       m_Scene->AddEntityComponent<Hamster::Behaviour>(m_SelectedEntity);
     }
 
-    // }
+    if (!m_Scene->EntityHasComponent<Hamster::Animation>(m_SelectedEntity)) {
+      if (ImGui::Selectable("Animation")) {
+        m_Scene->AddEntityComponent<Hamster::Animation>(m_SelectedEntity);
+        m_Animation = &m_Scene->GetEntityComponent<Hamster::Animation>(m_SelectedEntity);
+      }
+    }
 
     ImGui::EndPopup();
   }
@@ -457,6 +540,13 @@ void PropertyEditor::SetSelectedEntity(Hamster::UUID uuid) {
           &m_Scene->GetEntityComponent<Hamster::Rigidbody>(m_SelectedEntity);
     } else {
       m_Rigidbody = nullptr;
+    }
+
+    if (m_Scene->EntityHasComponent<Hamster::Animation>(m_SelectedEntity)) {
+      m_Animation =
+          &m_Scene->GetEntityComponent<Hamster::Animation>(m_SelectedEntity);
+    } else {
+      m_Animation = nullptr;
     }
   }
 }

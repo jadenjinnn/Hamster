@@ -47,6 +47,7 @@ private:
   Hamster::Sprite *m_Sprite = nullptr;
   Hamster::Behaviour *m_Behaviour = nullptr;
   Hamster::Rigidbody *m_Rigidbody = nullptr;
+  Hamster::Animation *m_Animation = nullptr;
 
   Hamster::AssetManager *m_AssetManager;
   AssetBrowser *m_AssetBrowser = nullptr;

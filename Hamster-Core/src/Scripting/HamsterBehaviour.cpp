@@ -3,6 +3,7 @@
 #include "HamsterBehaviour.h"
 
 #include "Core/Application.h"
+#include "Utils/AssetManager.h"
 
 #include "Events/SceneEvents.h"
 
@@ -15,6 +16,10 @@ HamsterBehaviour::HamsterBehaviour(UUID entityUUID,
 
   if (m_Scene->EntityHasComponent<Rigidbody>(m_UUID)) {
     m_Rigidbody = &m_Scene->GetEntityComponent<Rigidbody>(m_UUID);
+  }
+
+  if (m_Scene->EntityHasComponent<Animation>(m_UUID)) {
+    m_Animation = &m_Scene->GetEntityComponent<Animation>(m_UUID);
   }
 
   m_KeyPressedHandle = app->GetEventDispatcher()->Subscribe(
@@ -96,6 +101,43 @@ UUID HamsterBehaviour::CreateEntityRuntime(const std::string &name, const Transf
 
 void HamsterBehaviour::DestroyEntityRuntime(UUID uuid) {
   m_Scene->QueueDestroyEntity(uuid);
+}
+
+void HamsterBehaviour::Animate(const std::string &name) {
+  if (!m_Animation) {
+    throw pybind11::value_error("Entity has no Animation component");
+  }
+
+  Animate(name, m_Animation->loop);
+}
+
+void HamsterBehaviour::Animate(const std::string &name, bool loop) {
+  if (!m_Animation) {
+    throw pybind11::value_error("Entity has no Animation component");
+  }
+
+  auto it = m_Animation->animations.find(name);
+  if (it == m_Animation->animations.end()) {
+    throw pybind11::value_error("Animation '" + name + "' not found on this entity");
+  }
+
+  m_Animation->currentAnimation = name;
+  m_Animation->currentTime = 0.0f;
+  m_Animation->playing = true;
+  m_Animation->runtimeLoop = loop;
+}
+
+void HamsterBehaviour::StopAnimation() {
+  if (m_Animation) {
+    m_Animation->playing = false;
+  }
+}
+
+bool HamsterBehaviour::IsAnimating() const {
+  if (m_Animation) {
+    return m_Animation->playing;
+  }
+  return false;
 }
 
 void HamsterBehaviour::AddCollisionEntity(const std::string &uuid) {

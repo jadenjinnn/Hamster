@@ -36,6 +36,7 @@ private:
   bool m_RenameFocusPending = false;
 
   Hamster::UUID m_ContextMenuUUID = Hamster::UUID::GetNil();
+  bool m_ContextMenuIsTexture = false;
 };
 
 #endif // ASSETBROWSER_H

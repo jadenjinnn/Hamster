@@ -21,6 +21,19 @@ namespace Hamster {
     UUID& uuidA;
     UUID& uuidB;
   };
+  class AnimationCompletedEvent : public Event {
+  public:
+    AnimationCompletedEvent(UUID entityUUID, std::string animationName)
+        : m_EntityUUID(entityUUID), m_AnimationName(std::move(animationName)) {}
+
+    [[nodiscard]] UUID GetEntityUUID() const { return m_EntityUUID; }
+    [[nodiscard]] const std::string &GetAnimationName() const { return m_AnimationName; }
+
+    BIND_EVENT_TYPE(AnimationCompleted);
+  private:
+    UUID m_EntityUUID;
+    std::string m_AnimationName;
+  };
 } // namespace Hamster
 
 #endif // SCENEEVENTS_H

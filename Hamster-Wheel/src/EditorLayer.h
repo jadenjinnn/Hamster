@@ -22,6 +22,7 @@
 #include "Panels/MenuBar.h"
 #include "Panels/PropertyEditor.h"
 #include "Panels/ColliderEditor.h"
+#include "Panels/AnimationPanel.h"
 #include "Panels/RenameModal.h"
 #include "Theme/IconsFontAwesome6.h"
 
@@ -58,6 +59,7 @@ private:
 
   std::unique_ptr<MenuBar> m_MenuBar;
   std::unique_ptr<ColliderEditor> m_ColliderEditor;
+  std::unique_ptr<AnimationPanel> m_AnimationPanel;
 
   void FramebufferSizeChanged(Hamster::FramebufferResizeEvent &e);
 

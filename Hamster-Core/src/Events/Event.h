@@ -28,7 +28,8 @@ enum EventType {
   SceneSimulationPaused,
 
   // Game Events
-  Collision
+  Collision,
+  AnimationCompleted
 };
 
 class Event {

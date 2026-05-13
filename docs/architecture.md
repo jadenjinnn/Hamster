@@ -4,7 +4,7 @@
 
 ## One-paragraph overview
 
-Hamster is a Windows-targeted 2D game engine with an embedded Python scripting layer, designed so that game authors write gameplay logic in Python against a C++ runtime. Three CMake subprojects make up the whole system: **Hamster-Core** (static C++ library — application loop, ECS via EnTT, OpenGL renderer, Box2D 3.x physics, ImGui GUI integration, pybind11 interpreter lifecycle); **Hamster-Py** (a pybind11 extension module that exposes C++ types to Python under the `Hamster` namespace); and **Hamster-Wheel** (the editor executable — ImGui-based scene editor with hierarchy, property editor, asset browser, file browser, console, and project hub). Entities carry Transform, Sprite, Name, Rigidbody, ID, and Behaviour components; the Behaviour component stores instantiated Python objects (subclasses of `HamsterBehaviour`) that receive per-frame callbacks and engine events. A separate runtime-only player (no editor) is planned but not yet implemented.
+Hamster is a Windows-targeted 2D game engine with an embedded Python scripting layer, designed so that game authors write gameplay logic in Python against a C++ runtime. Three CMake subprojects make up the whole system: **Hamster-Core** (static C++ library — application loop, ECS via EnTT, OpenGL renderer, Box2D 3.x physics, ImGui GUI integration, pybind11 interpreter lifecycle); **Hamster-Py** (a pybind11 extension module that exposes C++ types to Python under the `Hamster` namespace); and **Hamster-Wheel** (the editor executable — ImGui-based scene editor with hierarchy, property editor, asset browser, file browser, console, and project hub). Entities carry Transform, Sprite, Name, Rigidbody, ID, Animation, and Behaviour components; the Behaviour component stores instantiated Python objects (subclasses of `HamsterBehaviour`) that receive per-frame callbacks and engine events. A separate runtime-only player (no editor) is planned but not yet implemented.
 
 ## Entry points
 
@@ -14,17 +14,17 @@ Hamster is a Windows-targeted 2D game engine with an embedded Python scripting l
 
 ## Module map
 
-- `Hamster-Core/src/Core/` — `Application` singleton + main loop, `Window` (GLFW wrapper), `LayerStack`, `Scene` + ECS façade, `Project` + `ProjectSerialiser`, `SceneSerialiser`, `UUID`, `Log`/`Logger`, `Components.h` (all component structs)
+- `Hamster-Core/src/Core/` — `Application` singleton + main loop, `Window` (GLFW wrapper), `LayerStack`, `Scene` + ECS façade, `Project` + `ProjectSerialiser`, `SceneSerialiser`, `UUID`, `Log`/`Logger`, `Components.h` (all component structs including `AnimationKeyframe`, `AnimationData`, `Animation`)
 - `Hamster-Core/src/Events/` — `EventType` enum, `Event` base class, `EventDispatcher` (subscribe-only observer), all concrete event types (`WindowEvents`, `ApplicationEvents`, `InputEvents`, `SceneEvents`, `GuiEvents`)
 - `Hamster-Core/src/Renderer/` — `Renderer` (instance owned by Application, OpenGL draw calls, camera/zoom), `Shader`, `Texture`, `FramebufferTexture`, two built-in GLSL shaders (`SpriteShader`, `FlatShader`)
 - `Hamster-Core/src/Physics/` — gutted; Box2D 3.x replaces the old custom AABB system. Physics world lifecycle and stepping live in `Scene`.
 - `Hamster-Core/src/Scripting/` — `Scripting` (interpreter lifecycle, default script generation), `HamsterBehaviour` (C++ base class Python scripts inherit from), `HamsterScript` (Python module loader + class scanner)
 - `Hamster-Core/src/Gui/` — `ImGuiLayer` (begin/end frame wrapper), `Panel` + `Modal` base classes
-- `Hamster-Core/src/Utils/` — `AssetManager` (textures + scripts, UUID-keyed, instance owned by Application), `InputManager` (GLFW key polling)
+- `Hamster-Core/src/Utils/` — `AssetManager` (textures, scripts, and animations — UUID-keyed, instance owned by Application; `.hanim` file I/O), `InputManager` (GLFW key polling)
 - `Hamster-Py/src/` — pybind11 bindings: `main.cpp` (module entry point), `HamsterBehaviour.h` (trampoline + binding), `EntityHandle.h` (runtime entity handle with `add_component`), `Components.h` (Transform/Sprite/Rigidbody/BodyType/ColliderShape bindings), `Library.h` (vec2/vec3), `Core.h` (Scene/Application/EventDispatcher — opaque), `Input.h` (KeyCodes enum), `UUID.h`, `Log.h`
 - `Hamster-Wheel/src/` — `HamsterWheelApp.cpp` (main), `EditorLayer` (scene viewport + entity picking + play/pause/stop overlay), `ProjectHubLayer` (project open/create flow + card grid with CRUD), `ProjectRegistry` (persistent JSON project list at `%APPDATA%/Hamster/projects.json`)
 - `Hamster-Wheel/src/Theme/` — `HamsterTheme` (centralized ImGui color/style/font config, applies Figma-inspired dark theme with Inter font + Font Awesome icons)
-- `Hamster-Wheel/src/Panels/` — `Hierarchy`, `PropertyEditor`, `FileBrowser`, `AssetBrowser`, `Console`, `MenuBar`, `ProjectSelector`, `ProjectCreator`, `RenameModal`, `ColliderEditor`
+- `Hamster-Wheel/src/Panels/` — `Hierarchy`, `PropertyEditor`, `AssetBrowser`, `Console`, `MenuBar`, `ProjectSelector`, `ProjectCreator`, `RenameModal`, `ColliderEditor`, `AnimationPanel`
 
 ## Main loop
 
@@ -41,7 +41,8 @@ Hamster is a Windows-targeted 2D game engine with an embedded Python scripting l
    - `StepPhysics()`: `b2World_Step` with 4 sub-steps
    - `ProcessContactEvents()`: reads `b2World_GetContactEvents`, resolves entity UUIDs via `b2Body_GetUserData`, posts `CollisionEvent`
    - `SyncPhysicsToTransforms()`: copies Box2D body positions/rotations back to Transform components (with pixels-per-meter conversion)
-   - `OnScriptUpdate()`: calls `obj.attr("on_update")(delta_time)` on each Python behaviour — scripts can call `self.apply_force()`, `self.apply_impulse()`, read `self.velocity`
+   - Animation advance: iterates entities with `Animation` + `Sprite`, advances `currentTime`, swaps `Sprite::texture` to the current keyframe's texture, posts `AnimationCompletedEvent` for non-looping animations that finish
+   - `OnScriptUpdate()`: calls `obj.attr("on_update")(delta_time)` on each Python behaviour — scripts can call `self.apply_force()`, `self.apply_impulse()`, read `self.velocity`; dispatches `on_animation_complete` callbacks from the `completedAnimations` queue
    - Python errors are caught; first exception pauses the simulation and logs to the scene's client logger
 8. **`Window::Update`** — `glfwSwapBuffers` + `glfwPollEvents`
 

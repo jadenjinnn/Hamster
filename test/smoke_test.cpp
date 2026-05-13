@@ -11,6 +11,7 @@
 #include "Core/Components.h"
 #include "Core/Scene.h"
 #include "Scripting/HamsterScript.h"
+#include "Utils/AssetManager.h"
 
 int main() {
   std::filesystem::path fixtureDir = SMOKE_TEST_FIXTURE_DIR;
@@ -219,6 +220,86 @@ int main() {
   std::cout << "PASS: runtime entity destroyed (count: " << countAfterDestroy << ")" << std::endl;
 
   std::filesystem::remove_all(markerDir);
+
+  // --- Animation system test ---
+  auto animScene = std::make_shared<Hamster::Scene>(app.GetEventDispatcher().get(), &app);
+
+  auto *am = app.GetAssetManager();
+
+  // Create two dummy textures with unique UUIDs (no GL data needed for pointer comparison)
+  Hamster::UUID tex1UUID;
+  Hamster::UUID tex2UUID;
+  am->AddTexture(tex1UUID, "dummy1", "frame1");
+  am->AddTexture(tex2UUID, "dummy2", "frame2");
+
+  // Create animation data: 2 keyframes, frame1 at 0s, frame2 at 0.1s
+  std::vector<Hamster::AnimationKeyframe> keyframes = {
+      {0.0f, tex1UUID},
+      {0.1f, tex2UUID}
+  };
+  Hamster::UUID animDataUUID = am->AddAnimation("TestWalk", keyframes);
+
+  // Create entity with Sprite + Animation
+  Hamster::UUID animEntityId = animScene->CreateEntity();
+  animScene->AddEntityComponent<Hamster::Sprite>(animEntityId, glm::vec3(1.0f));
+  auto &animEntitySprite = animScene->GetEntityComponent<Hamster::Sprite>(animEntityId);
+
+  Hamster::Animation animComp;
+  animComp.animations["Walk"] = animDataUUID;
+  animComp.defaultAnimation = "";
+  animComp.loop = false;
+  animScene->AddEntityComponent<Hamster::Animation>(animEntityId, animComp);
+
+  app.AddScene(animScene);
+  app.SetSceneActive(animScene->GetUUID());
+  animScene->RunScene();
+  animScene->RunSceneSimulation();
+
+  // Manually start the animation (simulating what Python's self.animate("Walk") does)
+  auto &animC = animScene->GetEntityComponent<Hamster::Animation>(animEntityId);
+  animC.currentAnimation = "Walk";
+  animC.currentTime = 0.0f;
+  animC.playing = true;
+  animC.runtimeLoop = false;
+
+  // Frame 1: should show frame1 texture (time starts at 0)
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  animScene->OnUpdate();
+
+  auto &spriteAfter1 = animScene->GetEntityComponent<Hamster::Sprite>(animEntityId);
+  // After first update, sprite should have a texture from the animation
+  // (tex1 at time 0, or tex2 if enough time passed)
+
+  // Step several frames to get past 0.1s
+  for (int i = 0; i < 10; i++) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    animScene->OnUpdate();
+  }
+
+  auto &animAfter = animScene->GetEntityComponent<Hamster::Animation>(animEntityId);
+  auto &spriteAfter = animScene->GetEntityComponent<Hamster::Sprite>(animEntityId);
+
+  // Non-looping animation should have stopped
+  if (animAfter.playing) {
+    std::cerr << "FAIL: non-looping animation still playing after duration elapsed" << std::endl;
+    return 1;
+  }
+
+  // Sprite should be showing the last keyframe's texture (tex2)
+  auto tex2FromAM = am->GetTexture(tex2UUID);
+  if (spriteAfter.texture != tex2FromAM) {
+    std::cerr << "FAIL: sprite texture not swapped to last keyframe" << std::endl;
+    return 1;
+  }
+
+  // Check that AnimationCompleted event was posted (completedAnimations should have been populated)
+  // Since we already ran OnScriptUpdate (which clears it), check that playing is false
+  if (!animAfter.completedAnimations.empty()) {
+    std::cerr << "FAIL: completedAnimations should be cleared after OnScriptUpdate" << std::endl;
+    return 1;
+  }
+
+  std::cout << "PASS: animation played, stopped on last frame, sprite swapped correctly" << std::endl;
 
   return 0;
 }

@@ -63,6 +63,11 @@ public:
   void ApplyForce(float fx, float fy);
   void ApplyImpulse(float ix, float iy);
 
+  void Animate(const std::string &name);
+  void Animate(const std::string &name, bool loop);
+  void StopAnimation();
+  bool IsAnimating() const;
+
   UUID CreateEntityRuntime(const std::string &name, const Transform &transform);
   void DestroyEntityRuntime(UUID uuid);
 
@@ -81,6 +86,8 @@ private:
 
   bool m_Colliding = false;
   std::set<std::string> m_CollisionEntities;
+
+  Animation *m_Animation = nullptr;
 
   SubscriptionHandle m_KeyPressedHandle = 0;
   SubscriptionHandle m_KeyReleasedHandle = 0;

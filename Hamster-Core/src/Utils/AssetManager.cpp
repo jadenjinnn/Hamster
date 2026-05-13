@@ -159,6 +159,10 @@ namespace Hamster {
         return scriptUUID;
     }
 
+    void AssetManager::RemoveTexture(UUID uuid) {
+        m_Textures.erase(uuid);
+    }
+
     void AssetManager::RemoveScript(UUID uuid) {
         auto it = m_Scripts.find(uuid);
         if (it == m_Scripts.end()) return;
@@ -172,6 +176,91 @@ namespace Hamster {
 
     std::shared_ptr<HamsterScript> AssetManager::GetScript(UUID uuid) {
         return m_Scripts.at(uuid);
+    }
+
+    UUID AssetManager::AddAnimation(const std::string &name,
+                                     const std::vector<AnimationKeyframe> &keyframes) {
+        auto data = std::make_shared<AnimationData>();
+        data->name = name;
+        data->keyframes = keyframes;
+        data->duration = keyframes.empty() ? 0.0f : keyframes.back().time;
+
+        UUID uuid;
+        m_Animations.emplace(uuid, data);
+        return uuid;
+    }
+
+    void AssetManager::AddAnimation(UUID uuid, const AnimationData &data) {
+        auto ptr = std::make_shared<AnimationData>(data);
+        m_Animations[uuid] = ptr;
+    }
+
+    std::shared_ptr<AnimationData> AssetManager::GetAnimation(UUID uuid) {
+        return m_Animations.at(uuid);
+    }
+
+    void AssetManager::RemoveAnimation(UUID uuid) {
+        m_Animations.erase(uuid);
+    }
+
+    void AssetManager::SaveAnimationFile(UUID uuid, const std::filesystem::path &path) {
+        auto data = m_Animations.at(uuid);
+
+        std::ofstream out(path, std::ios::binary);
+
+        UUID::Serialise(out, uuid);
+
+        std::size_t nameLen = data->name.size();
+        out.write(reinterpret_cast<const char *>(&nameLen), sizeof(nameLen));
+        out.write(data->name.data(), nameLen);
+
+        uint32_t kfCount = static_cast<uint32_t>(data->keyframes.size());
+        out.write(reinterpret_cast<const char *>(&kfCount), sizeof(kfCount));
+
+        for (auto &kf : data->keyframes) {
+            out.write(reinterpret_cast<const char *>(&kf.time), sizeof(kf.time));
+            UUID::Serialise(out, kf.textureUUID);
+        }
+
+        out.close();
+    }
+
+    UUID AssetManager::LoadAnimationFile(const std::filesystem::path &path) {
+        std::ifstream in(path, std::ios::binary);
+        if (!in.is_open()) {
+            std::cerr << "Failed to open animation file: " << path << std::endl;
+            return UUID::GetNil();
+        }
+
+        UUID uuid = UUID::Deserialise(in);
+
+        std::size_t nameLen;
+        in.read(reinterpret_cast<char *>(&nameLen), sizeof(nameLen));
+        std::string name(nameLen, '\0');
+        in.read(name.data(), nameLen);
+
+        uint32_t kfCount;
+        in.read(reinterpret_cast<char *>(&kfCount), sizeof(kfCount));
+
+        std::vector<AnimationKeyframe> keyframes;
+        keyframes.reserve(kfCount);
+
+        for (uint32_t i = 0; i < kfCount; i++) {
+            AnimationKeyframe kf;
+            in.read(reinterpret_cast<char *>(&kf.time), sizeof(kf.time));
+            kf.textureUUID = UUID::Deserialise(in);
+            keyframes.push_back(kf);
+        }
+
+        in.close();
+
+        AnimationData data;
+        data.name = name;
+        data.keyframes = keyframes;
+        data.duration = keyframes.empty() ? 0.0f : keyframes.back().time;
+
+        AddAnimation(uuid, data);
+        return uuid;
     }
 
     void AssetManager::Serialise(std::ostream &out) {
@@ -231,6 +320,25 @@ namespace Hamster {
                       sizeof(fileNameStrLength));
             out.write(fileNameStr.data(), fileNameStrLength);
         }
+
+        uint32_t animCount = static_cast<uint32_t>(m_Animations.size());
+        out.write(reinterpret_cast<const char *>(&animCount), sizeof(animCount));
+
+        for (auto const &[uuid, anim] : m_Animations) {
+            UUID::Serialise(out, uuid);
+
+            std::size_t nameLen = anim->name.size();
+            out.write(reinterpret_cast<const char *>(&nameLen), sizeof(nameLen));
+            out.write(anim->name.data(), nameLen);
+
+            uint32_t kfCount = static_cast<uint32_t>(anim->keyframes.size());
+            out.write(reinterpret_cast<const char *>(&kfCount), sizeof(kfCount));
+
+            for (auto &kf : anim->keyframes) {
+                out.write(reinterpret_cast<const char *>(&kf.time), sizeof(kf.time));
+                UUID::Serialise(out, kf.textureUUID);
+            }
+        }
     }
 
     void AssetManager::Deserialise(std::istream &in, const ProjectConfig &config) {
@@ -289,6 +397,38 @@ namespace Hamster {
             in.read(fileNameStr.data(), fileNameLength);
 
             AddScript(uuid, path, fileNameStr, scriptNameStr);
+        }
+
+        uint32_t animCount;
+        if (in.read(reinterpret_cast<char *>(&animCount), sizeof(animCount))) {
+            for (uint32_t i = 0; i < animCount; i++) {
+                UUID uuid = UUID::Deserialise(in);
+
+                std::size_t nameLen;
+                in.read(reinterpret_cast<char *>(&nameLen), sizeof(nameLen));
+                std::string name(nameLen, '\0');
+                in.read(name.data(), nameLen);
+
+                uint32_t kfCount;
+                in.read(reinterpret_cast<char *>(&kfCount), sizeof(kfCount));
+
+                std::vector<AnimationKeyframe> keyframes;
+                keyframes.reserve(kfCount);
+
+                for (uint32_t j = 0; j < kfCount; j++) {
+                    AnimationKeyframe kf;
+                    in.read(reinterpret_cast<char *>(&kf.time), sizeof(kf.time));
+                    kf.textureUUID = UUID::Deserialise(in);
+                    keyframes.push_back(kf);
+                }
+
+                AnimationData data;
+                data.name = name;
+                data.keyframes = keyframes;
+                data.duration = keyframes.empty() ? 0.0f : keyframes.back().time;
+
+                AddAnimation(uuid, data);
+            }
         }
     }
 } // namespace Hamster

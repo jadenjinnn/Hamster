@@ -52,5 +52,16 @@ void HamsterBehaviourBinding(pybind11::module_ m) {
           Hamster::UUID uuid = self.CreateEntityRuntime(name, transform);
           return EntityHandle{uuid, self.GetScene()};
       })
-      .def("destroy_entity", &Hamster::HamsterBehaviour::DestroyEntityRuntime);
+      .def("destroy_entity", &Hamster::HamsterBehaviour::DestroyEntityRuntime)
+      .def("animate", [](Hamster::HamsterBehaviour &self,
+                         const std::string &name, pybind11::object loop_obj) {
+          if (loop_obj.is_none()) {
+            self.Animate(name);
+          } else {
+            self.Animate(name, loop_obj.cast<bool>());
+          }
+      }, pybind11::arg("name"), pybind11::arg("loop") = pybind11::none())
+      .def("stop_animation", &Hamster::HamsterBehaviour::StopAnimation)
+      .def_property_readonly("is_animating",
+                             &Hamster::HamsterBehaviour::IsAnimating);
 }

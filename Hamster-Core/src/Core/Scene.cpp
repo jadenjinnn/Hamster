@@ -13,6 +13,7 @@
 #include "Project.h"
 #include "Renderer/Renderer.h"
 #include "SceneSerialiser.h"
+#include "Utils/AssetManager.h"
 
 #include "Scripting/HamsterBehaviour.h"
 #include "Scripting/Scripting.h"
@@ -190,6 +191,51 @@ void Scene::OnUpdate() {
       CacheVelocities();
     }
 
+    auto *assetManager = m_App->GetAssetManager();
+    auto animView = m_Registry.view<Animation, Sprite, ID>();
+    animView.each([this, assetManager](auto &anim, auto &sprite, auto &id) {
+      if (!anim.playing || anim.currentAnimation.empty())
+        return;
+
+      auto it = anim.animations.find(anim.currentAnimation);
+      if (it == anim.animations.end())
+        return;
+
+      auto animData = assetManager->GetAnimation(it->second);
+      if (!animData || animData->keyframes.empty())
+        return;
+
+      anim.currentTime += m_DeltaTime;
+
+      if (anim.currentTime >= animData->duration) {
+        if (anim.runtimeLoop) {
+          anim.currentTime = std::fmod(anim.currentTime, animData->duration);
+        } else {
+          anim.currentTime = animData->duration;
+          anim.playing = false;
+          anim.completedAnimations.push_back(anim.currentAnimation);
+
+          AnimationCompletedEvent e(id.uuid, anim.currentAnimation);
+          m_Dispatcher->Post<AnimationCompletedEvent>(e);
+        }
+      }
+
+      // Find the last keyframe with time <= currentTime
+      const AnimationKeyframe *current = &animData->keyframes[0];
+      for (auto &kf : animData->keyframes) {
+        if (kf.time <= anim.currentTime)
+          current = &kf;
+        else
+          break;
+      }
+
+      try {
+        sprite.texture = assetManager->GetTexture(current->textureUUID);
+      } catch (const std::out_of_range &) {
+        // texture not loaded — keep current sprite
+      }
+    });
+
     OnScriptUpdate();
     FlushDestroyQueue();
   }
@@ -351,16 +397,26 @@ void Scene::CacheVelocities() {
 }
 
 void Scene::OnScriptUpdate() {
-  auto view = m_Registry.view<Behaviour>();
+  auto view = m_Registry.view<Behaviour, ID>();
 
   bool pythonError = false;
 
-  view.each([this, &pythonError](auto &behaviour) mutable {
+  view.each([this, &pythonError](auto &behaviour, auto &id) mutable {
     for (auto &obj : behaviour.pyObjects) {
       try {
         obj.attr("on_update")(m_DeltaTime);
 
         obj.attr("reset_input")();
+
+        // Dispatch animation completion callbacks
+        if (EntityHasComponent<Animation>(id.uuid)) {
+          auto &anim = GetEntityComponent<Animation>(id.uuid);
+          for (auto &animName : anim.completedAnimations) {
+            if (pybind11::hasattr(obj, "on_animation_complete")) {
+              obj.attr("on_animation_complete")(animName);
+            }
+          }
+        }
       } catch (pybind11::error_already_set &e) {
         pythonError = true;
 
@@ -369,6 +425,12 @@ void Scene::OnScriptUpdate() {
         break;
       }
     }
+  });
+
+  // Clear completed animations after dispatching
+  auto animClearView = m_Registry.view<Animation>();
+  animClearView.each([](auto &anim) {
+    anim.completedAnimations.clear();
   });
 
   if (pythonError) {
@@ -453,6 +515,21 @@ void Scene::RunSceneSimulation() {
     m_IsSimulationPaused = false;
     m_LastFrame = static_cast<float>(glfwGetTime());
 
+    // Snapshot original textures for animated entities
+    auto animView = m_Registry.view<Animation, Sprite>();
+    animView.each([](auto &anim, auto &sprite) {
+      anim.originalTexture = sprite.texture;
+      anim.currentTime = 0.0f;
+      anim.playing = false;
+      anim.currentAnimation.clear();
+
+      if (!anim.defaultAnimation.empty()) {
+        anim.currentAnimation = anim.defaultAnimation;
+        anim.playing = true;
+        anim.runtimeLoop = anim.loop;
+      }
+    });
+
     InitPhysicsWorld();
 
     auto view = m_Registry.view<ID, Behaviour>();
@@ -486,6 +563,18 @@ void Scene::RunSceneSimulation() {
 void Scene::PauseSceneSimulation() {
   if (!m_IsSimulationPaused) {
     DestroyPhysicsWorld();
+
+    // Restore original textures for animated entities
+    auto animView = m_Registry.view<Animation, Sprite>();
+    animView.each([](auto &anim, auto &sprite) {
+      if (anim.originalTexture) {
+        sprite.texture = anim.originalTexture;
+        anim.originalTexture = nullptr;
+      }
+      anim.playing = false;
+      anim.currentTime = 0.0f;
+      anim.currentAnimation.clear();
+    });
 
     m_PendingBodies.clear();
     m_DestroyQueue.clear();

@@ -155,6 +155,30 @@ void SceneSerialiser::SerialiseEntity(std::ostream &out,
     SerialiseVec2(out, rb.colliderSize);
   }
 
+  if (m_Scene->EntityHasComponent<Animation>(entity_uuid)) {
+    int id = static_cast<int>(Animation_ID);
+    out.write(reinterpret_cast<const char *>(&id), sizeof(id));
+
+    Animation &anim = m_Scene->GetEntityComponent<Animation>(entity_uuid);
+
+    uint32_t animCount = static_cast<uint32_t>(anim.animations.size());
+    out.write(reinterpret_cast<const char *>(&animCount), sizeof(animCount));
+
+    for (auto const &[name, uuid] : anim.animations) {
+      std::size_t nameLen = name.size();
+      out.write(reinterpret_cast<const char *>(&nameLen), sizeof(nameLen));
+      out.write(name.data(), nameLen);
+      UUID::Serialise(out, uuid);
+    }
+
+    std::size_t defaultLen = anim.defaultAnimation.size();
+    out.write(reinterpret_cast<const char *>(&defaultLen), sizeof(defaultLen));
+    out.write(anim.defaultAnimation.data(), defaultLen);
+
+    uint8_t loopByte = anim.loop ? 1 : 0;
+    out.write(reinterpret_cast<const char *>(&loopByte), sizeof(loopByte));
+  }
+
   if (m_Scene->EntityHasComponent<Behaviour>(entity_uuid)) {
     int id = static_cast<int>(Behaviour_ID);
 
@@ -269,6 +293,35 @@ UUID SceneSerialiser::DeserialiseEntity(std::istream &in) {
         behaviour.scripts.emplace(scriptUUID,
                                   m_AssetManager->GetScript(scriptUUID));
       }
+
+      break;
+    }
+    case Animation_ID: {
+      uint32_t animCount;
+      in.read(reinterpret_cast<char *>(&animCount), sizeof(animCount));
+
+      Animation anim;
+      for (uint32_t i = 0; i < animCount; i++) {
+        std::size_t nameLen;
+        in.read(reinterpret_cast<char *>(&nameLen), sizeof(nameLen));
+        std::string name(nameLen, '\0');
+        in.read(name.data(), nameLen);
+
+        UUID animUUID = UUID::Deserialise(in);
+        anim.animations[name] = animUUID;
+      }
+
+      std::size_t defaultLen;
+      in.read(reinterpret_cast<char *>(&defaultLen), sizeof(defaultLen));
+      std::string defaultAnim(defaultLen, '\0');
+      in.read(defaultAnim.data(), defaultLen);
+      anim.defaultAnimation = defaultAnim;
+
+      uint8_t loopByte;
+      in.read(reinterpret_cast<char *>(&loopByte), sizeof(loopByte));
+      anim.loop = (loopByte != 0);
+
+      m_Scene->AddEntityComponent<Animation>(uuid, anim);
 
       break;
     }
