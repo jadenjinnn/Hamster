@@ -260,6 +260,35 @@ namespace Hamster {
         }
     }
 
+    void Renderer::DrawHoverOutline(Transform t) {
+        m_FlatShader->use();
+
+        float hw = t.size.x * 0.5f;
+        float hh = t.size.y * 0.5f;
+        float rad = glm::radians(t.rotation);
+
+        glm::vec3 blue(0.45f, 0.72f, 1.0f);
+
+        m_FlatShader->setUniformi("borderMode", 1);
+        m_FlatShader->setUniformf("alpha", 0.45f);
+        float outlinePx = 1.5f;
+        m_FlatShader->setUniformf("borderWidthX", outlinePx / t.size.x);
+        m_FlatShader->setUniformf("borderWidthY", outlinePx / t.size.y);
+        m_FlatShader->setUniformVec3("colour", blue);
+
+        glm::mat4 outlineModel = glm::mat4(1.0f);
+        outlineModel = glm::translate(outlineModel, t.position);
+        outlineModel = glm::translate(outlineModel, glm::vec3(hw, hh, 0.0f));
+        outlineModel = glm::rotate(outlineModel, rad, glm::vec3(0.0f, 0.0f, 1.0f));
+        outlineModel = glm::translate(outlineModel, glm::vec3(-hw, -hh, 0.0f));
+        outlineModel = glm::scale(outlineModel, glm::vec3(t.size, 1.0f));
+
+        m_FlatShader->setUniformMat4("model", outlineModel);
+        glBindVertexArray(m_VAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+    }
+
     void Renderer::UpdateViewMatrix() {
         m_ViewMatrix = glm::ortho(0.0f + m_CameraOffset.x,
                                   static_cast<float>(m_ViewportWidth) / m_Zoom + m_CameraOffset.x,

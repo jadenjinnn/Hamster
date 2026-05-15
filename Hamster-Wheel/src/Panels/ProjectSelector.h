@@ -15,7 +15,8 @@
 
 class ProjectSelector : public Hamster::Panel {
 public:
-    explicit ProjectSelector(Hamster::EventDispatcher *dispatcher) : Hamster::Panel(dispatcher) {
+    explicit ProjectSelector(Hamster::EventDispatcher *dispatcher)
+        : Hamster::Panel(dispatcher, /*defaultOpen*/ false) {
     };
 
     ProjectSelector(Hamster::EventDispatcher *dispatcher,

@@ -28,6 +28,7 @@ namespace Hamster {
     class Application {
     public:
         Application();
+        explicit Application(const WindowProps &props);
 
         ~Application();
 

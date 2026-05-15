@@ -13,12 +13,11 @@ add_subdirectory(Hamster-Py)
 add_subdirectory(Hamster-Wheel)
 add_subdirectory(test)
 
-# add_subdirectory(Hamster-Py/Vendor/pybind11)
-# add_subdirectory(test/pybind11)
+# Hamster-Wheel-old preserved as historical reference; not built.
+# add_subdirectory(Hamster-Wheel-old)
+
 add_subdirectory(Hamster-Core/Vendor/imgui)
 add_subdirectory(Hamster-Core/Vendor/glfw)
 add_subdirectory(Hamster-Core/Vendor/entt)
 add_subdirectory(Hamster-Core/Vendor/box2d)
 add_subdirectory(Hamster-Wheel/Vendor/tinyfiledialogs)
-
-

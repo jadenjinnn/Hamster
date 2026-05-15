@@ -8,9 +8,10 @@ Hamster is a Windows-targeted 2D game engine with an embedded Python scripting l
 
 ## Entry points
 
-- `Hamster-Wheel/src/HamsterWheelApp.cpp::main` — sole binary entry point; creates `Application`, loads the UI font, pushes `ProjectHubLayer`, then calls `Application::Run()`.
-- `ProjectHubLayer` → on `ProjectOpened` event → creates `EditorLayer` and swaps itself out of the layer stack.
+- `Hamster-Wheel/src/main.cpp::main` — sole binary entry point; constructs `Hamster::WindowProps{borderless=true}`, creates the `Application` with it, applies the prototype's theme + fonts, reads `ProjectRegistry` for the most-recently-opened project, calls `Project::Open(...)`, then pushes a single `EditorLayer` and runs.
+- `EditorLayer::OnImGuiUpdate` — owns the custom borderless title bar (logo, File/Edit/View/Build/Help menus, drag/maximise/close), the layout math, and the four positioned panel windows (Property Editor, Level Editor, Hierarchy, Bottom).
 - User-authored `.py` files in the project directory — loaded by `HamsterScript` when the editor's play button is pressed (simulation start).
+- `Hamster-Wheel-old/` — preserved historical reference of the docked-layout editor. Not built; root `CMakeLists.txt` keeps the `add_subdirectory` line commented.
 
 ## Module map
 
@@ -22,9 +23,11 @@ Hamster is a Windows-targeted 2D game engine with an embedded Python scripting l
 - `Hamster-Core/src/Gui/` — `ImGuiLayer` (begin/end frame wrapper), `Panel` + `Modal` base classes
 - `Hamster-Core/src/Utils/` — `AssetManager` (textures, scripts, and animations — UUID-keyed, instance owned by Application; `.hanim` file I/O), `InputManager` (GLFW key polling)
 - `Hamster-Py/src/` — pybind11 bindings: `main.cpp` (module entry point), `HamsterBehaviour.h` (trampoline + binding), `EntityHandle.h` (runtime entity handle with `add_component`), `Components.h` (Transform/Sprite/Rigidbody/BodyType/ColliderShape bindings), `Library.h` (vec2/vec3), `Core.h` (Scene/Application/EventDispatcher — opaque), `Input.h` (KeyCodes enum), `UUID.h`, `Log.h`
-- `Hamster-Wheel/src/` — `HamsterWheelApp.cpp` (main), `EditorLayer` (scene viewport + entity picking + play/pause/stop overlay), `ProjectHubLayer` (project open/create flow + card grid with CRUD), `ProjectRegistry` (persistent JSON project list at `%APPDATA%/Hamster/projects.json`)
-- `Hamster-Wheel/src/Theme/` — `HamsterTheme` (centralized ImGui color/style/font config, applies Figma-inspired dark theme with Inter font + Font Awesome icons)
-- `Hamster-Wheel/src/Panels/` — `Hierarchy`, `PropertyEditor`, `AssetBrowser`, `Console`, `MenuBar`, `ProjectSelector`, `ProjectCreator`, `RenameModal`, `ColliderEditor`, `AnimationPanel`
+- `Hamster-Wheel/src/` — `main.cpp` (entry — borderless WindowProps, ProjectRegistry-driven default project, single `EditorLayer` pushed), `EditorLayer` (custom title bar, layout math, entity picking + drag + context menus, scene viewport blit), `ProjectRegistry` (persistent JSON project list at `%APPDATA%/Hamster/projects.json`), `Theme` + `Panel` (palette / fonts / panel chrome helpers — `DrawHeader`, `DrawTabbedHeader`, `BeginContent`/`EndContent`)
+- `Hamster-Wheel/src/Components/` — reusable UI helpers (`HButton`, `HToolbarButton`, `HCombo`, `HDragFloat`, `HCheckbox`, `SectionHeader`, `SectionSeparator`, `AxisDotInput`) consumed by every panel
+- `Hamster-Wheel/src/Panels/` — `Hierarchy`, `PropertyEditor`, `LevelEditor`, `BottomPanel` (Asset Browser + Animation + Console as tabs), `AssetBrowser`, `AnimationPanel`, `Console`, `ProjectSelector`, `ProjectCreator`, `RenameModal`, `ColliderEditor`
+- `Hamster-Wheel/Resources/` — fonts (Inter-Regular/SemiBold/Bold, Font Awesome 6 solid), icons, logo, sprites, packages folder for the `.pyd` module
+- `Hamster-Wheel-old/` — pre-rewrite editor preserved as reference. Not in any build.
 
 ## Main loop
 

@@ -1,0 +1,884 @@
+#include "ProjectHubLayer.h"
+
+#include <chrono>
+#include <imgui.h>
+#include <iomanip>
+#include <sstream>
+#include <tinyfiledialogs.h>
+
+#include "Theme/HamsterTheme.h"
+#include "Theme/IconsFontAwesome6.h"
+
+static constexpr float kTopBarHeight = 50.0f;
+static constexpr float kHeaderHeight = 90.0f;
+static constexpr float kSidePadding = 32.0f;
+static constexpr float kCardGap = 16.0f;
+static constexpr int kColumns = 4;
+
+static constexpr ImVec4 kGreen = {0.24f, 0.75f, 0.39f, 1.0f};
+static constexpr ImVec4 kGreenHov = {0.30f, 0.82f, 0.45f, 1.0f};
+static constexpr ImVec4 kGreenAct = {0.20f, 0.65f, 0.33f, 1.0f};
+
+ProjectHubLayer::ProjectHubLayer(Hamster::Application *app)
+    : m_App(app), m_Dispatcher(app->GetEventDispatcher().get()) {}
+
+void ProjectHubLayer::OnAttach() {
+  m_Dispatcher->Subscribe(Hamster::ProjectOpened, [this](Hamster::Event &e) {
+    m_EditorLayer = new EditorLayer(m_App, m_App->GetActiveScene());
+    m_App->PushLayer(m_EditorLayer);
+    m_App->PopLayer(this);
+  });
+}
+
+void ProjectHubLayer::OnImGuiUpdate() {
+  m_App->GetRenderer()->Clear();
+
+  const ImGuiViewport *vp = ImGui::GetMainViewport();
+  ImGui::SetNextWindowPos(vp->Pos);
+  ImGui::SetNextWindowSize(vp->Size);
+
+  ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
+                           ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                           ImGuiWindowFlags_NoCollapse |
+                           ImGuiWindowFlags_NoBringToFrontOnFocus |
+                           ImGuiWindowFlags_NoScrollbar |
+                           ImGuiWindowFlags_NoScrollWithMouse;
+
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+  ImGui::Begin("##ProjectHub", nullptr, flags);
+  ImGui::PopStyleVar(2);
+
+  float winW = ImGui::GetContentRegionAvail().x;
+  float winH = ImGui::GetContentRegionAvail().y;
+
+  RenderTopBar(winW);
+  RenderHeader(winW);
+
+  float gridStartY = ImGui::GetCursorScreenPos().y;
+  float gridHeight = winH - kTopBarHeight - kHeaderHeight;
+  RenderCardGrid(winW, gridStartY, gridHeight);
+
+  ImGui::End();
+
+  RenderCreateModal();
+  RenderRenameModal();
+  RenderDeleteConfirmation();
+  RenderMissingProjectDialog();
+}
+
+void ProjectHubLayer::RenderTopBar(float width) {
+  ImVec2 cursor = ImGui::GetCursorScreenPos();
+  ImDrawList *dl = ImGui::GetWindowDrawList();
+
+  dl->AddRectFilled(cursor, ImVec2(cursor.x + width, cursor.y + kTopBarHeight),
+                    IM_COL32(33, 33, 38, 255));
+
+  dl->AddLine(ImVec2(cursor.x, cursor.y + kTopBarHeight),
+              ImVec2(cursor.x + width, cursor.y + kTopBarHeight),
+              IM_COL32(56, 56, 62, 255));
+
+  if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+  ImVec2 brandPos = ImVec2(cursor.x + kSidePadding, cursor.y + 15.0f);
+  dl->AddText(brandPos, IM_COL32(238, 238, 242, 255), "Hamster");
+  if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+
+  float rightX = cursor.x + width - kSidePadding;
+
+  const char *icons[] = {ICON_FA_USER, ICON_FA_GEAR, ICON_FA_CIRCLE_QUESTION,
+                         ICON_FA_BELL};
+  float iconX = rightX;
+  for (int i = 0; i < 4; i++) {
+    ImVec2 textSize = ImGui::CalcTextSize(icons[i]);
+    iconX -= textSize.x;
+    dl->AddText(ImVec2(iconX, cursor.y + 16.0f), IM_COL32(136, 136, 146, 255),
+                icons[i]);
+    iconX -= 20.0f;
+  }
+
+  float btnTextW = ImGui::CalcTextSize("New Project").x;
+  float btnW = btnTextW + 24.0f;
+  float btnH = 30.0f;
+  float btnX = iconX - btnW - 12.0f;
+  float btnY = cursor.y + (kTopBarHeight - btnH) * 0.5f;
+  ImVec2 btnMin = ImVec2(btnX, btnY);
+  ImVec2 btnMax = ImVec2(btnX + btnW, btnY + btnH);
+
+  bool hovered = ImGui::IsMouseHoveringRect(btnMin, btnMax);
+  bool clicked = hovered && ImGui::IsMouseClicked(0);
+  ImU32 btnCol = hovered ? IM_COL32(77, 209, 115, 255)
+                         : IM_COL32(61, 191, 99, 255);
+
+  dl->AddRectFilled(btnMin, btnMax, btnCol, 6.0f);
+  ImVec2 textPos =
+      ImVec2(btnX + (btnW - btnTextW) * 0.5f, btnY + (btnH - 16.0f) * 0.5f);
+  dl->AddText(textPos, IM_COL32(255, 255, 255, 255), "New Project");
+
+  if (clicked)
+    m_ShowCreateModal = true;
+
+  const char *openLabel = ICON_FA_FOLDER_OPEN "  Open Project";
+  float openW = ImGui::CalcTextSize(openLabel).x;
+  float openX = btnX - openW - 20.0f;
+  ImVec2 openMin = ImVec2(openX - 8.0f, btnY);
+  ImVec2 openMax = ImVec2(openX + openW + 8.0f, btnY + btnH);
+
+  bool openHov = ImGui::IsMouseHoveringRect(openMin, openMax);
+  bool openClk = openHov && ImGui::IsMouseClicked(0);
+  if (openHov)
+    dl->AddRectFilled(openMin, openMax, IM_COL32(50, 50, 56, 255), 6.0f);
+  dl->AddText(ImVec2(openX, btnY + (btnH - 16.0f) * 0.5f),
+              IM_COL32(200, 200, 210, 255), openLabel);
+
+  if (openClk)
+    OpenProjectDialog();
+
+  ImGui::SetCursorScreenPos(
+      ImVec2(cursor.x, cursor.y + kTopBarHeight + 1.0f));
+}
+
+void ProjectHubLayer::RenderHeader(float width) {
+  ImVec2 cursor = ImGui::GetCursorScreenPos();
+  ImDrawList *dl = ImGui::GetWindowDrawList();
+
+  float textX = cursor.x + kSidePadding;
+  float textY = cursor.y + 12.0f;
+
+  if (auto *title = HamsterTheme::GetTitleFont()) ImGui::PushFont(title);
+  dl->AddText(ImVec2(textX, textY), IM_COL32(238, 238, 242, 255), "Projects");
+  if (HamsterTheme::GetTitleFont()) ImGui::PopFont();
+
+  dl->AddText(ImVec2(textX, textY + 36.0f), IM_COL32(136, 136, 146, 255),
+              "Manage your active workspaces and recent edits.");
+
+  float searchW = 220.0f;
+  float searchH = 32.0f;
+  float searchX = cursor.x + width - kSidePadding - searchW - 70.0f;
+  float searchY = cursor.y + 16.0f;
+
+  dl->AddRectFilled(ImVec2(searchX, searchY),
+                    ImVec2(searchX + searchW, searchY + searchH),
+                    IM_COL32(41, 41, 46, 255), 6.0f);
+  dl->AddRect(ImVec2(searchX, searchY),
+              ImVec2(searchX + searchW, searchY + searchH),
+              IM_COL32(56, 56, 62, 255), 6.0f);
+
+  ImVec2 iconPos = ImVec2(searchX + 10.0f, searchY + 8.0f);
+  dl->AddText(iconPos, IM_COL32(136, 136, 146, 255), ICON_FA_MAGNIFYING_GLASS);
+  dl->AddText(ImVec2(searchX + 30.0f, searchY + 8.0f),
+              IM_COL32(100, 100, 110, 255), "Search projects...");
+
+  float toggleX = cursor.x + width - kSidePadding - 52.0f;
+  float toggleY = searchY + 4.0f;
+
+  dl->AddText(ImVec2(toggleX, toggleY), IM_COL32(238, 238, 242, 255),
+              ICON_FA_GRIP);
+  dl->AddText(ImVec2(toggleX + 28.0f, toggleY), IM_COL32(100, 100, 110, 255),
+              ICON_FA_LIST);
+
+  ImGui::SetCursorScreenPos(ImVec2(cursor.x, cursor.y + kHeaderHeight));
+}
+
+void ProjectHubLayer::RenderCardGrid(float width, float startY, float height) {
+  auto &entries = m_Registry.GetEntries();
+  int projectCount = static_cast<int>(entries.size());
+
+  float contentW = width - kSidePadding * 2.0f;
+  float cardW =
+      (contentW - kCardGap * (kColumns - 1)) / static_cast<float>(kColumns);
+  float thumbH = cardW * 0.55f;
+  float infoH = 90.0f;
+  float cardH = thumbH + infoH;
+
+  ImGui::SetCursorScreenPos(ImVec2(ImGui::GetWindowPos().x, startY));
+  ImGui::BeginChild("##CardGrid", ImVec2(width, height), false,
+                    ImGuiWindowFlags_NoBackground);
+
+  ImVec2 origin = ImGui::GetCursorScreenPos();
+  origin.x += kSidePadding;
+  origin.y += 8.0f;
+
+  ImDrawList *dl = ImGui::GetWindowDrawList();
+
+  int totalCards = 1 + projectCount; // "Create New" + real projects
+  int rows = (totalCards + kColumns - 1) / kColumns;
+
+  for (int idx = 0; idx < totalCards; idx++) {
+    int col = idx % kColumns;
+    int row = idx / kColumns;
+
+    float x = origin.x + col * (cardW + kCardGap);
+    float y = origin.y + row * (cardH + kCardGap);
+
+    ImVec2 cardMin = ImVec2(x, y);
+    ImVec2 cardMax = ImVec2(x + cardW, y + cardH);
+
+    bool hovered = ImGui::IsMouseHoveringRect(cardMin, cardMax);
+
+    if (idx == 0) {
+      // "Create New Project" card
+      ImU32 borderCol = hovered ? IM_COL32(100, 100, 110, 255)
+                                : IM_COL32(70, 70, 80, 255);
+
+      dl->AddRectFilled(cardMin, cardMax, IM_COL32(28, 28, 33, 255), 8.0f);
+      dl->AddRect(cardMin, cardMax, borderCol, 8.0f, 0, 1.5f);
+
+      float centerX = x + cardW * 0.5f;
+      float centerY = y + cardH * 0.42f;
+      float circleR = 24.0f;
+      dl->AddCircle(ImVec2(centerX, centerY), circleR,
+                    IM_COL32(136, 136, 146, 255), 32, 1.5f);
+
+      const char *plusText = ICON_FA_PLUS;
+      ImVec2 plusSize = ImGui::CalcTextSize(plusText);
+      dl->AddText(ImVec2(centerX - plusSize.x * 0.5f,
+                         centerY - plusSize.y * 0.5f),
+                  IM_COL32(136, 136, 146, 255), plusText);
+
+      const char *label = "Create New Project";
+      ImVec2 labelSize = ImGui::CalcTextSize(label);
+      dl->AddText(
+          ImVec2(centerX - labelSize.x * 0.5f, centerY + circleR + 16.0f),
+          IM_COL32(200, 200, 210, 255), label);
+
+      if (hovered && ImGui::IsMouseClicked(0))
+        m_ShowCreateModal = true;
+    } else {
+      int projIdx = idx - 1;
+      auto &entry = entries[projIdx];
+
+      ImU32 cardBg = hovered ? IM_COL32(38, 38, 44, 255)
+                             : IM_COL32(30, 30, 36, 255);
+      ImU32 borderCol = entry.missing ? IM_COL32(180, 60, 60, 255)
+                                      : IM_COL32(50, 50, 58, 255);
+
+      dl->AddRectFilled(cardMin, cardMax, cardBg, 8.0f);
+      dl->AddRect(cardMin, cardMax, borderCol, 8.0f, 0, 1.0f);
+
+      // Thumbnail area
+      ImVec2 thumbMin = ImVec2(x + 1.0f, y + 1.0f);
+      ImVec2 thumbMax = ImVec2(x + cardW - 1.0f, y + thumbH);
+      dl->AddRectFilled(thumbMin, thumbMax, IM_COL32(24, 24, 30, 255), 7.0f,
+                        ImDrawFlags_RoundCornersTop);
+
+      // Decorative shape in thumbnail area
+      float cx = x + cardW * 0.5f;
+      float cy = y + thumbH * 0.5f;
+      float shapeSize = thumbH * 0.25f;
+      int shapeType = projIdx % 3;
+      ImU32 shapeCol = entry.missing ? IM_COL32(180, 60, 60, 80)
+                                     : IM_COL32(80, 180, 120, 120);
+
+      if (shapeType == 0) {
+        ImVec2 pts[4] = {ImVec2(cx, cy - shapeSize),
+                         ImVec2(cx + shapeSize, cy),
+                         ImVec2(cx, cy + shapeSize),
+                         ImVec2(cx - shapeSize, cy)};
+        dl->AddPolyline(pts, 4, shapeCol, ImDrawFlags_Closed, 1.5f);
+      } else if (shapeType == 1) {
+        dl->AddRect(ImVec2(cx - shapeSize, cy - shapeSize * 0.7f),
+                    ImVec2(cx + shapeSize, cy + shapeSize * 0.7f), shapeCol,
+                    0.0f, 0, 1.5f);
+        dl->AddCircleFilled(ImVec2(cx + shapeSize * 0.3f, cy),
+                            shapeSize * 0.3f,
+                            entry.missing ? IM_COL32(180, 60, 60, 50)
+                                          : IM_COL32(80, 180, 120, 80));
+      } else {
+        dl->AddCircle(ImVec2(cx, cy), shapeSize, shapeCol, 32, 1.5f);
+      }
+
+      // Missing overlay
+      if (entry.missing) {
+        const char *missingLabel = ICON_FA_TRIANGLE_EXCLAMATION " Missing";
+        ImVec2 missingSize = ImGui::CalcTextSize(missingLabel);
+        dl->AddText(ImVec2(cx - missingSize.x * 0.5f, cy + shapeSize + 8.0f),
+                    IM_COL32(180, 60, 60, 255), missingLabel);
+      }
+
+      // Info area
+      float infoX = x + 14.0f;
+      float infoY = y + thumbH + 10.0f;
+      float infoRight = x + cardW - 14.0f;
+
+      // Project name (bold)
+      if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+      ImVec2 nameSize = ImGui::CalcTextSize(entry.name.c_str());
+      float maxNameW = cardW - 60.0f;
+      ImU32 nameCol = entry.missing ? IM_COL32(180, 140, 140, 255)
+                                    : IM_COL32(238, 238, 242, 255);
+      if (nameSize.x > maxNameW) {
+        dl->PushClipRect(ImVec2(infoX, infoY),
+                         ImVec2(infoX + maxNameW, infoY + 20.0f), true);
+        dl->AddText(ImVec2(infoX, infoY), nameCol, entry.name.c_str());
+        dl->PopClipRect();
+      } else {
+        dl->AddText(ImVec2(infoX, infoY), nameCol, entry.name.c_str());
+      }
+      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+
+      // Timestamp
+      float bottomY = infoY + 28.0f;
+      std::string timeStr = FormatTimestamp(entry.lastOpened);
+      dl->AddText(ImVec2(infoX, bottomY), IM_COL32(100, 100, 110, 255),
+                  timeStr.c_str());
+
+      // Ellipsis button
+      const char *ellipsis = ICON_FA_ELLIPSIS;
+      ImVec2 ellipsisSize = ImGui::CalcTextSize(ellipsis);
+      float ellipsisX = infoRight - ellipsisSize.x;
+      float ellipsisY = bottomY;
+      ImVec2 ellipsisMin = ImVec2(ellipsisX - 4.0f, ellipsisY - 4.0f);
+      ImVec2 ellipsisMax =
+          ImVec2(ellipsisX + ellipsisSize.x + 4.0f, ellipsisY + 20.0f);
+
+      bool ellipsisHov = ImGui::IsMouseHoveringRect(ellipsisMin, ellipsisMax);
+      if (ellipsisHov)
+        dl->AddRectFilled(ellipsisMin, ellipsisMax, IM_COL32(50, 50, 58, 255),
+                          4.0f);
+      dl->AddText(ImVec2(ellipsisX, ellipsisY),
+                  ellipsisHov ? IM_COL32(200, 200, 210, 255)
+                              : IM_COL32(100, 100, 110, 255),
+                  ellipsis);
+
+      if (ellipsisHov && ImGui::IsMouseClicked(0)) {
+        m_ContextMenuIndex = projIdx;
+        ImGui::OpenPopup("##CardContextMenu");
+      }
+
+      // Card click (not on ellipsis) — open the project
+      if (hovered && !ellipsisHov && ImGui::IsMouseClicked(0)) {
+        if (entry.missing) {
+          m_MissingIndex = projIdx;
+          m_ShowMissingDialog = true;
+        } else {
+          OpenProject(entry.path);
+        }
+      }
+    }
+  }
+
+  // Context menu popup
+  if (ImGui::BeginPopup("##CardContextMenu")) {
+    if (m_ContextMenuIndex >= 0 &&
+        m_ContextMenuIndex < static_cast<int>(entries.size())) {
+      if (ImGui::MenuItem(ICON_FA_PEN "  Rename")) {
+        m_RenameIndex = m_ContextMenuIndex;
+        auto &name = entries[m_RenameIndex].name;
+        strncpy(m_RenameBuffer, name.c_str(), sizeof(m_RenameBuffer) - 1);
+        m_RenameBuffer[sizeof(m_RenameBuffer) - 1] = '\0';
+        m_ShowRenameModal = true;
+      }
+      if (ImGui::MenuItem(ICON_FA_TRASH "  Delete")) {
+        m_DeleteIndex = m_ContextMenuIndex;
+        m_ShowDeleteConfirm = true;
+      }
+    }
+    ImGui::EndPopup();
+  }
+
+  float totalH = rows * (cardH + kCardGap) + 16.0f;
+  ImGui::Dummy(ImVec2(0, totalH));
+
+  ImGui::EndChild();
+}
+
+void ProjectHubLayer::RenderCreateModal() {
+  if (m_ShowCreateModal)
+    ImGui::OpenPopup("Create New Project");
+
+  ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+  ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  ImGui::SetNextWindowSize(ImVec2(520, 520));
+
+  ImGuiWindowFlags modalFlags =
+      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+
+  if (ImGui::BeginPopupModal("Create New Project", &m_ShowCreateModal,
+                             modalFlags)) {
+    if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+    ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.65f, 1.0f), "PROJECT NAME");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+
+    ImGui::Spacing();
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputTextWithHint("##ProjectName", "My Awesome Game", m_ProjectName,
+                             IM_ARRAYSIZE(m_ProjectName));
+
+    ImGui::Dummy(ImVec2(0, 16));
+
+    if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+    ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.65f, 1.0f), "TEMPLATE");
+    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 100.0f);
+    ImGui::TextColored(ImVec4(kGreen.x, kGreen.y, kGreen.z, 0.8f),
+                       "Select a starting point");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+
+    ImGui::Spacing();
+
+    struct TemplateInfo {
+      const char *icon;
+      const char *name;
+      const char *desc;
+    };
+
+    static const TemplateInfo templates[] = {
+        {ICON_FA_SQUARE, "Empty", "Start from scratch with\na blank canvas."},
+        {ICON_FA_GAMEPAD, "Platformer 2D",
+         "Basic physics, character\ncontroller & tiles."},
+        {ICON_FA_COMPASS, "Top-Down",
+         "8-way movement and simple\nmap setup."},
+        {ICON_FA_WINDOW_MAXIMIZE, "UI Only",
+         "Pre-configured canvas for\nmenu interfaces."},
+    };
+
+    float templateW = (ImGui::GetContentRegionAvail().x - 8.0f) * 0.5f;
+    float templateH = 80.0f;
+
+    for (int i = 0; i < 4; i++) {
+      if (i % 2 != 0) ImGui::SameLine(0, 8.0f);
+
+      ImVec2 cursor = ImGui::GetCursorScreenPos();
+      ImDrawList *dl = ImGui::GetWindowDrawList();
+      ImVec2 tMin = cursor;
+      ImVec2 tMax = ImVec2(cursor.x + templateW, cursor.y + templateH);
+
+      bool selected = (m_SelectedTemplate == i);
+      bool hov = ImGui::IsMouseHoveringRect(tMin, tMax);
+
+      ImU32 bg = selected ? IM_COL32(30, 50, 65, 255)
+                 : hov    ? IM_COL32(38, 38, 44, 255)
+                          : IM_COL32(30, 30, 36, 255);
+      ImU32 border = selected ? IM_COL32(61, 191, 99, 255)
+                              : IM_COL32(50, 50, 58, 255);
+
+      dl->AddRectFilled(tMin, tMax, bg, 6.0f);
+      dl->AddRect(tMin, tMax, border, 6.0f, 0, selected ? 2.0f : 1.0f);
+
+      dl->AddText(ImVec2(cursor.x + 14.0f, cursor.y + 14.0f),
+                  selected ? IM_COL32(61, 191, 99, 255)
+                           : IM_COL32(136, 136, 146, 255),
+                  templates[i].icon);
+
+      if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+      dl->AddText(ImVec2(cursor.x + 44.0f, cursor.y + 12.0f),
+                  IM_COL32(238, 238, 242, 255), templates[i].name);
+      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+
+      dl->AddText(ImVec2(cursor.x + 44.0f, cursor.y + 32.0f),
+                  IM_COL32(136, 136, 146, 255), templates[i].desc);
+
+      if (hov && ImGui::IsMouseClicked(0))
+        m_SelectedTemplate = i;
+
+      ImGui::Dummy(ImVec2(templateW, templateH));
+      if (i == 1)
+        ImGui::Spacing();
+    }
+
+    ImGui::Dummy(ImVec2(0, 16));
+
+    if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+    ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.65f, 1.0f), "LOCATION");
+    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+
+    ImGui::Spacing();
+
+    float browseW = 80.0f;
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - browseW - 8.0f);
+
+    std::string dirDisplay = m_ProjectDirectory.empty()
+                                 ? ""
+                                 : m_ProjectDirectory.string();
+    char dirBuf[512];
+    strncpy(dirBuf, dirDisplay.c_str(), sizeof(dirBuf) - 1);
+    dirBuf[sizeof(dirBuf) - 1] = '\0';
+    ImGui::InputTextWithHint("##Location", "C:\\Projects\\Hamster", dirBuf,
+                             sizeof(dirBuf),
+                             ImGuiInputTextFlags_ReadOnly);
+    ImGui::SameLine();
+    if (ImGui::Button("Browse...", ImVec2(browseW, 0))) {
+      const char *dir =
+          tinyfd_selectFolderDialog("Select directory for project", "");
+      if (dir) {
+        m_ProjectDirectory = dir;
+        m_NoDirectorySelected = false;
+      }
+    }
+
+    if (m_NoDirectorySelected) {
+      ImGui::TextColored(ImVec4(0.9f, 0.22f, 0.27f, 1.0f),
+                         "You must choose a project directory!");
+    }
+    if (m_DirectoryExists) {
+      ImGui::TextColored(
+          ImVec4(0.9f, 0.22f, 0.27f, 1.0f),
+          "Folder with same name already exists at that location!");
+    }
+
+    ImGui::Dummy(ImVec2(0, 16));
+
+    float cancelW = 80.0f;
+    float createW = 120.0f;
+    float totalBtnW = cancelW + 8.0f + createW;
+    ImGui::SetCursorPosX(ImGui::GetContentRegionAvail().x - totalBtnW +
+                         ImGui::GetCursorPosX());
+
+    if (ImGui::Button("Cancel", ImVec2(cancelW, 32))) {
+      m_ShowCreateModal = false;
+      m_NoDirectorySelected = false;
+      m_DirectoryExists = false;
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine(0, 8.0f);
+
+    ImGui::PushStyleColor(ImGuiCol_Button,
+                          ImVec4(kGreen.x, kGreen.y, kGreen.z, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                          ImVec4(kGreenHov.x, kGreenHov.y, kGreenHov.z, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                          ImVec4(kGreenAct.x, kGreenAct.y, kGreenAct.z, 1.0f));
+    if (ImGui::Button("Create Project", ImVec2(createW, 32))) {
+      if (m_ProjectDirectory.empty()) {
+        m_NoDirectorySelected = true;
+      } else {
+        Hamster::ProjectConfig config;
+        config.Name = m_ProjectName;
+        config.ProjectDirectory = m_ProjectDirectory / config.Name;
+
+        if (std::filesystem::is_directory(config.ProjectDirectory)) {
+          m_DirectoryExists = true;
+        } else {
+          m_DirectoryExists = false;
+          m_NoDirectorySelected = false;
+
+          Hamster::Project::New(
+              config, &Hamster::Application::GetApplicationInstance());
+
+          std::string hamLibPath =
+              Hamster::Application::GetExecutablePath() +
+              "/../share/Resources/Hamster-Wheel/Resources/Packages/"
+              HAMSTER_PY_MODULE_FILENAME;
+          std::filesystem::copy(hamLibPath, config.ProjectDirectory);
+
+          m_Registry.AddOrUpdate(config.Name, config.ProjectDirectory);
+
+          m_ShowCreateModal = false;
+          ImGui::CloseCurrentPopup();
+        }
+      }
+    }
+    ImGui::PopStyleColor(3);
+
+    ImGui::EndPopup();
+  }
+}
+
+void ProjectHubLayer::RenderRenameModal() {
+  if (m_ShowRenameModal) {
+    ImGui::OpenPopup("Rename Project");
+    m_ShowRenameModal = false;
+  }
+
+  ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+  ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  ImGui::SetNextWindowSize(ImVec2(400, 160));
+
+  if (ImGui::BeginPopupModal("Rename Project", nullptr,
+                             ImGuiWindowFlags_NoResize |
+                                 ImGuiWindowFlags_NoMove)) {
+    auto &entries = m_Registry.GetEntries();
+    if (m_RenameIndex >= 0 &&
+        m_RenameIndex < static_cast<int>(entries.size())) {
+
+      ImGui::Text("New name:");
+      ImGui::SetNextItemWidth(-1);
+      ImGui::InputText("##RenameBuf", m_RenameBuffer,
+                       sizeof(m_RenameBuffer));
+
+      if (m_RenameError) {
+        ImGui::TextColored(ImVec4(0.9f, 0.22f, 0.27f, 1.0f),
+                           "A folder with that name already exists!");
+      }
+
+      ImGui::Dummy(ImVec2(0, 12));
+
+      float btnW = 80.0f;
+      ImGui::SetCursorPosX(ImGui::GetContentRegionAvail().x - btnW * 2 - 8.0f +
+                           ImGui::GetCursorPosX());
+
+      if (ImGui::Button("Cancel", ImVec2(btnW, 28))) {
+        m_RenameIndex = -1;
+        m_RenameError = false;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::SameLine(0, 8.0f);
+
+      ImGui::PushStyleColor(ImGuiCol_Button,
+                            ImVec4(kGreen.x, kGreen.y, kGreen.z, 1.0f));
+      ImGui::PushStyleColor(
+          ImGuiCol_ButtonHovered,
+          ImVec4(kGreenHov.x, kGreenHov.y, kGreenHov.z, 1.0f));
+      ImGui::PushStyleColor(
+          ImGuiCol_ButtonActive,
+          ImVec4(kGreenAct.x, kGreenAct.y, kGreenAct.z, 1.0f));
+      if (ImGui::Button("Rename", ImVec2(btnW, 28))) {
+        std::string newName(m_RenameBuffer);
+        if (!newName.empty()) {
+          auto &entry = entries[m_RenameIndex];
+          if (m_Registry.Rename(entry.path, newName)) {
+            m_RenameIndex = -1;
+            m_RenameError = false;
+            ImGui::CloseCurrentPopup();
+          } else {
+            m_RenameError = true;
+          }
+        }
+      }
+      ImGui::PopStyleColor(3);
+    } else {
+      ImGui::CloseCurrentPopup();
+    }
+
+    ImGui::EndPopup();
+  }
+}
+
+void ProjectHubLayer::RenderDeleteConfirmation() {
+  if (m_ShowDeleteConfirm) {
+    ImGui::OpenPopup("Delete Project?");
+    m_ShowDeleteConfirm = false;
+  }
+
+  ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+  ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  ImGui::SetNextWindowSize(ImVec2(460, 180));
+
+  if (ImGui::BeginPopupModal("Delete Project?", nullptr,
+                             ImGuiWindowFlags_NoResize |
+                                 ImGuiWindowFlags_NoMove)) {
+    auto &entries = m_Registry.GetEntries();
+    if (m_DeleteIndex >= 0 &&
+        m_DeleteIndex < static_cast<int>(entries.size())) {
+
+      auto &entry = entries[m_DeleteIndex];
+      ImGui::TextWrapped("This will permanently delete the project folder:");
+      ImGui::Dummy(ImVec2(0, 4));
+
+      if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+      ImGui::TextWrapped("%s", entry.path.string().c_str());
+      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+
+      ImGui::Dummy(ImVec2(0, 4));
+      ImGui::TextColored(ImVec4(0.9f, 0.22f, 0.27f, 1.0f),
+                         "This action cannot be undone.");
+
+      ImGui::Dummy(ImVec2(0, 8));
+
+      float btnW = 80.0f;
+      ImGui::SetCursorPosX(ImGui::GetContentRegionAvail().x - btnW * 2 - 8.0f +
+                           ImGui::GetCursorPosX());
+
+      if (ImGui::Button("Cancel", ImVec2(btnW, 28))) {
+        m_DeleteIndex = -1;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::SameLine(0, 8.0f);
+
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.15f, 0.15f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                            ImVec4(0.85f, 0.2f, 0.2f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                            ImVec4(0.6f, 0.1f, 0.1f, 1.0f));
+      if (ImGui::Button("Delete", ImVec2(btnW, 28))) {
+        auto pathToDelete = entry.path;
+        m_Registry.Remove(pathToDelete);
+
+        // Windows won't delete a directory that is the process CWD
+        auto cwd = std::filesystem::current_path();
+        if (cwd.string().find(pathToDelete.string()) == 0)
+          std::filesystem::current_path(pathToDelete.parent_path());
+
+        std::error_code ec;
+        std::filesystem::remove_all(pathToDelete, ec);
+        if (ec) {
+          tinyfd_messageBox(
+              "Delete Warning",
+              "Project removed from hub, but some files could not be deleted. "
+              "You may need to remove them manually.",
+              "ok", "warning", 1);
+        }
+
+        m_DeleteIndex = -1;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::PopStyleColor(3);
+    } else {
+      ImGui::CloseCurrentPopup();
+    }
+
+    ImGui::EndPopup();
+  }
+}
+
+void ProjectHubLayer::RenderMissingProjectDialog() {
+  if (m_ShowMissingDialog) {
+    ImGui::OpenPopup("Project Not Found");
+    m_ShowMissingDialog = false;
+  }
+
+  ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+  ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  ImGui::SetNextWindowSize(ImVec2(460, 200));
+
+  if (ImGui::BeginPopupModal("Project Not Found", nullptr,
+                             ImGuiWindowFlags_NoResize |
+                                 ImGuiWindowFlags_NoMove)) {
+    auto &entries = m_Registry.GetEntries();
+    if (m_MissingIndex >= 0 &&
+        m_MissingIndex < static_cast<int>(entries.size())) {
+
+      auto &entry = entries[m_MissingIndex];
+      ImGui::TextWrapped(
+          "The project folder could not be found at its expected location:");
+      ImGui::Dummy(ImVec2(0, 4));
+
+      if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+      ImGui::TextWrapped("%s", entry.path.string().c_str());
+      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+
+      ImGui::Dummy(ImVec2(0, 8));
+      ImGui::Text("What would you like to do?");
+      ImGui::Dummy(ImVec2(0, 8));
+
+      float btnW = 100.0f;
+      ImGui::SetCursorPosX(ImGui::GetContentRegionAvail().x - btnW * 3 -
+                           16.0f + ImGui::GetCursorPosX());
+
+      if (ImGui::Button("Cancel", ImVec2(btnW, 28))) {
+        m_MissingIndex = -1;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::SameLine(0, 8.0f);
+
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.15f, 0.15f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                            ImVec4(0.85f, 0.2f, 0.2f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                            ImVec4(0.6f, 0.1f, 0.1f, 1.0f));
+      if (ImGui::Button("Remove", ImVec2(btnW, 28))) {
+        m_Registry.Remove(entry.path);
+        m_MissingIndex = -1;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::PopStyleColor(3);
+      ImGui::SameLine(0, 8.0f);
+
+      ImGui::PushStyleColor(ImGuiCol_Button,
+                            ImVec4(kGreen.x, kGreen.y, kGreen.z, 1.0f));
+      ImGui::PushStyleColor(
+          ImGuiCol_ButtonHovered,
+          ImVec4(kGreenHov.x, kGreenHov.y, kGreenHov.z, 1.0f));
+      ImGui::PushStyleColor(
+          ImGuiCol_ButtonActive,
+          ImVec4(kGreenAct.x, kGreenAct.y, kGreenAct.z, 1.0f));
+      if (ImGui::Button("Locate...", ImVec2(btnW, 28))) {
+        const char *dir =
+            tinyfd_selectFolderDialog("Locate project folder", "");
+        if (dir) {
+          entry.path = std::filesystem::path(dir);
+          entry.missing = !std::filesystem::exists(entry.path);
+          m_Registry.Save();
+          if (!entry.missing) {
+            m_MissingIndex = -1;
+            ImGui::CloseCurrentPopup();
+          }
+        }
+      }
+      ImGui::PopStyleColor(3);
+    } else {
+      ImGui::CloseCurrentPopup();
+    }
+
+    ImGui::EndPopup();
+  }
+}
+
+void ProjectHubLayer::OpenProjectDialog() {
+  const char *filterPattern = "*.hamproj";
+  const char *file = tinyfd_openFileDialog("Select Project File", "", 1,
+                                           &filterPattern,
+                                           "Hamster Project Files", 0);
+  if (file) {
+    std::filesystem::path path(file);
+    if (path.extension() == ".hamproj") {
+      // Derive project directory and name from the .hamproj file
+      auto projDir = path.parent_path();
+      auto projName = path.stem().string();
+      m_Registry.AddOrUpdate(projName, projDir);
+
+      Hamster::Project::Open(
+          path, &Hamster::Application::GetApplicationInstance());
+    }
+  }
+}
+
+void ProjectHubLayer::OpenProject(const std::filesystem::path &projDir) {
+  try {
+    for (auto &f : std::filesystem::directory_iterator(projDir)) {
+      if (f.path().extension() == ".hamproj") {
+        m_Registry.UpdateTimestamp(projDir);
+        Hamster::Project::Open(
+            f.path(), &Hamster::Application::GetApplicationInstance());
+        return;
+      }
+    }
+
+    tinyfd_messageBox("Open Failed",
+                      "No .hamproj file found in the project directory.",
+                      "ok", "error", 1);
+  } catch (const std::exception &e) {
+    std::cerr << "Failed to open project: " << e.what() << std::endl;
+    tinyfd_messageBox("Open Failed", e.what(), "ok", "error", 1);
+  }
+}
+
+std::string
+ProjectHubLayer::FormatTimestamp(const std::string &iso) const {
+  if (iso.empty())
+    return "";
+
+  // Parse ISO 8601 timestamp
+  std::tm tm{};
+  std::istringstream ss(iso);
+  ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
+  if (ss.fail())
+    return iso;
+
+  auto then = std::chrono::system_clock::from_time_t(std::mktime(&tm));
+  auto now = std::chrono::system_clock::now();
+  auto diff = std::chrono::duration_cast<std::chrono::minutes>(now - then);
+
+  int minutes = static_cast<int>(diff.count());
+  if (minutes < 1)
+    return "Opened just now";
+  if (minutes < 60)
+    return "Opened " + std::to_string(minutes) + " min ago";
+
+  int hours = minutes / 60;
+  if (hours < 24)
+    return "Opened " + std::to_string(hours) + " hr" +
+           (hours > 1 ? "s" : "") + " ago";
+
+  int days = hours / 24;
+  if (days == 1)
+    return "Opened yesterday";
+  if (days < 7)
+    return "Opened " + std::to_string(days) + " days ago";
+  if (days < 14)
+    return "Opened last week";
+
+  // Format as date
+  std::ostringstream out;
+  out << std::put_time(&tm, "Opened %b %d");
+  return out.str();
+}

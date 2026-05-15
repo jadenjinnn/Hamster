@@ -1,16 +1,45 @@
 # Session handoff
 
-## 2026-05-13 — Animation system core implemented, panel not yet built
+## 2026-05-15 — Editor rewrite from prototype shipped
 
-- Spec at `docs/features/active/animation-system.md` (approved, full spec tier)
-- All core systems working: `AnimationData`/`AnimationKeyframe` structs, `Animation` component (`Animation_ID = 8`), `.hanim` binary file format, `AssetManager` animation storage + serialization
-- Runtime: animation advance in `Scene::OnUpdate` (between physics and scripts), sprite texture swap, original texture snapshot/restore on sim start/stop
-- Events: `AnimationCompletedEvent` posted when non-looping animation finishes, dispatched to Python `on_animation_complete(animation_name)` callback via `completedAnimations` queue in `OnScriptUpdate`
-- Python API: `self.animate("name")` (uses component loop default), `self.animate("name", loop=False)`, `self.stop_animation()`, `self.is_animating`
-- Editor: PropertyEditor has Animation component section (loop toggle, default animation combo, animation list with add/remove from AssetManager)
-- Smoke test extended and passing
-- **Not done yet**: Animation panel (timeline editor for creating/editing `.hanim` files visually), AssetBrowser `.hanim` display
-- Next step: build the Animation panel — timeline with draggable keyframes, sprite drag-in, preview playback, save/load
+- **`Hamster-UIPrototype/` → `Hamster-Wheel/`** rename complete. The new editor is the prototype with engine deps and per-panel data wiring added. Old editor preserved as `Hamster-Wheel-old/`, not built (`add_subdirectory` commented in root `CMakeLists.txt`).
+- All 6 phases complete: build wiring, engine entry + FBO blit, per-panel data wiring, LevelEditor interactivity, MenuBar + modals, disable docking + rename. Smoke test passes.
+- Spec moved to `docs/features/shipped/2026-05-15-editor-rewrite-from-prototype.md`. Old `panel-layout` spec parked at `docs/features/parked/panel-layout.md` (superseded).
+- **Hamster-Core change**: `Application::Application(const WindowProps &)` added; `WindowProps.borderless` field added. Default constructor delegates to the new one with default props. Docking flag removed from `ImGuiLayer.cpp`.
+- **Deferred / not yet wired (no spec, follow-ups when relevant)**:
+  - `RenameModal` is compiled and instantiable but not yet wired into rename context menus (Hierarchy entity rename, AssetBrowser asset rename). PropertyEditor still has the rename modal field commented out in its sections.
+  - ProjectHub for v1 was skipped — new editor opens the most-recently-opened project directly from `ProjectRegistry`. v2 should port `ProjectHubLayer` and push it before `EditorLayer` (or via `ProjectOpened` event swap).
+  - Hardcoded default-project debug path in `main.cpp` (`C:\Users\Jaden\Downloads\Untitled12\Untitled12.hamproj`) — remove once a proper "no projects" fallback / ProjectHub path is in.
+  - Title bar drag is Win32-specific via `GLFW_EXPOSE_NATIVE_WIN32`. Linux support deferred.
+- **Other in-flight specs**: `docs/features/active/scene-viewer-improvements.md` is still in active. Unrelated to this work.
+- **Next session step**: nothing specific. Pick from open questions in `architecture.md` (portable serialization format), or work the active scene-viewer-improvements spec.
+
+## 2026-05-14 (session 2) — Panel layout prototype finalized, ready for porting
+
+- **Hamster-UIPrototype** standalone target is now fully polished and split into clean architecture:
+  - `src/Theme.h/.cpp` — color palette (14 colors), font globals, ApplyTheme(), LoadFonts()
+  - `src/Panel.h/.cpp` — Panel struct: DrawHeader(), DrawTabbedHeader(), BeginContent()/EndContent() with scroll support
+  - `src/Components/Components.h/.cpp` — reusable UI helpers: SectionHeader, HButton, HToolbarButton, HCombo, HDragFloat, HCheckbox, AxisDotInput, SectionSeparator
+  - `src/Panels/` — PropertyEditor, LevelEditor, Hierarchy, AnimationPanel, BottomPanel (tabbed Asset Browser + Animation)
+  - `src/main.cpp` — entry point, custom borderless title bar with drag/maximize, layout math
+- Logo added: `Resources/Logo/hamster-logo.png` (128x128, white-on-transparent, converted from `Untitled.svg`), rendered in title bar via DrawList::AddImage
+- Key layout constants: 8px gaps, 16px side padding, 8px header-to-content gap, 36px header height, 32px title bar
+- Panel proportions: left 17.5%, right 14.5%, bottom 28% of content area
+- **Next step**: port prototype code back into EditorLayer.cpp and Hamster-Wheel panels — the prototype files map 1:1 to real editor panels
+- Spec at `docs/features/active/panel-layout.md` still active
+
+## 2026-05-14 (session 1) — Panel layout: standalone UI prototype approach
+
+- Previous incremental approach (editing EditorLayer directly) was scrapped — all Hamster-Wheel changes reverted via `git restore`
+- New approach: **Hamster-UIPrototype** standalone target builds against imgui+glfw+glad only, no engine deps
+- Prototype closely matches the Stitch reference design after many iterations
+- See session 2 for final state
+
+## 2026-05-13 — Animation system fully shipped
+
+- Feature closed out: spec moved to `docs/features/shipped/2026-05-13-animation-system.md`, architecture.md updated, README updated
+- Committed as 370efe28, pushed to origin/master
+- No pending work from this feature
 
 ## 2026-05-12 — Rounded panels attempted and scrapped
 

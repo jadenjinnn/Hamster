@@ -35,6 +35,8 @@ namespace Hamster {
         void DrawGuizmo(Transform targetTransform, TransformType type,
                         bool selectionColour);
 
+        void DrawHoverOutline(Transform targetTransform);
+
         void AdjustZoom(float factor, float mousePosX, float mousePosY);
 
         void UpdateViewMatrix();

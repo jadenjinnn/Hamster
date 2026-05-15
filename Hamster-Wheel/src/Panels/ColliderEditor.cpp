@@ -4,7 +4,6 @@
 #include <cmath>
 #include <imgui.h>
 
-#include "Theme/HamsterTheme.h"
 #include "Theme/IconsFontAwesome6.h"
 
 static constexpr float kHandleSize = 8.0f;

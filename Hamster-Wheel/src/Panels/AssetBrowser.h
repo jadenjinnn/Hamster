@@ -1,42 +1,28 @@
-//
-// Created by Jaden on 03/09/2024.
-//
+#ifndef UIPROTO_ASSET_BROWSER_H
+#define UIPROTO_ASSET_BROWSER_H
 
-#ifndef ASSETBROWSER_H
-#define ASSETBROWSER_H
-#include <Gui/Panel.h>
-
+#include <Hamster.h>
 #include <Core/UUID.h>
-#include <Renderer/Texture.h>
 #include <memory>
 
-namespace Hamster { class AssetManager; }
+namespace Hamster {
+class AssetManager;
+}
 
-class AssetBrowser : public Hamster::Panel {
+class AssetBrowser {
 public:
-  AssetBrowser(Hamster::EventDispatcher *dispatcher,
-               std::shared_ptr<Hamster::Scene> scene,
-               Hamster::AssetManager *assetManager);
+    AssetBrowser(Hamster::EventDispatcher *dispatcher,
+                 std::shared_ptr<Hamster::Scene> scene,
+                 Hamster::AssetManager *assetManager);
 
-  void Render() override;
+    void Render();
 
-  void StartRename(Hamster::UUID uuid);
+    void OnActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e);
 
 private:
-  Hamster::AssetManager *m_AssetManager;
-  std::unique_ptr<Hamster::Texture> m_PythonIcon;
-  std::unique_ptr<Hamster::Texture> m_FolderIcon;
-  std::unique_ptr<Hamster::Texture> m_FileIcon;
-
-  float m_CardSize = 96.0f;
-  float m_CardPadding = 12.0f;
-
-  Hamster::UUID m_RenamingUUID = Hamster::UUID::GetNil();
-  char m_RenameBuffer[128] = {};
-  bool m_RenameFocusPending = false;
-
-  Hamster::UUID m_ContextMenuUUID = Hamster::UUID::GetNil();
-  bool m_ContextMenuIsTexture = false;
+    Hamster::EventDispatcher *m_Dispatcher;
+    std::shared_ptr<Hamster::Scene> m_Scene;
+    Hamster::AssetManager *m_AssetManager;
 };
 
-#endif // ASSETBROWSER_H
+#endif // UIPROTO_ASSET_BROWSER_H

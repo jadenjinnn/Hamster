@@ -4,10 +4,11 @@
 #include <imgui.h>
 #include <iomanip>
 #include <sstream>
+#include <iostream>
 #include <tinyfiledialogs.h>
 
-#include "Theme/HamsterTheme.h"
-#include "Theme/IconsFontAwesome6.h"
+#include "Theme.h"
+#include "IconsFontAwesome6.h"
 
 static constexpr float kTopBarHeight = 50.0f;
 static constexpr float kHeaderHeight = 90.0f;
@@ -15,16 +16,16 @@ static constexpr float kSidePadding = 32.0f;
 static constexpr float kCardGap = 16.0f;
 static constexpr int kColumns = 4;
 
-static constexpr ImVec4 kGreen = {0.24f, 0.75f, 0.39f, 1.0f};
-static constexpr ImVec4 kGreenHov = {0.30f, 0.82f, 0.45f, 1.0f};
-static constexpr ImVec4 kGreenAct = {0.20f, 0.65f, 0.33f, 1.0f};
+static constexpr ImVec4 kHubGreen    = {0.24f, 0.75f, 0.39f, 1.0f};
+static constexpr ImVec4 kHubGreenHov = {0.30f, 0.82f, 0.45f, 1.0f};
+static constexpr ImVec4 kHubGreenAct = {0.20f, 0.65f, 0.33f, 1.0f};
 
 ProjectHubLayer::ProjectHubLayer(Hamster::Application *app)
     : m_App(app), m_Dispatcher(app->GetEventDispatcher().get()) {}
 
 void ProjectHubLayer::OnAttach() {
-  m_Dispatcher->Subscribe(Hamster::ProjectOpened, [this](Hamster::Event &e) {
-    m_EditorLayer = new EditorLayer(m_App, m_App->GetActiveScene());
+  m_Dispatcher->Subscribe(Hamster::ProjectOpened, [this](Hamster::Event &) {
+    m_EditorLayer = new EditorLayer(m_App);
     m_App->PushLayer(m_EditorLayer);
     m_App->PopLayer(this);
   });
@@ -72,16 +73,16 @@ void ProjectHubLayer::RenderTopBar(float width) {
   ImDrawList *dl = ImGui::GetWindowDrawList();
 
   dl->AddRectFilled(cursor, ImVec2(cursor.x + width, cursor.y + kTopBarHeight),
-                    IM_COL32(33, 33, 38, 255));
+                    ImGui::ColorConvertFloat4ToU32(kHeader));
 
   dl->AddLine(ImVec2(cursor.x, cursor.y + kTopBarHeight),
               ImVec2(cursor.x + width, cursor.y + kTopBarHeight),
-              IM_COL32(56, 56, 62, 255));
+              ImGui::ColorConvertFloat4ToU32(kBorder));
 
-  if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+  if (g_BoldFont) ImGui::PushFont(g_BoldFont);
   ImVec2 brandPos = ImVec2(cursor.x + kSidePadding, cursor.y + 15.0f);
-  dl->AddText(brandPos, IM_COL32(238, 238, 242, 255), "Hamster");
-  if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+  dl->AddText(brandPos, ImGui::ColorConvertFloat4ToU32(kText), "Hamster");
+  if (g_BoldFont) ImGui::PopFont();
 
   float rightX = cursor.x + width - kSidePadding;
 
@@ -91,8 +92,8 @@ void ProjectHubLayer::RenderTopBar(float width) {
   for (int i = 0; i < 4; i++) {
     ImVec2 textSize = ImGui::CalcTextSize(icons[i]);
     iconX -= textSize.x;
-    dl->AddText(ImVec2(iconX, cursor.y + 16.0f), IM_COL32(136, 136, 146, 255),
-                icons[i]);
+    dl->AddText(ImVec2(iconX, cursor.y + 16.0f),
+                ImGui::ColorConvertFloat4ToU32(kTextDim), icons[i]);
     iconX -= 20.0f;
   }
 
@@ -106,8 +107,7 @@ void ProjectHubLayer::RenderTopBar(float width) {
 
   bool hovered = ImGui::IsMouseHoveringRect(btnMin, btnMax);
   bool clicked = hovered && ImGui::IsMouseClicked(0);
-  ImU32 btnCol = hovered ? IM_COL32(77, 209, 115, 255)
-                         : IM_COL32(61, 191, 99, 255);
+  ImU32 btnCol = ImGui::ColorConvertFloat4ToU32(hovered ? kHubGreenHov : kHubGreen);
 
   dl->AddRectFilled(btnMin, btnMax, btnCol, 6.0f);
   ImVec2 textPos =
@@ -126,9 +126,10 @@ void ProjectHubLayer::RenderTopBar(float width) {
   bool openHov = ImGui::IsMouseHoveringRect(openMin, openMax);
   bool openClk = openHov && ImGui::IsMouseClicked(0);
   if (openHov)
-    dl->AddRectFilled(openMin, openMax, IM_COL32(50, 50, 56, 255), 6.0f);
+    dl->AddRectFilled(openMin, openMax,
+                      ImGui::ColorConvertFloat4ToU32(kSurfaceHov), 6.0f);
   dl->AddText(ImVec2(openX, btnY + (btnH - 16.0f) * 0.5f),
-              IM_COL32(200, 200, 210, 255), openLabel);
+              ImGui::ColorConvertFloat4ToU32(kText), openLabel);
 
   if (openClk)
     OpenProjectDialog();
@@ -144,37 +145,14 @@ void ProjectHubLayer::RenderHeader(float width) {
   float textX = cursor.x + kSidePadding;
   float textY = cursor.y + 12.0f;
 
-  if (auto *title = HamsterTheme::GetTitleFont()) ImGui::PushFont(title);
-  dl->AddText(ImVec2(textX, textY), IM_COL32(238, 238, 242, 255), "Projects");
-  if (HamsterTheme::GetTitleFont()) ImGui::PopFont();
+  if (g_HeaderFont) ImGui::PushFont(g_HeaderFont);
+  dl->AddText(ImVec2(textX, textY),
+              ImGui::ColorConvertFloat4ToU32(kText), "Projects");
+  if (g_HeaderFont) ImGui::PopFont();
 
-  dl->AddText(ImVec2(textX, textY + 36.0f), IM_COL32(136, 136, 146, 255),
+  dl->AddText(ImVec2(textX, textY + 36.0f),
+              ImGui::ColorConvertFloat4ToU32(kTextDim),
               "Manage your active workspaces and recent edits.");
-
-  float searchW = 220.0f;
-  float searchH = 32.0f;
-  float searchX = cursor.x + width - kSidePadding - searchW - 70.0f;
-  float searchY = cursor.y + 16.0f;
-
-  dl->AddRectFilled(ImVec2(searchX, searchY),
-                    ImVec2(searchX + searchW, searchY + searchH),
-                    IM_COL32(41, 41, 46, 255), 6.0f);
-  dl->AddRect(ImVec2(searchX, searchY),
-              ImVec2(searchX + searchW, searchY + searchH),
-              IM_COL32(56, 56, 62, 255), 6.0f);
-
-  ImVec2 iconPos = ImVec2(searchX + 10.0f, searchY + 8.0f);
-  dl->AddText(iconPos, IM_COL32(136, 136, 146, 255), ICON_FA_MAGNIFYING_GLASS);
-  dl->AddText(ImVec2(searchX + 30.0f, searchY + 8.0f),
-              IM_COL32(100, 100, 110, 255), "Search projects...");
-
-  float toggleX = cursor.x + width - kSidePadding - 52.0f;
-  float toggleY = searchY + 4.0f;
-
-  dl->AddText(ImVec2(toggleX, toggleY), IM_COL32(238, 238, 242, 255),
-              ICON_FA_GRIP);
-  dl->AddText(ImVec2(toggleX + 28.0f, toggleY), IM_COL32(100, 100, 110, 255),
-              ICON_FA_LIST);
 
   ImGui::SetCursorScreenPos(ImVec2(cursor.x, cursor.y + kHeaderHeight));
 }
@@ -217,29 +195,29 @@ void ProjectHubLayer::RenderCardGrid(float width, float startY, float height) {
 
     if (idx == 0) {
       // "Create New Project" card
-      ImU32 borderCol = hovered ? IM_COL32(100, 100, 110, 255)
-                                : IM_COL32(70, 70, 80, 255);
+      ImU32 borderCol = ImGui::ColorConvertFloat4ToU32(hovered ? kSurfaceHov : kBorder);
 
-      dl->AddRectFilled(cardMin, cardMax, IM_COL32(28, 28, 33, 255), 8.0f);
+      dl->AddRectFilled(cardMin, cardMax,
+                        ImGui::ColorConvertFloat4ToU32(kSurface), 8.0f);
       dl->AddRect(cardMin, cardMax, borderCol, 8.0f, 0, 1.5f);
 
       float centerX = x + cardW * 0.5f;
       float centerY = y + cardH * 0.42f;
       float circleR = 24.0f;
       dl->AddCircle(ImVec2(centerX, centerY), circleR,
-                    IM_COL32(136, 136, 146, 255), 32, 1.5f);
+                    ImGui::ColorConvertFloat4ToU32(kTextDim), 32, 1.5f);
 
       const char *plusText = ICON_FA_PLUS;
       ImVec2 plusSize = ImGui::CalcTextSize(plusText);
       dl->AddText(ImVec2(centerX - plusSize.x * 0.5f,
                          centerY - plusSize.y * 0.5f),
-                  IM_COL32(136, 136, 146, 255), plusText);
+                  ImGui::ColorConvertFloat4ToU32(kTextDim), plusText);
 
       const char *label = "Create New Project";
       ImVec2 labelSize = ImGui::CalcTextSize(label);
       dl->AddText(
           ImVec2(centerX - labelSize.x * 0.5f, centerY + circleR + 16.0f),
-          IM_COL32(200, 200, 210, 255), label);
+          ImGui::ColorConvertFloat4ToU32(kText), label);
 
       if (hovered && ImGui::IsMouseClicked(0))
         m_ShowCreateModal = true;
@@ -247,10 +225,10 @@ void ProjectHubLayer::RenderCardGrid(float width, float startY, float height) {
       int projIdx = idx - 1;
       auto &entry = entries[projIdx];
 
-      ImU32 cardBg = hovered ? IM_COL32(38, 38, 44, 255)
-                             : IM_COL32(30, 30, 36, 255);
-      ImU32 borderCol = entry.missing ? IM_COL32(180, 60, 60, 255)
-                                      : IM_COL32(50, 50, 58, 255);
+      ImU32 cardBg = ImGui::ColorConvertFloat4ToU32(hovered ? kSurfaceHov : kSurface);
+      ImU32 borderCol = entry.missing
+                            ? ImGui::ColorConvertFloat4ToU32(kRed)
+                            : ImGui::ColorConvertFloat4ToU32(kBorder);
 
       dl->AddRectFilled(cardMin, cardMax, cardBg, 8.0f);
       dl->AddRect(cardMin, cardMax, borderCol, 8.0f, 0, 1.0f);
@@ -258,10 +236,11 @@ void ProjectHubLayer::RenderCardGrid(float width, float startY, float height) {
       // Thumbnail area
       ImVec2 thumbMin = ImVec2(x + 1.0f, y + 1.0f);
       ImVec2 thumbMax = ImVec2(x + cardW - 1.0f, y + thumbH);
-      dl->AddRectFilled(thumbMin, thumbMax, IM_COL32(24, 24, 30, 255), 7.0f,
+      dl->AddRectFilled(thumbMin, thumbMax,
+                        ImGui::ColorConvertFloat4ToU32(kCanvas), 7.0f,
                         ImDrawFlags_RoundCornersTop);
 
-      // Decorative shape in thumbnail area
+      // Decorative shape
       float cx = x + cardW * 0.5f;
       float cy = y + thumbH * 0.5f;
       float shapeSize = thumbH * 0.25f;
@@ -287,12 +266,11 @@ void ProjectHubLayer::RenderCardGrid(float width, float startY, float height) {
         dl->AddCircle(ImVec2(cx, cy), shapeSize, shapeCol, 32, 1.5f);
       }
 
-      // Missing overlay
       if (entry.missing) {
         const char *missingLabel = ICON_FA_TRIANGLE_EXCLAMATION " Missing";
         ImVec2 missingSize = ImGui::CalcTextSize(missingLabel);
         dl->AddText(ImVec2(cx - missingSize.x * 0.5f, cy + shapeSize + 8.0f),
-                    IM_COL32(180, 60, 60, 255), missingLabel);
+                    ImGui::ColorConvertFloat4ToU32(kRed), missingLabel);
       }
 
       // Info area
@@ -300,12 +278,11 @@ void ProjectHubLayer::RenderCardGrid(float width, float startY, float height) {
       float infoY = y + thumbH + 10.0f;
       float infoRight = x + cardW - 14.0f;
 
-      // Project name (bold)
-      if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+      if (g_BoldFont) ImGui::PushFont(g_BoldFont);
       ImVec2 nameSize = ImGui::CalcTextSize(entry.name.c_str());
       float maxNameW = cardW - 60.0f;
       ImU32 nameCol = entry.missing ? IM_COL32(180, 140, 140, 255)
-                                    : IM_COL32(238, 238, 242, 255);
+                                    : ImGui::ColorConvertFloat4ToU32(kText);
       if (nameSize.x > maxNameW) {
         dl->PushClipRect(ImVec2(infoX, infoY),
                          ImVec2(infoX + maxNameW, infoY + 20.0f), true);
@@ -314,12 +291,12 @@ void ProjectHubLayer::RenderCardGrid(float width, float startY, float height) {
       } else {
         dl->AddText(ImVec2(infoX, infoY), nameCol, entry.name.c_str());
       }
-      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+      if (g_BoldFont) ImGui::PopFont();
 
-      // Timestamp
       float bottomY = infoY + 28.0f;
       std::string timeStr = FormatTimestamp(entry.lastOpened);
-      dl->AddText(ImVec2(infoX, bottomY), IM_COL32(100, 100, 110, 255),
+      dl->AddText(ImVec2(infoX, bottomY),
+                  ImGui::ColorConvertFloat4ToU32(kTextDim),
                   timeStr.c_str());
 
       // Ellipsis button
@@ -333,11 +310,10 @@ void ProjectHubLayer::RenderCardGrid(float width, float startY, float height) {
 
       bool ellipsisHov = ImGui::IsMouseHoveringRect(ellipsisMin, ellipsisMax);
       if (ellipsisHov)
-        dl->AddRectFilled(ellipsisMin, ellipsisMax, IM_COL32(50, 50, 58, 255),
-                          4.0f);
+        dl->AddRectFilled(ellipsisMin, ellipsisMax,
+                          ImGui::ColorConvertFloat4ToU32(kSurfaceHov), 4.0f);
       dl->AddText(ImVec2(ellipsisX, ellipsisY),
-                  ellipsisHov ? IM_COL32(200, 200, 210, 255)
-                              : IM_COL32(100, 100, 110, 255),
+                  ImGui::ColorConvertFloat4ToU32(ellipsisHov ? kText : kTextDim),
                   ellipsis);
 
       if (ellipsisHov && ImGui::IsMouseClicked(0)) {
@@ -345,7 +321,6 @@ void ProjectHubLayer::RenderCardGrid(float width, float startY, float height) {
         ImGui::OpenPopup("##CardContextMenu");
       }
 
-      // Card click (not on ellipsis) — open the project
       if (hovered && !ellipsisHov && ImGui::IsMouseClicked(0)) {
         if (entry.missing) {
           m_MissingIndex = projIdx;
@@ -357,7 +332,6 @@ void ProjectHubLayer::RenderCardGrid(float width, float startY, float height) {
     }
   }
 
-  // Context menu popup
   if (ImGui::BeginPopup("##CardContextMenu")) {
     if (m_ContextMenuIndex >= 0 &&
         m_ContextMenuIndex < static_cast<int>(entries.size())) {
@@ -395,9 +369,9 @@ void ProjectHubLayer::RenderCreateModal() {
 
   if (ImGui::BeginPopupModal("Create New Project", &m_ShowCreateModal,
                              modalFlags)) {
-    if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+    if (g_BoldFont) ImGui::PushFont(g_BoldFont);
     ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.65f, 1.0f), "PROJECT NAME");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+    if (g_BoldFont) ImGui::PopFont();
 
     ImGui::Spacing();
     ImGui::SetNextItemWidth(-1);
@@ -406,12 +380,12 @@ void ProjectHubLayer::RenderCreateModal() {
 
     ImGui::Dummy(ImVec2(0, 16));
 
-    if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+    if (g_BoldFont) ImGui::PushFont(g_BoldFont);
     ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.65f, 1.0f), "TEMPLATE");
     ImGui::SameLine(ImGui::GetContentRegionAvail().x - 100.0f);
-    ImGui::TextColored(ImVec4(kGreen.x, kGreen.y, kGreen.z, 0.8f),
+    ImGui::TextColored(ImVec4(kHubGreen.x, kHubGreen.y, kHubGreen.z, 0.8f),
                        "Select a starting point");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+    if (g_BoldFont) ImGui::PopFont();
 
     ImGui::Spacing();
 
@@ -446,26 +420,26 @@ void ProjectHubLayer::RenderCreateModal() {
       bool hov = ImGui::IsMouseHoveringRect(tMin, tMax);
 
       ImU32 bg = selected ? IM_COL32(30, 50, 65, 255)
-                 : hov    ? IM_COL32(38, 38, 44, 255)
-                          : IM_COL32(30, 30, 36, 255);
-      ImU32 border = selected ? IM_COL32(61, 191, 99, 255)
-                              : IM_COL32(50, 50, 58, 255);
+                 : hov    ? ImGui::ColorConvertFloat4ToU32(kSurfaceHov)
+                          : ImGui::ColorConvertFloat4ToU32(kSurface);
+      ImU32 border = selected
+                         ? ImGui::ColorConvertFloat4ToU32(kHubGreen)
+                         : ImGui::ColorConvertFloat4ToU32(kBorder);
 
       dl->AddRectFilled(tMin, tMax, bg, 6.0f);
       dl->AddRect(tMin, tMax, border, 6.0f, 0, selected ? 2.0f : 1.0f);
 
       dl->AddText(ImVec2(cursor.x + 14.0f, cursor.y + 14.0f),
-                  selected ? IM_COL32(61, 191, 99, 255)
-                           : IM_COL32(136, 136, 146, 255),
+                  ImGui::ColorConvertFloat4ToU32(selected ? kHubGreen : kTextDim),
                   templates[i].icon);
 
-      if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+      if (g_BoldFont) ImGui::PushFont(g_BoldFont);
       dl->AddText(ImVec2(cursor.x + 44.0f, cursor.y + 12.0f),
-                  IM_COL32(238, 238, 242, 255), templates[i].name);
-      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+                  ImGui::ColorConvertFloat4ToU32(kText), templates[i].name);
+      if (g_BoldFont) ImGui::PopFont();
 
       dl->AddText(ImVec2(cursor.x + 44.0f, cursor.y + 32.0f),
-                  IM_COL32(136, 136, 146, 255), templates[i].desc);
+                  ImGui::ColorConvertFloat4ToU32(kTextDim), templates[i].desc);
 
       if (hov && ImGui::IsMouseClicked(0))
         m_SelectedTemplate = i;
@@ -477,9 +451,9 @@ void ProjectHubLayer::RenderCreateModal() {
 
     ImGui::Dummy(ImVec2(0, 16));
 
-    if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+    if (g_BoldFont) ImGui::PushFont(g_BoldFont);
     ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.65f, 1.0f), "LOCATION");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+    if (g_BoldFont) ImGui::PopFont();
 
     ImGui::Spacing();
 
@@ -531,12 +505,9 @@ void ProjectHubLayer::RenderCreateModal() {
     }
     ImGui::SameLine(0, 8.0f);
 
-    ImGui::PushStyleColor(ImGuiCol_Button,
-                          ImVec4(kGreen.x, kGreen.y, kGreen.z, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                          ImVec4(kGreenHov.x, kGreenHov.y, kGreenHov.z, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-                          ImVec4(kGreenAct.x, kGreenAct.y, kGreenAct.z, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Button, kHubGreen);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kHubGreenHov);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, kHubGreenAct);
     if (ImGui::Button("Create Project", ImVec2(createW, 32))) {
       if (m_ProjectDirectory.empty()) {
         m_NoDirectorySelected = true;
@@ -551,8 +522,7 @@ void ProjectHubLayer::RenderCreateModal() {
           m_DirectoryExists = false;
           m_NoDirectorySelected = false;
 
-          Hamster::Project::New(
-              config, &Hamster::Application::GetApplicationInstance());
+          Hamster::Project::New(config, m_App);
 
           std::string hamLibPath =
               Hamster::Application::GetExecutablePath() +
@@ -613,14 +583,9 @@ void ProjectHubLayer::RenderRenameModal() {
       }
       ImGui::SameLine(0, 8.0f);
 
-      ImGui::PushStyleColor(ImGuiCol_Button,
-                            ImVec4(kGreen.x, kGreen.y, kGreen.z, 1.0f));
-      ImGui::PushStyleColor(
-          ImGuiCol_ButtonHovered,
-          ImVec4(kGreenHov.x, kGreenHov.y, kGreenHov.z, 1.0f));
-      ImGui::PushStyleColor(
-          ImGuiCol_ButtonActive,
-          ImVec4(kGreenAct.x, kGreenAct.y, kGreenAct.z, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_Button, kHubGreen);
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kHubGreenHov);
+      ImGui::PushStyleColor(ImGuiCol_ButtonActive, kHubGreenAct);
       if (ImGui::Button("Rename", ImVec2(btnW, 28))) {
         std::string newName(m_RenameBuffer);
         if (!newName.empty()) {
@@ -664,9 +629,9 @@ void ProjectHubLayer::RenderDeleteConfirmation() {
       ImGui::TextWrapped("This will permanently delete the project folder:");
       ImGui::Dummy(ImVec2(0, 4));
 
-      if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+      if (g_BoldFont) ImGui::PushFont(g_BoldFont);
       ImGui::TextWrapped("%s", entry.path.string().c_str());
-      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+      if (g_BoldFont) ImGui::PopFont();
 
       ImGui::Dummy(ImVec2(0, 4));
       ImGui::TextColored(ImVec4(0.9f, 0.22f, 0.27f, 1.0f),
@@ -693,7 +658,6 @@ void ProjectHubLayer::RenderDeleteConfirmation() {
         auto pathToDelete = entry.path;
         m_Registry.Remove(pathToDelete);
 
-        // Windows won't delete a directory that is the process CWD
         auto cwd = std::filesystem::current_path();
         if (cwd.string().find(pathToDelete.string()) == 0)
           std::filesystem::current_path(pathToDelete.parent_path());
@@ -742,9 +706,9 @@ void ProjectHubLayer::RenderMissingProjectDialog() {
           "The project folder could not be found at its expected location:");
       ImGui::Dummy(ImVec2(0, 4));
 
-      if (auto *bold = HamsterTheme::GetBoldFont()) ImGui::PushFont(bold);
+      if (g_BoldFont) ImGui::PushFont(g_BoldFont);
       ImGui::TextWrapped("%s", entry.path.string().c_str());
-      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
+      if (g_BoldFont) ImGui::PopFont();
 
       ImGui::Dummy(ImVec2(0, 8));
       ImGui::Text("What would you like to do?");
@@ -773,14 +737,9 @@ void ProjectHubLayer::RenderMissingProjectDialog() {
       ImGui::PopStyleColor(3);
       ImGui::SameLine(0, 8.0f);
 
-      ImGui::PushStyleColor(ImGuiCol_Button,
-                            ImVec4(kGreen.x, kGreen.y, kGreen.z, 1.0f));
-      ImGui::PushStyleColor(
-          ImGuiCol_ButtonHovered,
-          ImVec4(kGreenHov.x, kGreenHov.y, kGreenHov.z, 1.0f));
-      ImGui::PushStyleColor(
-          ImGuiCol_ButtonActive,
-          ImVec4(kGreenAct.x, kGreenAct.y, kGreenAct.z, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_Button, kHubGreen);
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kHubGreenHov);
+      ImGui::PushStyleColor(ImGuiCol_ButtonActive, kHubGreenAct);
       if (ImGui::Button("Locate...", ImVec2(btnW, 28))) {
         const char *dir =
             tinyfd_selectFolderDialog("Locate project folder", "");
@@ -811,13 +770,11 @@ void ProjectHubLayer::OpenProjectDialog() {
   if (file) {
     std::filesystem::path path(file);
     if (path.extension() == ".hamproj") {
-      // Derive project directory and name from the .hamproj file
       auto projDir = path.parent_path();
       auto projName = path.stem().string();
       m_Registry.AddOrUpdate(projName, projDir);
 
-      Hamster::Project::Open(
-          path, &Hamster::Application::GetApplicationInstance());
+      Hamster::Project::Open(path, m_App);
     }
   }
 }
@@ -827,8 +784,7 @@ void ProjectHubLayer::OpenProject(const std::filesystem::path &projDir) {
     for (auto &f : std::filesystem::directory_iterator(projDir)) {
       if (f.path().extension() == ".hamproj") {
         m_Registry.UpdateTimestamp(projDir);
-        Hamster::Project::Open(
-            f.path(), &Hamster::Application::GetApplicationInstance());
+        Hamster::Project::Open(f.path(), m_App);
         return;
       }
     }
@@ -847,7 +803,6 @@ ProjectHubLayer::FormatTimestamp(const std::string &iso) const {
   if (iso.empty())
     return "";
 
-  // Parse ISO 8601 timestamp
   std::tm tm{};
   std::istringstream ss(iso);
   ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
@@ -877,7 +832,6 @@ ProjectHubLayer::FormatTimestamp(const std::string &iso) const {
   if (days < 14)
     return "Opened last week";
 
-  // Format as date
   std::ostringstream out;
   out << std::put_time(&tm, "Opened %b %d");
   return out.str();

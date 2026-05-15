@@ -1,364 +1,204 @@
-//
-// Created by Jaden on 03/09/2024.
-//
-
 #include "AssetBrowser.h"
+#include "../Theme.h"
+#include "../Components/Components.h"
+#include "IconsFontAwesome6.h"
 
-#include <imgui.h>
-
-#include "Core/Application.h"
-#include "Core/Components.h"
-#include "Theme/HamsterTheme.h"
-#include "Utils/AssetManager.h"
+#include <Core/Application.h>
+#include <Core/Components.h>
+#include <Renderer/Texture.h>
+#include <Utils/AssetManager.h>
 #include <tinyfiledialogs.h>
 
-#include <iostream>
+#include <imgui.h>
+#include <algorithm>
 #include <sstream>
-#include <string>
 
 AssetBrowser::AssetBrowser(Hamster::EventDispatcher *dispatcher,
                            std::shared_ptr<Hamster::Scene> scene,
                            Hamster::AssetManager *assetManager)
-  : Hamster::Panel(dispatcher, scene), m_AssetManager(assetManager) {
-  std::string iconsDir = Hamster::Application::GetExecutablePath() +
-    "/../share/Resources/Hamster-Wheel/Resources/Icons/";
-
-  m_PythonIcon = std::make_unique<Hamster::Texture>(iconsDir + "python.png");
-  m_FolderIcon = std::make_unique<Hamster::Texture>(iconsDir + "folder.png");
-  m_FileIcon   = std::make_unique<Hamster::Texture>(iconsDir + "file.png");
-};
-
-void AssetBrowser::StartRename(Hamster::UUID uuid) {
-  m_RenamingUUID = uuid;
-  m_RenameFocusPending = true;
+    : m_Dispatcher(dispatcher), m_Scene(std::move(scene)),
+      m_AssetManager(assetManager) {
+    m_Dispatcher->Subscribe(
+        Hamster::ActiveSceneChanged,
+        FORWARD_CALLBACK_FUNCTION(AssetBrowser::OnActiveSceneChanged,
+                                  Hamster::ActiveSceneChangedEvent));
 }
 
-static constexpr float kIconSize = 48.0f;
-static constexpr float kTextAreaH = 32.0f;
+void AssetBrowser::OnActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e) {
+    m_Scene = e.GetActiveScene();
+}
 
-static void DrawCard(const char *id, ImTextureID texId, const char *label,
-                     float cardSize) {
+static void DrawAssetCard(const char *id, const char *iconText, const char *label,
+                          Hamster::Texture *tex, float cardW, float cardH) {
     ImGui::PushID(id);
     ImGui::BeginGroup();
 
-    float padSide = (cardSize - kIconSize) * 0.5f;
-    float cardH = 8.0f + kIconSize + 4.0f + kTextAreaH + 4.0f;
-
-    ImVec2 cursor = ImGui::GetCursorScreenPos();
+    ImVec2 pos = ImGui::GetCursorScreenPos();
     ImDrawList *dl = ImGui::GetWindowDrawList();
-    ImVec2 cardEnd = {cursor.x + cardSize, cursor.y + cardH};
 
-    ImGui::InvisibleButton("##card", {cardSize, cardH});
-    bool hovered = ImGui::IsItemHovered();
+    const float labelH  = 30.0f;
+    const float cardR   = 6.0f;
 
-    dl->AddRect(cursor, cardEnd, IM_COL32(255, 255, 255, 30), 6.0f);
-    if (hovered) {
-        dl->AddRectFilled(cursor, cardEnd,
-                          IM_COL32(255, 255, 255, 15), 6.0f);
-    }
+    bool hovered = ImGui::IsMouseHoveringRect(pos, {pos.x + cardW, pos.y + cardH});
+    dl->AddRectFilled(pos, {pos.x + cardW, pos.y + cardH},
+                      ImGui::ColorConvertFloat4ToU32(hovered ? kSurfaceHov : kSurface),
+                      cardR);
 
-    ImVec2 iconPos = {cursor.x + padSide, cursor.y + 8.0f};
-    dl->AddImage(texId, iconPos,
-                 {iconPos.x + kIconSize, iconPos.y + kIconSize});
+    if (tex && tex->GetTextureId() != 0) {
+        // Preview area: edge-to-edge horizontally, top of card to start of label area.
+        ImVec2 r0 = pos;
+        ImVec2 r1 = {pos.x + cardW, pos.y + cardH - labelH};
+        float rectW = r1.x - r0.x;
+        float rectH = r1.y - r0.y;
 
-    float maxTextW = cardSize - 8.0f;
-    float textY = cursor.y + 8.0f + kIconSize + 4.0f;
-    float lineH = ImGui::GetTextLineHeight();
-    std::string text = label;
-    ImVec2 textSize = ImGui::CalcTextSize(text.c_str());
-
-    if (textSize.x <= maxTextW) {
-        float textX = cursor.x + (cardSize - textSize.x) * 0.5f;
-        dl->AddText({textX, textY}, IM_COL32(238, 238, 238, 255), text.c_str());
-    } else {
-        // Word-wrap to 2 lines max, truncate second line with ellipsis
-        size_t breakAt = 0;
-        for (size_t i = 1; i < text.size(); i++) {
-            std::string sub = text.substr(0, i);
-            if (ImGui::CalcTextSize(sub.c_str()).x > maxTextW) {
-                breakAt = i - 1;
-                break;
+        // Checkerboard background. Cells at the top corners use matching rounding
+        // so the pattern follows the card's curve and doesn't poke past it.
+        const float cellSz = 8.0f;
+        int cols = (int)std::ceil(rectW / cellSz);
+        int rows = (int)std::ceil(rectH / cellSz);
+        for (int iy = 0; iy < rows; ++iy) {
+            for (int ix = 0; ix < cols; ++ix) {
+                ImU32 col = ((ix + iy) % 2 == 0) ? IM_COL32(60, 60, 65, 255)
+                                                  : IM_COL32(40, 40, 45, 255);
+                ImVec2 c0 = {r0.x + ix * cellSz, r0.y + iy * cellSz};
+                ImVec2 c1 = {r0.x + std::min((ix + 1) * cellSz, rectW),
+                             r0.y + std::min((iy + 1) * cellSz, rectH)};
+                ImDrawFlags flags = 0;
+                float r = 0.0f;
+                if (iy == 0 && ix == 0)              { flags = ImDrawFlags_RoundCornersTopLeft;  r = cardR; }
+                else if (iy == 0 && ix == cols - 1)  { flags = ImDrawFlags_RoundCornersTopRight; r = cardR; }
+                else                                  { flags = ImDrawFlags_RoundCornersNone; }
+                dl->AddRectFilled(c0, c1, col, r, flags);
             }
         }
-        if (breakAt == 0) breakAt = text.size();
-        std::string line1 = text.substr(0, breakAt);
-        std::string line2 = text.substr(breakAt);
 
-        ImVec2 ellipsis = ImGui::CalcTextSize("...");
-        while (line2.size() > 1 &&
-               ImGui::CalcTextSize(line2.c_str()).x + ellipsis.x > maxTextW)
-            line2.pop_back();
-        if (ImGui::CalcTextSize((text.substr(breakAt)).c_str()).x > maxTextW)
-            line2 += "...";
-
-        float x1 = cursor.x + (cardSize - ImGui::CalcTextSize(line1.c_str()).x) * 0.5f;
-        float x2 = cursor.x + (cardSize - ImGui::CalcTextSize(line2.c_str()).x) * 0.5f;
-        dl->AddText({x1, textY}, IM_COL32(238, 238, 238, 255), line1.c_str());
-        dl->AddText({x2, textY + lineH}, IM_COL32(238, 238, 238, 255), line2.c_str());
+        // Fit image into the preview area preserving aspect ratio, centered.
+        float texW = (float)tex->GetWidth();
+        float texH = (float)tex->GetHeight();
+        float scale = std::min(rectW / texW, rectH / texH);
+        float drawW = texW * scale;
+        float drawH = texH * scale;
+        ImVec2 i0 = {r0.x + (rectW - drawW) * 0.5f, r0.y + (rectH - drawH) * 0.5f};
+        ImVec2 i1 = {i0.x + drawW, i0.y + drawH};
+        dl->AddImage(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(tex->GetTextureId())),
+                     i0, i1);
+    } else if (iconText && g_IconLarge) {
+        ImVec2 iSz = g_IconLarge->CalcTextSizeA(36.0f, FLT_MAX, 0, iconText);
+        float iconX = pos.x + (cardW - iSz.x) * 0.5f;
+        float iconY = pos.y + (cardH - labelH - iSz.y) * 0.5f + 4;
+        dl->AddText(g_IconLarge, 36.0f, {iconX, iconY},
+                    IM_COL32(120, 128, 145, 255), iconText);
     }
 
+    ImVec2 nSz = ImGui::CalcTextSize(label);
+    float maxW = cardW - 8;
+    if (nSz.x > maxW) {
+        std::string s = label;
+        ImVec2 ell = ImGui::CalcTextSize("...");
+        while (s.size() > 1 && ImGui::CalcTextSize(s.c_str()).x + ell.x > maxW)
+            s.pop_back();
+        s += "...";
+        ImVec2 sSz = ImGui::CalcTextSize(s.c_str());
+        dl->AddText({pos.x + (cardW - sSz.x) * 0.5f, pos.y + cardH - 20},
+                    ImGui::ColorConvertFloat4ToU32(kText), s.c_str());
+    } else {
+        dl->AddText({pos.x + (cardW - nSz.x) * 0.5f, pos.y + cardH - 20},
+                    ImGui::ColorConvertFloat4ToU32(kText), label);
+    }
+
+    ImGui::Dummy({cardW, cardH});
     ImGui::EndGroup();
     ImGui::PopID();
 }
 
-static bool DrawCardRenameable(const char *id, ImTextureID texId,
-                               float cardSize,
-                               bool isRenaming, char *renameBuf,
-                               size_t renameBufSize, bool focusPending,
-                               bool &renameFinished) {
-    ImGui::PushID(id);
-    ImGui::BeginGroup();
-
-    float padSide = (cardSize - kIconSize) * 0.5f;
-    float cardH = 8.0f + kIconSize + 4.0f + kTextAreaH + 4.0f;
-
-    ImVec2 cursor = ImGui::GetCursorScreenPos();
+static bool DrawAddCard(float cardW, float cardH) {
+    ImGui::PushID("##add_asset_card");
+    ImVec2 pos = ImGui::GetCursorScreenPos();
     ImDrawList *dl = ImGui::GetWindowDrawList();
-    ImVec2 cardEnd = {cursor.x + cardSize, cursor.y + cardH};
 
-    ImGui::InvisibleButton("##card", {cardSize, cardH});
+    bool clicked = ImGui::InvisibleButton("##add", {cardW, cardH});
     bool hovered = ImGui::IsItemHovered();
-    bool rightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
 
-    dl->AddRect(cursor, cardEnd, IM_COL32(255, 255, 255, 30), 6.0f);
+    // Accent-tinted bg so this card stands out from the others.
+    ImVec4 baseBg = {kAccent.x, kAccent.y, kAccent.z, hovered ? 0.28f : 0.18f};
+    dl->AddRectFilled(pos, {pos.x + cardW, pos.y + cardH},
+                      ImGui::ColorConvertFloat4ToU32(baseBg), 6.0f);
+    dl->AddRect(pos, {pos.x + cardW, pos.y + cardH},
+                ImGui::ColorConvertFloat4ToU32(kAccent), 6.0f, 0, 1.0f);
 
-    if (hovered || isRenaming) {
-        dl->AddRectFilled(cursor, cardEnd,
-                          IM_COL32(255, 255, 255, 15), 6.0f);
+    if (g_IconLarge) {
+        const char *iconText = ICON_FA_PLUS;
+        ImVec2 iSz = g_IconLarge->CalcTextSizeA(36.0f, FLT_MAX, 0, iconText);
+        float iconX = pos.x + (cardW - iSz.x) * 0.5f;
+        float iconY = pos.y + (cardH - 30.0f - iSz.y) * 0.5f + 4;
+        dl->AddText(g_IconLarge, 36.0f, {iconX, iconY},
+                    ImGui::ColorConvertFloat4ToU32(kAccent), iconText);
     }
 
-    ImVec2 iconPos = {cursor.x + padSide, cursor.y + 8.0f};
-    dl->AddImage(texId, iconPos,
-                 {iconPos.x + kIconSize, iconPos.y + kIconSize});
+    const char *label = "Add Asset";
+    ImVec2 nSz = ImGui::CalcTextSize(label);
+    dl->AddText({pos.x + (cardW - nSz.x) * 0.5f, pos.y + cardH - 20},
+                ImGui::ColorConvertFloat4ToU32(kAccent), label);
 
-    float textY = cursor.y + 8.0f + kIconSize + 4.0f;
-
-    if (isRenaming) {
-        float inputW = cardSize - 8.0f;
-        ImGui::SetCursorScreenPos({cursor.x + 4.0f, textY});
-        ImGui::SetNextItemWidth(inputW);
-        if (focusPending) {
-            ImGui::SetKeyboardFocusHere();
-        }
-        if (ImGui::InputText("##rename", renameBuf, renameBufSize,
-                             ImGuiInputTextFlags_EnterReturnsTrue |
-                             ImGuiInputTextFlags_AutoSelectAll)) {
-            renameFinished = true;
-        }
-        if (!focusPending && !ImGui::IsItemActive()) {
-            renameFinished = true;
-        }
-    } else {
-        float maxTextW = cardSize - 8.0f;
-        float lineH = ImGui::GetTextLineHeight();
-        std::string text = renameBuf;
-        ImVec2 textSize = ImGui::CalcTextSize(text.c_str());
-
-        if (textSize.x <= maxTextW) {
-            float textX = cursor.x + (cardSize - textSize.x) * 0.5f;
-            dl->AddText({textX, textY}, IM_COL32(238, 238, 238, 255), text.c_str());
-        } else {
-            size_t breakAt = 0;
-            for (size_t i = 1; i < text.size(); i++) {
-                std::string sub = text.substr(0, i);
-                if (ImGui::CalcTextSize(sub.c_str()).x > maxTextW) {
-                    breakAt = i - 1;
-                    break;
-                }
-            }
-            if (breakAt == 0) breakAt = text.size();
-            std::string line1 = text.substr(0, breakAt);
-            std::string line2 = text.substr(breakAt);
-
-            ImVec2 ellipsis = ImGui::CalcTextSize("...");
-            while (line2.size() > 1 &&
-                   ImGui::CalcTextSize(line2.c_str()).x + ellipsis.x > maxTextW)
-                line2.pop_back();
-            if (ImGui::CalcTextSize((text.substr(breakAt)).c_str()).x > maxTextW)
-                line2 += "...";
-
-            float x1 = cursor.x + (cardSize - ImGui::CalcTextSize(line1.c_str()).x) * 0.5f;
-            float x2 = cursor.x + (cardSize - ImGui::CalcTextSize(line2.c_str()).x) * 0.5f;
-            dl->AddText({x1, textY}, IM_COL32(238, 238, 238, 255), line1.c_str());
-            dl->AddText({x2, textY + lineH}, IM_COL32(238, 238, 238, 255), line2.c_str());
-        }
-    }
-
-    ImGui::EndGroup();
     ImGui::PopID();
-
-    return rightClicked;
+    return clicked;
 }
 
 void AssetBrowser::Render() {
-  if (!ImGui::Begin("Asset Browser", &m_WindowOpen, ImGuiWindowFlags_MenuBar)) {
-    ImGui::End();
-    return;
-  }
+    ImGui::Dummy({0, 4});
 
-  if (ImGui::BeginMenuBar()) {
-    if (ImGui::BeginMenu("File")) {
-      if (ImGui::MenuItem("Import Asset")) {
-        char const *filterPattern = {"*.png"};
-        const char *path = tinyfd_openFileDialog(
-          "Select asset", "", 1, &filterPattern, "PNG Files", 1);
+    float cardW = 110.0f;
+    float cardH = 140.0f; // preview is square (cardW = cardH - labelH(30))
+    float spacing = 12.0f;
+    float avail = ImGui::GetContentRegionAvail().x;
+    int cardsPerRow = std::max(1, static_cast<int>((avail + spacing) / (cardW + spacing)));
+    int colIdx = 0;
 
-        if (path) {
-          std::stringstream pathSS(path);
-          std::string item;
-          while (std::getline(pathSS, item, '|')) {
-            m_AssetManager->AddTextureAsync(item);
-          }
+    auto nextRow = [&]() {
+        colIdx++;
+        if (colIdx < cardsPerRow) ImGui::SameLine(0, spacing);
+        else colIdx = 0;
+    };
+
+    // Add Asset card (always first)
+    if (DrawAddCard(cardW, cardH)) {
+        ImGui::OpenPopup("##add_asset_popup");
+    }
+    if (HBeginStyledPopup("##add_asset_popup")) {
+        if (HComboItem(ICON_FA_FILE_IMPORT "  Import Texture", false)) {
+            const char *filterPattern = {"*.png"};
+            const char *path = tinyfd_openFileDialog(
+                "Select asset", "", 1, &filterPattern, "PNG Files", 1);
+            if (path) {
+                std::stringstream pathSS(path);
+                std::string item;
+                while (std::getline(pathSS, item, '|')) {
+                    m_AssetManager->AddTextureAsync(item);
+                }
+            }
         }
-      }
-      if (ImGui::MenuItem("New Script")) {
-        Hamster::UUID newId = m_AssetManager->AddDefaultScript();
-        StartRename(newId);
-      }
-      ImGui::EndMenu();
-    }
-    ImGui::EndMenuBar();
-  }
-
-  float browserWidth = ImGui::GetContentRegionAvail().x;
-  float cellSize = m_CardSize + m_CardPadding;
-  int columns = static_cast<int>(browserWidth / cellSize);
-  if (columns < 1) columns = 1;
-
-  ImGui::Columns(columns, "##AssetGrid", false);
-
-  // Texture assets
-  for (const auto &[uuid, texture] : m_AssetManager->GetTextureMap()) {
-    std::string id = "tex_" + boost::uuids::to_string(uuid.GetUUID());
-    ImTextureID texId = texture->GetTextureId() != 0
-        ? (ImTextureID)(intptr_t)texture->GetTextureId()
-        : (ImTextureID)(intptr_t)m_FileIcon->GetTextureId();
-
-    bool isRenaming = !Hamster::UUID::IsNil(m_RenamingUUID) &&
-                      uuid.GetUUID() == m_RenamingUUID.GetUUID();
-
-    if (isRenaming && m_RenameFocusPending) {
-      strncpy(m_RenameBuffer, texture->GetName().c_str(),
-              sizeof(m_RenameBuffer) - 1);
-      m_RenameBuffer[sizeof(m_RenameBuffer) - 1] = '\0';
-    }
-
-    char labelBuf[128];
-    if (!isRenaming) {
-      strncpy(labelBuf, texture->GetName().c_str(), sizeof(labelBuf) - 1);
-      labelBuf[sizeof(labelBuf) - 1] = '\0';
-    }
-
-    bool renameFinished = false;
-    bool rightClicked = DrawCardRenameable(
-        id.c_str(), texId, m_CardSize,
-        isRenaming,
-        isRenaming ? m_RenameBuffer : labelBuf,
-        isRenaming ? sizeof(m_RenameBuffer) : sizeof(labelBuf),
-        isRenaming && m_RenameFocusPending,
-        renameFinished);
-
-    if (isRenaming) {
-      m_RenameFocusPending = false;
-
-      if (renameFinished) {
-        if (strlen(m_RenameBuffer) > 0) {
-          texture->SetName(m_RenameBuffer);
+        if (HComboItem(ICON_FA_PLUS "  New Script", false)) {
+            m_AssetManager->AddDefaultScript();
         }
-        m_RenamingUUID = Hamster::UUID::GetNil();
-      }
+        HEndStyledPopup();
+    }
+    nextRow();
+
+    // Texture assets
+    for (const auto &[uuid, texture] : m_AssetManager->GetTextureMap()) {
+        Hamster::UUID mUUID = uuid;
+        std::string id = "tex_" + mUUID.GetUUIDString();
+        DrawAssetCard(id.c_str(), ICON_FA_IMAGE,
+                      texture->GetName().c_str(), texture.get(), cardW, cardH);
+        nextRow();
     }
 
-    if (rightClicked && !isRenaming) {
-      m_ContextMenuUUID = uuid;
-      m_ContextMenuIsTexture = true;
-      ImGui::OpenPopup("##TextureContextMenu");
+    // Script assets
+    for (const auto &[uuid, script] : m_AssetManager->GetScriptMap()) {
+        Hamster::UUID mUUID = uuid;
+        std::string id = "scr_" + mUUID.GetUUIDString();
+        DrawAssetCard(id.c_str(), ICON_FA_FILE_CODE,
+                      script->GetName().c_str(), nullptr, cardW, cardH);
+        nextRow();
     }
-
-    ImGui::NextColumn();
-  }
-
-  // Script assets — context menu for rename
-  for (const auto &[uuid, script] : m_AssetManager->GetScriptMap()) {
-    std::string id = "scr_" + boost::uuids::to_string(uuid.GetUUID());
-    bool isRenaming = !Hamster::UUID::IsNil(m_RenamingUUID) &&
-                      uuid.GetUUID() == m_RenamingUUID.GetUUID();
-
-    if (isRenaming && m_RenameFocusPending) {
-      strncpy(m_RenameBuffer, script->GetName().c_str(),
-              sizeof(m_RenameBuffer) - 1);
-      m_RenameBuffer[sizeof(m_RenameBuffer) - 1] = '\0';
-    }
-
-    char labelBuf[128];
-    if (!isRenaming) {
-      strncpy(labelBuf, script->GetName().c_str(), sizeof(labelBuf) - 1);
-      labelBuf[sizeof(labelBuf) - 1] = '\0';
-    }
-
-    bool renameFinished = false;
-    bool rightClicked = DrawCardRenameable(
-        id.c_str(),
-        (ImTextureID)(intptr_t)m_PythonIcon->GetTextureId(),
-        m_CardSize,
-        isRenaming,
-        isRenaming ? m_RenameBuffer : labelBuf,
-        isRenaming ? sizeof(m_RenameBuffer) : sizeof(labelBuf),
-        isRenaming && m_RenameFocusPending,
-        renameFinished);
-
-    if (isRenaming) {
-      m_RenameFocusPending = false;
-
-      if (renameFinished) {
-        if (strlen(m_RenameBuffer) > 0) {
-          script->SetName(m_RenameBuffer);
-        }
-        m_RenamingUUID = Hamster::UUID::GetNil();
-      }
-    }
-
-    if (rightClicked && !isRenaming) {
-      m_ContextMenuUUID = uuid;
-      m_ContextMenuIsTexture = false;
-      ImGui::OpenPopup("##ScriptContextMenu");
-    }
-
-    ImGui::NextColumn();
-  }
-
-  // Texture context menu
-  if (ImGui::BeginPopup("##TextureContextMenu")) {
-    if (ImGui::Selectable("Rename")) {
-      StartRename(m_ContextMenuUUID);
-    }
-    if (ImGui::Selectable("Delete")) {
-      m_AssetManager->RemoveTexture(m_ContextMenuUUID);
-      m_ContextMenuUUID = Hamster::UUID::GetNil();
-    }
-    ImGui::EndPopup();
-  }
-
-  // Script context menu
-  if (ImGui::BeginPopup("##ScriptContextMenu")) {
-    if (ImGui::Selectable("Rename")) {
-      StartRename(m_ContextMenuUUID);
-    }
-    if (ImGui::Selectable("Delete")) {
-      if (m_Scene) {
-        auto view = m_Scene->GetRegistry().view<Hamster::Behaviour>();
-        for (auto entity : view) {
-          auto &behaviour = view.get<Hamster::Behaviour>(entity);
-          behaviour.scripts.erase(m_ContextMenuUUID);
-        }
-      }
-      m_AssetManager->RemoveScript(m_ContextMenuUUID);
-      m_ContextMenuUUID = Hamster::UUID::GetNil();
-    }
-    ImGui::EndPopup();
-  }
-
-  ImGui::Columns(1);
-
-  ImGui::End();
 }

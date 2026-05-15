@@ -1,21 +1,22 @@
-#ifndef CONSOLE_H
-#define CONSOLE_H
+#ifndef UIPROTO_CONSOLE_H
+#define UIPROTO_CONSOLE_H
 
-#include <memory>
-#include <vector>
-
+#include <Hamster.h>
 #include <Core/Log.h>
-#include <Gui/Panel.h>
+#include <memory>
 
-class Console : public Hamster::Panel {
+class Console {
 public:
-  explicit Console(Hamster::EventDispatcher *dispatcher,
-                   std::shared_ptr<Hamster::Scene> scene);
+    Console(Hamster::EventDispatcher *dispatcher,
+            std::shared_ptr<Hamster::Scene> scene);
 
-  void Render() override;
+    void Render();
+    void OnActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e);
 
 private:
-  std::shared_ptr<Hamster::Logger> m_ClientLogger;
+    Hamster::EventDispatcher *m_Dispatcher;
+    std::shared_ptr<Hamster::Scene> m_Scene;
+    std::shared_ptr<Hamster::Logger> m_ClientLogger;
 };
 
-#endif // !CONSOLE_H
+#endif // UIPROTO_CONSOLE_H

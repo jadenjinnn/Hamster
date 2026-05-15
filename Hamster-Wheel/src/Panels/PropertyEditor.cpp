@@ -1,568 +1,384 @@
-// Created by Jaden on 24/08/2024.
-//
-
 #include "PropertyEditor.h"
+#include "Panels/ColliderEditor.h"
+#include "../Panel.h"
+#include "../Theme.h"
+#include "../Components/Components.h"
+#include "IconsFontAwesome6.h"
 
-#include <cstdlib>
-
-#include <glm/gtc/type_ptr.hpp>
-#include <imgui.h>
-
+#include <Utils/AssetManager.h>
 #include <Scripting/Scripting.h>
 
-#include <box2d/box2d.h>
+#include <imgui.h>
+#include <imgui_stdlib.h>
+#include <algorithm>
+#include <cstdio>
 
-#include "AssetBrowser.h"
-#include "ColliderEditor.h"
-#include "Theme/IconsFontAwesome6.h"
-#include "Theme/HamsterTheme.h"
+static Panel g_PropPanel = {"Property Editor", "...##pe", false, true};
 
-static constexpr ImVec4 kAxisRed       = {0.878f, 0.290f, 0.310f, 1.0f};
-static constexpr ImVec4 kAxisRedHov    = {0.920f, 0.360f, 0.380f, 1.0f};
-static constexpr ImVec4 kAxisRedAct    = {0.780f, 0.220f, 0.240f, 1.0f};
-static constexpr ImVec4 kAxisGreen     = {0.337f, 0.576f, 0.439f, 1.0f};
-static constexpr ImVec4 kAxisGreenHov  = {0.400f, 0.660f, 0.510f, 1.0f};
-static constexpr ImVec4 kAxisGreenAct  = {0.260f, 0.490f, 0.360f, 1.0f};
-static constexpr ImVec4 kAxisBlue      = {0.310f, 0.620f, 0.890f, 1.0f};
-static constexpr ImVec4 kAxisBlueHov   = {0.380f, 0.690f, 0.940f, 1.0f};
-static constexpr ImVec4 kAxisBlueAct   = {0.240f, 0.530f, 0.780f, 1.0f};
-
-static void DrawAxisFloat(const char *axisLabel, const char *inputId, float *value,
-                          const ImVec4 &col, const ImVec4 &hov, const ImVec4 &act,
-                          float inputWidth) {
-    ImGuiStyle &style = ImGui::GetStyle();
-    float h = ImGui::GetFrameHeight();
-    float rounding = style.FrameRounding;
-    float savedSpacingX = style.ItemSpacing.x;
-    ImDrawList *dl = ImGui::GetWindowDrawList();
-
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, {0, style.ItemSpacing.y});
-
-    // Colored axis prefix — left-rounded only
-    ImVec2 pp = ImGui::GetCursorScreenPos();
-    ImGui::InvisibleButton(axisLabel, {h, h});
-    ImVec4 bg = ImGui::IsItemActive() ? act : (ImGui::IsItemHovered() ? hov : col);
-    dl->AddRectFilled(pp, {pp.x + h, pp.y + h},
-                      ImGui::ColorConvertFloat4ToU32(bg),
-                      rounding, ImDrawFlags_RoundCornersLeft);
-    char vis[2] = {axisLabel[0], '\0'};
-    ImVec2 ts = ImGui::CalcTextSize(vis);
-    dl->AddText({pp.x + (h - ts.x) * 0.5f, pp.y + (h - ts.y) * 0.5f},
-                ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Text]), vis);
-
-    // Input — right-rounded only, drawn as custom bg + transparent InputFloat
-    ImGui::SameLine();
-    ImVec2 ip = ImGui::GetCursorScreenPos();
-    dl->AddRectFilled(ip, {ip.x + inputWidth, ip.y + h},
-                      ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_FrameBg]),
-                      rounding, ImDrawFlags_RoundCornersRight);
-
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, {0, 0, 0, 0});
-    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, {0, 0, 0, 0});
-    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, {0, 0, 0, 0});
-    ImGui::PushItemWidth(inputWidth);
-    ImGui::InputFloat(inputId, value);
-    ImGui::PopItemWidth();
-    ImGui::PopStyleColor(3);
-
-    ImGui::PopStyleVar();
-    ImGui::SameLine(0, savedSpacingX);
+PropertyEditor::PropertyEditor(Hamster::EventDispatcher *dispatcher,
+                               std::shared_ptr<Hamster::Scene> scene,
+                               Hamster::AssetManager *assetManager,
+                               ColliderEditor *colliderEditor)
+    : m_Dispatcher(dispatcher), m_Scene(std::move(scene)),
+      m_AssetManager(assetManager), m_ColliderEditor(colliderEditor) {
+    m_Dispatcher->Subscribe(
+        Hamster::ActiveSceneChanged,
+        FORWARD_CALLBACK_FUNCTION(PropertyEditor::OnActiveSceneChanged,
+                                  Hamster::ActiveSceneChangedEvent));
 }
 
-static constexpr float kLabelColumnWidth = 72.0f;
-static constexpr float kAxisInputWidth   = 60.0f;
-
-void PropertyEditor::Render() {
-  if (!ImGui::Begin("Property Editor", &m_WindowOpen) ||
-      Hamster::UUID::IsNil(m_SelectedEntity)) {
-    ImGui::End();
-    return;
-  }
-
-  // Entity header — icon + editable name
-  {
-    float iconSize = 36.0f;
-    ImGui::Image((ImTextureID)(intptr_t)m_EntityIcon->GetTextureId(),
-                 {iconSize, iconSize},
-                 {0, 0}, {1, 1},
-                 ImVec4(0.345f, 0.529f, 0.969f, 1.0f));
-
-    ImGui::SameLine();
-
-    ImGui::BeginGroup();
-    if (m_Name != nullptr) {
-      ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
-      ImGui::InputText("##EntityName", &m_Name->name[0], m_Name->name.capacity() + 1,
-                        ImGuiInputTextFlags_CallbackResize,
-                        [](ImGuiInputTextCallbackData *data) -> int {
-                            auto *str = static_cast<std::string *>(data->UserData);
-                            str->resize(data->BufTextLen);
-                            data->Buf = &(*str)[0];
-                            return 0;
-                        }, &m_Name->name);
-      ImGui::PopItemWidth();
-    }
-    ImGui::TextDisabled("%s", m_SelectedEntity.GetUUIDString().c_str());
-    ImGui::EndGroup();
-  }
-
-  ImGui::Dummy({0, 8});
-
-  if (m_Transform != nullptr) {
-    if (ImFont *hdr = HamsterTheme::GetHeaderFont()) ImGui::PushFont(hdr);
-    ImGui::Text(ICON_FA_UP_DOWN_LEFT_RIGHT "  Transform");
-    if (HamsterTheme::GetHeaderFont()) ImGui::PopFont();
-    ImGui::Dummy({0, 6});
-
-    // Position
-    ImGui::AlignTextToFramePadding();
-    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-    ImGui::Text("Position");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-    ImGui::SameLine(kLabelColumnWidth);
-    DrawAxisFloat("X##P", "##XP", &m_Transform->position.x, kAxisRed, kAxisRedHov, kAxisRedAct, kAxisInputWidth);
-    DrawAxisFloat("Y##P", "##YP", &m_Transform->position.y, kAxisGreen, kAxisGreenHov, kAxisGreenAct, kAxisInputWidth);
-    DrawAxisFloat("Z##P", "##ZP", &m_Transform->position.z, kAxisBlue, kAxisBlueHov, kAxisBlueAct, kAxisInputWidth);
-    ImGui::NewLine();
-    ImGui::Dummy({0, 6});
-
-    // Scale
-    ImGui::AlignTextToFramePadding();
-    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-    ImGui::Text("Scale");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-    ImGui::SameLine(kLabelColumnWidth);
-    DrawAxisFloat("X##S", "##XS", &m_Transform->size.x, kAxisRed, kAxisRedHov, kAxisRedAct, kAxisInputWidth);
-    DrawAxisFloat("Y##S", "##YS", &m_Transform->size.y, kAxisGreen, kAxisGreenHov, kAxisGreenAct, kAxisInputWidth);
-    ImGui::NewLine();
-    ImGui::Dummy({0, 6});
-
-    // Rotation
-    ImGui::AlignTextToFramePadding();
-    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-    ImGui::Text("Rotation");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-    ImGui::SameLine(kLabelColumnWidth);
-    ImGui::PushItemWidth(kAxisInputWidth + ImGui::GetFrameHeight());
-    ImGui::InputFloat("##XR", &m_Transform->rotation);
-    ImGui::PopItemWidth();
-  }
-
-  if (m_Sprite != nullptr) {
-    ImGui::Dummy({0, 12});
-    if (ImFont *hdr = HamsterTheme::GetHeaderFont()) ImGui::PushFont(hdr);
-    ImGui::Text(ICON_FA_IMAGE "  Sprite");
-    if (HamsterTheme::GetHeaderFont()) ImGui::PopFont();
-    ImGui::Dummy({0, 6});
-
-    constexpr float kThumbSize = 96.0f;
-    auto &colour = m_Sprite->colour;
-    ImVec4 tint(colour.r, colour.g, colour.b, 1.0f);
-
-    ImGui::BeginGroup();
-    if (m_Sprite->texture != nullptr && m_Sprite->texture->GetTextureId() != 0) {
-      ImGui::Image(
-          (ImTextureID)(intptr_t)m_Sprite->texture->GetTextureId(),
-          ImVec2(kThumbSize, kThumbSize),
-          ImVec2(0, 0), ImVec2(1, 1),
-          tint);
-    } else {
-      ImVec2 pos = ImGui::GetCursorScreenPos();
-      ImGui::GetWindowDrawList()->AddRectFilled(
-          pos, ImVec2(pos.x + kThumbSize, pos.y + kThumbSize),
-          IM_COL32(40, 40, 40, 255));
-      ImGui::GetWindowDrawList()->AddRect(
-          pos, ImVec2(pos.x + kThumbSize, pos.y + kThumbSize),
-          IM_COL32(80, 80, 80, 255));
-      ImGui::Dummy(ImVec2(kThumbSize, kThumbSize));
-    }
-    ImGui::EndGroup();
-
-    ImGui::SameLine();
-
-    ImGui::BeginGroup();
-    if (m_Sprite->texture != nullptr) {
-      if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-      ImGui::Text("Name");
-      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-      ImGui::SameLine();
-      ImGui::TextDisabled("%s", m_Sprite->texture->GetName().c_str());
-      if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-      ImGui::Text("Size");
-      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-      ImGui::SameLine();
-      ImGui::TextDisabled("%d x %d", m_Sprite->texture->GetWidth(), m_Sprite->texture->GetHeight());
-    } else {
-      if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-      ImGui::Text("Name");
-      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-      ImGui::SameLine();
-      ImGui::TextDisabled("None");
-      if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-      ImGui::Text("Size");
-      if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-      ImGui::SameLine();
-      ImGui::TextDisabled("- x -");
-    }
-    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-    ImGui::Text("Tint");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-    ImGui::SameLine();
-    float col[3] = {colour.r, colour.g, colour.b};
-    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
-    if (ImGui::ColorEdit3("##Tint", col, ImGuiColorEditFlags_NoLabel)) {
-      colour = glm::vec3(col[0], col[1], col[2]);
-    }
-    ImGui::PopItemWidth();
-    ImGui::EndGroup();
-
-    ImGui::Dummy({0, 4});
-
-    ImGui::PushItemWidth(80);
-
-    if (ImGui::Button("Select Sprite")) {
-      ImGui::OpenPopup("Select Asset");
-    }
-
-    if (ImGui::BeginPopup("Select Asset")) {
-      for (const auto &[uuid, texture] :
-           m_AssetManager->GetTextureMap()) {
-        std::string buttonText =
-            texture->GetName() + "##" + texture->GetUUID().GetUUIDString();
-
-        if (ImGui::Selectable(buttonText.c_str())) {
-          m_Sprite->texture = texture;
-        }
-      }
-
-      ImGui::EndPopup();
-    }
-  }
-
-  if (m_Behaviour != nullptr) {
-    ImGui::Dummy({0, 12});
-    if (ImFont *hdr = HamsterTheme::GetHeaderFont()) ImGui::PushFont(hdr);
-    ImGui::Text(ICON_FA_CODE "  Scripts");
-    if (HamsterTheme::GetHeaderFont()) ImGui::PopFont();
-    ImGui::Dummy({0, 6});
-
-    ImGui::PushItemWidth(80);
-
-    Hamster::UUID removeScriptUUID = Hamster::UUID::GetNil();
-
-    for (auto &[uuid, script] : m_Behaviour->scripts) {
-      std::string uuidStr = boost::uuids::to_string(uuid.GetUUID());
-      std::string btnId = script->GetName() + "##" + uuidStr;
-      if (ImGui::Button(btnId.c_str())) {
-        OpenFile(script->GetScriptPath());
-      };
-
-      std::string popupId = "##ScriptCtx_" + uuidStr;
-      if (ImGui::BeginPopupContextItem(popupId.c_str())) {
-        if (ImGui::Selectable("Remove")) {
-          removeScriptUUID = uuid;
-        }
-
-        if (ImGui::Selectable("Rename")) {
-          m_RenameModal = std::make_shared<RenameModal>(script->GetName());
-          m_RenameModalOpen = true;
-        }
-
-        ImGui::EndPopup();
-      }
-    }
-
-    if (!Hamster::UUID::IsNil(removeScriptUUID)) {
-      m_Behaviour->scripts.erase(removeScriptUUID);
-    }
-
-    if (ImGui::Button("Add Script")) {
-      ImGui::OpenPopup("Add Script");
-    }
-
-    if (ImGui::BeginPopup("Add Script")) {
-      if (ImGui::Selectable(ICON_FA_PLUS "  New Script")) {
-        Hamster::UUID newId = m_AssetManager->AddDefaultScript();
-        auto newScript = m_AssetManager->GetScript(newId);
-        m_Behaviour->scripts.emplace(newId, newScript);
-        if (m_AssetBrowser) {
-          m_AssetBrowser->StartRename(newId);
-        }
-      }
-
-      if (m_AssetManager->GetScriptCount() > 0) {
-        ImGui::Separator();
-      }
-
-      for (const auto &[uuid, script] : m_AssetManager->GetScriptMap()) {
-        if (m_Behaviour->scripts.count(uuid) == 0) {
-          if (ImGui::Selectable(script->GetName().c_str())) {
-            m_Behaviour->scripts.emplace(script->GetUUID(), script);
-          }
-        }
-      }
-
-      ImGui::EndPopup();
-    }
-
-    if (m_RenameModalOpen) {
-      ImGui::OpenPopup("Rename Window");
-      m_RenameModalOpen = false;
-    }
-
-    if (m_RenameModal) {
-      m_RenameModal->Render();
-    }
-  }
-
-  if (m_Rigidbody != nullptr) {
-    ImGui::Dummy({0, 12});
-    if (ImFont *hdr = HamsterTheme::GetHeaderFont()) ImGui::PushFont(hdr);
-    ImGui::Text(ICON_FA_SHAPES "  Rigidbody");
-    if (HamsterTheme::GetHeaderFont()) ImGui::PopFont();
-    ImGui::Dummy({0, 6});
-
-    const char *bodyTypeLabels[] = {"Static", "Dynamic", "Kinematic"};
-    int bodyTypeIdx = static_cast<int>(m_Rigidbody->bodyType);
-    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-    ImGui::Text("Body Type");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(-1);
-    if (ImGui::Combo("##bodytype", &bodyTypeIdx, bodyTypeLabels, 3)) {
-      m_Rigidbody->bodyType = static_cast<Hamster::BodyType>(bodyTypeIdx);
-    }
-
-    const char *shapeLabels[] = {"Box", "Circle"};
-    int shapeIdx = static_cast<int>(m_Rigidbody->colliderShape);
-    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-    ImGui::Text("Collider");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(-1);
-    if (ImGui::Combo("##collidershape", &shapeIdx, shapeLabels, 2)) {
-      m_Rigidbody->colliderShape = static_cast<Hamster::ColliderShape>(shapeIdx);
-    }
-
-    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-    ImGui::Text("Density");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(-1);
-    ImGui::DragFloat("##density", &m_Rigidbody->density, 0.05f, 0.0f, 100.0f);
-
-    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-    ImGui::Text("Friction");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(-1);
-    ImGui::DragFloat("##friction", &m_Rigidbody->friction, 0.01f, 0.0f, 1.0f);
-
-    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-    ImGui::Text("Restitution");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(-1);
-    ImGui::DragFloat("##restitution", &m_Rigidbody->restitution, 0.01f, 0.0f, 1.0f);
-
-    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-    ImGui::Text("Gravity Scale");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(-1);
-    ImGui::DragFloat("##gravityscale", &m_Rigidbody->gravityScale, 0.05f, -10.0f, 10.0f);
-
-    ImGui::Dummy({0, 6});
-    if (ImGui::Button(ICON_FA_VECTOR_SQUARE "  Edit Collider")) {
-      if (m_ColliderEditor) {
-        m_ColliderEditor->Open(m_SelectedEntity, m_Scene);
-      }
-    }
-  }
-
-  if (m_Animation != nullptr) {
-    ImGui::Dummy({0, 12});
-    if (ImFont *hdr = HamsterTheme::GetHeaderFont()) ImGui::PushFont(hdr);
-    ImGui::Text(ICON_FA_FILM "  Animation");
-    if (HamsterTheme::GetHeaderFont()) ImGui::PopFont();
-    ImGui::Dummy({0, 6});
-
-    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-    ImGui::Text("Loop");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-    ImGui::SameLine();
-    ImGui::Checkbox("##animloop", &m_Animation->loop);
-
-    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-    ImGui::Text("Default");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(-1);
-
-    if (ImGui::BeginCombo("##defaultanim",
-                          m_Animation->defaultAnimation.empty()
-                              ? "None"
-                              : m_Animation->defaultAnimation.c_str())) {
-      if (ImGui::Selectable("None", m_Animation->defaultAnimation.empty())) {
-        m_Animation->defaultAnimation.clear();
-      }
-      for (auto &[name, uuid] : m_Animation->animations) {
-        bool selected = (name == m_Animation->defaultAnimation);
-        if (ImGui::Selectable(name.c_str(), selected)) {
-          m_Animation->defaultAnimation = name;
-        }
-      }
-      ImGui::EndCombo();
-    }
-
-    ImGui::Dummy({0, 4});
-    if (ImFont *bf = HamsterTheme::GetBoldFont()) ImGui::PushFont(bf);
-    ImGui::Text("Animations");
-    if (HamsterTheme::GetBoldFont()) ImGui::PopFont();
-
-    std::string removeKey;
-    for (auto &[name, uuid] : m_Animation->animations) {
-      ImGui::BulletText("%s", name.c_str());
-      ImGui::SameLine();
-      std::string removeId = ICON_FA_TRASH "##rm_" + name;
-      if (ImGui::SmallButton(removeId.c_str())) {
-        removeKey = name;
-      }
-    }
-    if (!removeKey.empty()) {
-      m_Animation->animations.erase(removeKey);
-      if (m_Animation->defaultAnimation == removeKey) {
-        m_Animation->defaultAnimation.clear();
-      }
-    }
-
-    if (ImGui::Button(ICON_FA_PLUS "  Add Animation")) {
-      ImGui::OpenPopup("Add Animation Asset");
-    }
-
-    if (ImGui::BeginPopup("Add Animation Asset")) {
-      for (auto &[uuid, animData] : m_AssetManager->GetAnimationMap()) {
-        bool alreadyAdded = false;
-        for (auto &[name, existingUUID] : m_Animation->animations) {
-          if (existingUUID.GetUUID() == uuid.GetUUID()) {
-            alreadyAdded = true;
-            break;
-          }
-        }
-        if (!alreadyAdded) {
-          if (ImGui::Selectable(animData->name.c_str())) {
-            m_Animation->animations[animData->name] = uuid;
-          }
-        }
-      }
-      ImGui::EndPopup();
-    }
-  }
-
-  ImGui::Dummy({0, 16});
-  float btnWidth = ImGui::CalcTextSize("Add Component").x + ImGui::GetStyle().FramePadding.x * 2;
-  ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - btnWidth) * 0.5f + ImGui::GetCursorPosX());
-  if (ImGui::Button("Add Component")) {
-    ImGui::OpenPopup("Add Component");
-  }
-
-  if (ImGui::BeginPopup("Add Component")) {
-    ImGui::SeparatorText("Components");
-
-    if (!m_Scene->EntityHasComponent<Hamster::Rigidbody>(m_SelectedEntity)) {
-      if (ImGui::Selectable("Rigidbody")) {
-        m_Scene->AddEntityComponent<Hamster::Rigidbody>(m_SelectedEntity);
-      }
-    }
-
-    if (!m_Scene->EntityHasComponent<Hamster::Sprite>(m_SelectedEntity)) {
-      if (ImGui::Selectable("Sprite")) {
-        m_Scene->AddEntityComponent<Hamster::Sprite>(m_SelectedEntity);
-      }
-    }
-
-    if (ImGui::Selectable(("Script"))) {
-      m_Scene->AddEntityComponent<Hamster::Behaviour>(m_SelectedEntity);
-    }
-
-    if (!m_Scene->EntityHasComponent<Hamster::Animation>(m_SelectedEntity)) {
-      if (ImGui::Selectable("Animation")) {
-        m_Scene->AddEntityComponent<Hamster::Animation>(m_SelectedEntity);
-        m_Animation = &m_Scene->GetEntityComponent<Hamster::Animation>(m_SelectedEntity);
-      }
-    }
-
-    ImGui::EndPopup();
-  }
-
-  ImGui::End();
+void PropertyEditor::OnActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e) {
+    m_Scene = e.GetActiveScene();
+    m_SelectedEntity = Hamster::UUID::GetNil();
+    m_Name = nullptr;
+    m_Transform = nullptr;
+    m_Sprite = nullptr;
+    m_Rigidbody = nullptr;
+    m_Animation = nullptr;
+    m_Behaviour = nullptr;
 }
 
 void PropertyEditor::SetSelectedEntity(Hamster::UUID uuid) {
-  m_SelectedEntity = uuid;
+    m_SelectedEntity = uuid;
 
-  if (!Hamster::UUID::IsNil(m_SelectedEntity)) {
-    if (m_Scene->EntityHasComponent<Hamster::Name>(m_SelectedEntity)) {
-      m_Name =
-          &m_Scene->GetEntityComponent<Hamster::Name>(m_SelectedEntity);
-    } else {
-      m_Name = nullptr;
+    if (Hamster::UUID::IsNil(uuid) || !m_Scene) {
+        m_Name = nullptr;
+        m_Transform = nullptr;
+        m_Sprite = nullptr;
+        m_Rigidbody = nullptr;
+        m_Animation = nullptr;
+        m_Behaviour = nullptr;
+        return;
     }
 
-    if (m_Scene->EntityHasComponent<Hamster::Transform>(m_SelectedEntity)) {
-      m_Transform =
-          &m_Scene->GetEntityComponent<Hamster::Transform>(m_SelectedEntity);
-    } else {
-      m_Transform = nullptr;
-    }
-
-    if (m_Scene->EntityHasComponent<Hamster::Sprite>(m_SelectedEntity)) {
-      m_Sprite =
-          &m_Scene->GetEntityComponent<Hamster::Sprite>(m_SelectedEntity);
-    } else {
-      m_Sprite = nullptr;
-    }
-
-    // if (m_Scene->EntityHasComponent<Hamster::Script>(m_SelectedEntity)) {
-    //   m_Script =
-    //   &m_Scene->GetEntityComponent<Hamster::Script>(m_SelectedEntity);
-    // }
-
-    if (m_Scene->EntityHasComponent<Hamster::Behaviour>(m_SelectedEntity)) {
-      m_Behaviour =
-          &m_Scene->GetEntityComponent<Hamster::Behaviour>(m_SelectedEntity);
-    } else {
-      m_Behaviour = nullptr;
-    }
-
-    if (m_Scene->EntityHasComponent<Hamster::Rigidbody>(m_SelectedEntity)) {
-      m_Rigidbody =
-          &m_Scene->GetEntityComponent<Hamster::Rigidbody>(m_SelectedEntity);
-    } else {
-      m_Rigidbody = nullptr;
-    }
-
-    if (m_Scene->EntityHasComponent<Hamster::Animation>(m_SelectedEntity)) {
-      m_Animation =
-          &m_Scene->GetEntityComponent<Hamster::Animation>(m_SelectedEntity);
-    } else {
-      m_Animation = nullptr;
-    }
-  }
+    m_Name      = m_Scene->EntityHasComponent<Hamster::Name>(uuid)
+                  ? &m_Scene->GetEntityComponent<Hamster::Name>(uuid) : nullptr;
+    m_Transform = m_Scene->EntityHasComponent<Hamster::Transform>(uuid)
+                  ? &m_Scene->GetEntityComponent<Hamster::Transform>(uuid) : nullptr;
+    m_Sprite    = m_Scene->EntityHasComponent<Hamster::Sprite>(uuid)
+                  ? &m_Scene->GetEntityComponent<Hamster::Sprite>(uuid) : nullptr;
+    m_Rigidbody = m_Scene->EntityHasComponent<Hamster::Rigidbody>(uuid)
+                  ? &m_Scene->GetEntityComponent<Hamster::Rigidbody>(uuid) : nullptr;
+    m_Animation = m_Scene->EntityHasComponent<Hamster::Animation>(uuid)
+                  ? &m_Scene->GetEntityComponent<Hamster::Animation>(uuid) : nullptr;
+    m_Behaviour = m_Scene->EntityHasComponent<Hamster::Behaviour>(uuid)
+                  ? &m_Scene->GetEntityComponent<Hamster::Behaviour>(uuid) : nullptr;
 }
 
-void PropertyEditor::OpenFile(std::filesystem::path path) {
-#ifdef _WIN32
-  // Windows
-  std::string command = "start " + path.string();
-  system(command.c_str());
-#elif __APPLE__
-  // macOS
-  std::string command = "open " + path.string();
-  system(command.c_str());
-#elif __linux__
-  // Linux
-  std::string command = "xdg-open " + path.string();
-  system(command.c_str());
-#endif
+void PropertyEditor::Render() {
+    g_PropPanel.DrawHeader();
+    g_PropPanel.BeginContent();
+
+    if (Hamster::UUID::IsNil(m_SelectedEntity)) {
+        ImGui::TextDisabled("No entity selected");
+        g_PropPanel.EndContent();
+        return;
+    }
+
+    // Entity name field
+    if (m_Name) {
+        ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - kScrollGap);
+        ImGui::InputText("##EntityName", &m_Name->name);
+        ImGui::PopItemWidth();
+        ImGui::TextDisabled("%s", m_SelectedEntity.GetUUIDString().c_str());
+        ImGui::Dummy({0, 4});
+    }
+
+    float avail = ImGui::GetContentRegionAvail().x - kScrollGap;
+    float fieldW2 = (avail - 8.0f) * 0.5f;
+    float fieldW3 = (avail - 8.0f * 2) / 3.0f;
+
+    // ── Transform ──
+    if (m_Transform) {
+        SectionHeader(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT "  Transform");
+
+        ImGui::Text("Position");
+        AxisDotInput("X", "##PX", &m_Transform->position.x,
+                     IM_COL32(220, 70, 70, 255), fieldW3);
+        AxisDotInput("Y", "##PY", &m_Transform->position.y,
+                     IM_COL32(70, 180, 100, 255), fieldW3);
+        AxisDotInput("Z", "##PZ", &m_Transform->position.z,
+                     IM_COL32(70, 130, 230, 255), fieldW3);
+        ImGui::NewLine();
+        ImGui::Dummy({0, 2});
+
+        ImGui::Text("Scale");
+        AxisDotInput("X", "##SX", &m_Transform->size.x,
+                     IM_COL32(220, 70, 70, 255), fieldW2);
+        AxisDotInput("Y", "##SY", &m_Transform->size.y,
+                     IM_COL32(70, 180, 100, 255), fieldW2);
+        ImGui::NewLine();
+        ImGui::Dummy({0, 2});
+
+        ImGui::Text("Rotation");
+        ImGui::PushItemWidth(avail);
+        ImGui::InputFloat("##Rot", &m_Transform->rotation, 0, 0, "%.2f\xC2\xB0");
+        ImGui::PopItemWidth();
+
+        SectionSeparator();
+    }
+
+    // ── Sprite ──
+    if (m_Sprite) {
+        SectionHeader(ICON_FA_IMAGE "  Sprite");
+
+        float thumbSz = 64.0f;
+        ImVec2 tp = ImGui::GetCursorScreenPos();
+        ImDrawList *dl = ImGui::GetWindowDrawList();
+
+        // Checkerboard background
+        float cellSz = 8.0f;
+        for (float y = 0; y < thumbSz; y += cellSz) {
+            for (float x = 0; x < thumbSz; x += cellSz) {
+                int ix = (int)(x / cellSz), iy = (int)(y / cellSz);
+                ImU32 col = ((ix + iy) % 2 == 0) ? IM_COL32(60, 60, 65, 255)
+                                                  : IM_COL32(40, 40, 45, 255);
+                dl->AddRectFilled({tp.x + x, tp.y + y},
+                                  {tp.x + std::min(x + cellSz, thumbSz),
+                                   tp.y + std::min(y + cellSz, thumbSz)}, col);
+            }
+        }
+
+        // Sprite texture (or placeholder)
+        if (m_Sprite->texture && m_Sprite->texture->GetTextureId() != 0) {
+            ImVec4 tint(m_Sprite->colour.r, m_Sprite->colour.g, m_Sprite->colour.b, 1.0f);
+            dl->AddImage(
+                reinterpret_cast<ImTextureID>(
+                    static_cast<intptr_t>(m_Sprite->texture->GetTextureId())),
+                tp, {tp.x + thumbSz, tp.y + thumbSz},
+                {0, 0}, {1, 1}, ImGui::ColorConvertFloat4ToU32(tint));
+        }
+
+        ImGui::Dummy({thumbSz, thumbSz});
+        ImGui::SameLine();
+        ImGui::BeginGroup();
+
+        if (m_Sprite->texture) {
+            ImGui::TextDisabled("%s", m_Sprite->texture->GetName().c_str());
+            ImGui::TextDisabled("%dx%d",
+                                m_Sprite->texture->GetWidth(),
+                                m_Sprite->texture->GetHeight());
+        } else {
+            ImGui::TextDisabled("None");
+            ImGui::TextDisabled("- x -");
+        }
+
+        ImGui::Text("Tint");
+        ImGui::SameLine();
+        float col[3] = {m_Sprite->colour.r, m_Sprite->colour.g, m_Sprite->colour.b};
+        ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - kScrollGap);
+        if (ImGui::ColorEdit3("##Tint", col, ImGuiColorEditFlags_NoLabel)) {
+            m_Sprite->colour = glm::vec3(col[0], col[1], col[2]);
+        }
+        ImGui::PopItemWidth();
+        ImGui::EndGroup();
+
+        ImGui::Dummy({0, 8});
+        if (HButton("Select Sprite", avail)) {
+            ImGui::OpenPopup("Select Sprite");
+        }
+        if (ImGui::BeginPopup("Select Sprite")) {
+            for (const auto &[uuid, texture] : m_AssetManager->GetTextureMap()) {
+                std::string id = texture->GetName() + "##" +
+                                 texture->GetUUID().GetUUIDString();
+                if (ImGui::Selectable(id.c_str())) {
+                    m_Sprite->texture = texture;
+                }
+            }
+            ImGui::EndPopup();
+        }
+
+        SectionSeparator();
+    }
+
+    // ── Scripts ──
+    if (m_Behaviour) {
+        SectionHeader(ICON_FA_CODE "  Scripts");
+        ImGui::Dummy({0, 2});
+
+        Hamster::UUID removeScriptUUID = Hamster::UUID::GetNil();
+        for (auto &[uuid, script] : m_Behaviour->scripts) {
+            Hamster::UUID mutableUUID = uuid;
+            std::string id = ICON_FA_FILE_CODE "  " + script->GetName() +
+                             "##" + mutableUUID.GetUUIDString();
+            HButton(id.c_str(), avail);
+            if (ImGui::BeginPopupContextItem(("##sctx_" + mutableUUID.GetUUIDString()).c_str())) {
+                if (ImGui::Selectable("Remove")) removeScriptUUID = uuid;
+                ImGui::EndPopup();
+            }
+        }
+        if (!Hamster::UUID::IsNil(removeScriptUUID)) {
+            m_Behaviour->scripts.erase(removeScriptUUID);
+        }
+
+        ImGui::Dummy({0, 4});
+        if (HButton("Add Script", avail)) {
+            ImGui::OpenPopup("Add Script");
+        }
+        if (ImGui::BeginPopup("Add Script")) {
+            if (ImGui::Selectable(ICON_FA_PLUS "  New Script")) {
+                Hamster::UUID newId = m_AssetManager->AddDefaultScript();
+                auto newScript = m_AssetManager->GetScript(newId);
+                m_Behaviour->scripts.emplace(newId, newScript);
+            }
+            if (m_AssetManager->GetScriptCount() > 0) ImGui::Separator();
+            for (const auto &[uuid, script] : m_AssetManager->GetScriptMap()) {
+                if (m_Behaviour->scripts.count(uuid) == 0) {
+                    if (ImGui::Selectable(script->GetName().c_str())) {
+                        m_Behaviour->scripts.emplace(script->GetUUID(), script);
+                    }
+                }
+            }
+            ImGui::EndPopup();
+        }
+
+        SectionSeparator();
+    }
+
+    // ── Rigidbody ──
+    if (m_Rigidbody) {
+        SectionHeader(ICON_FA_SHAPES "  Rigidbody");
+        ImGui::Dummy({0, 2});
+
+        const char *bodyTypes[] = {"Static", "Dynamic", "Kinematic"};
+        int btIdx = static_cast<int>(m_Rigidbody->bodyType);
+        HCombo("Body Type", "##bodytype", &btIdx, bodyTypes, 3);
+        m_Rigidbody->bodyType = static_cast<Hamster::BodyType>(btIdx);
+
+        const char *shapes[] = {"Box", "Circle"};
+        int shapeIdx = static_cast<int>(m_Rigidbody->colliderShape);
+        HCombo("Collider", "##collidershape", &shapeIdx, shapes, 2);
+        m_Rigidbody->colliderShape = static_cast<Hamster::ColliderShape>(shapeIdx);
+
+        HDragFloat("Density",       "##density",      &m_Rigidbody->density,      0.05f, 0.0f, 100.0f);
+        HDragFloat("Friction",      "##friction",     &m_Rigidbody->friction,     0.01f, 0.0f, 1.0f);
+        HDragFloat("Restitution",   "##restitution",  &m_Rigidbody->restitution,  0.01f, 0.0f, 1.0f);
+        HDragFloat("Gravity Scale", "##gravityscale", &m_Rigidbody->gravityScale, 0.05f, -10.0f, 10.0f);
+
+        ImGui::Dummy({0, 4});
+        if (HButton(ICON_FA_VECTOR_SQUARE "  Edit Collider", avail)) {
+            if (m_ColliderEditor) {
+                m_ColliderEditor->Open(m_SelectedEntity, m_Scene);
+            }
+        }
+
+        SectionSeparator();
+    }
+
+    // ── Animation ──
+    if (m_Animation) {
+        SectionHeader(ICON_FA_FILM "  Animation");
+        ImGui::Dummy({0, 2});
+
+        HCheckbox("Loop", "##animloop", &m_Animation->loop);
+
+        ImGui::Text("Default");
+        ImGui::SameLine(kLabelCol);
+        const char *preview = m_Animation->defaultAnimation.empty()
+                                  ? "None"
+                                  : m_Animation->defaultAnimation.c_str();
+        if (HBeginCombo("##defaultanim", preview)) {
+            if (HComboItem("None", m_Animation->defaultAnimation.empty())) {
+                m_Animation->defaultAnimation.clear();
+            }
+            for (auto &[name, uuid] : m_Animation->animations) {
+                if (HComboItem(name.c_str(), name == m_Animation->defaultAnimation)) {
+                    m_Animation->defaultAnimation = name;
+                }
+            }
+            HEndCombo();
+        }
+
+        ImGui::Dummy({0, 4});
+        ImGui::Text("Animations");
+
+        std::string removeKey;
+        for (auto &[name, uuid] : m_Animation->animations) {
+            std::string id = ICON_FA_FILM "  " + name + "##" + uuid.GetUUIDString();
+            HButton(id.c_str(), avail);
+            if (ImGui::BeginPopupContextItem(("##actx_" + name).c_str())) {
+                if (ImGui::Selectable("Remove")) removeKey = name;
+                ImGui::EndPopup();
+            }
+        }
+        if (!removeKey.empty()) {
+            m_Animation->animations.erase(removeKey);
+            if (m_Animation->defaultAnimation == removeKey) {
+                m_Animation->defaultAnimation.clear();
+            }
+        }
+
+        ImGui::Dummy({0, 4});
+        if (HButton(ICON_FA_PLUS "  Add Animation", avail)) {
+            ImGui::OpenPopup("Add Animation");
+        }
+        if (ImGui::BeginPopup("Add Animation")) {
+            for (auto &[uuid, animData] : m_AssetManager->GetAnimationMap()) {
+                bool alreadyAdded = false;
+                for (auto &[n, u] : m_Animation->animations) {
+                    if (u.GetUUID() == uuid.GetUUID()) { alreadyAdded = true; break; }
+                }
+                if (!alreadyAdded) {
+                    if (ImGui::Selectable(animData->name.c_str())) {
+                        m_Animation->animations[animData->name] = uuid;
+                    }
+                }
+            }
+            ImGui::EndPopup();
+        }
+
+        SectionSeparator();
+    }
+
+    // ── Add Component ──
+    {
+        const char *label = ICON_FA_PLUS "  Add Component";
+        ImVec2 textSz = ImGui::CalcTextSize(label);
+        float padX = 14.0f, padY = 6.0f;
+        float btnW = textSz.x + padX * 2;
+        float btnH = textSz.y + padY * 2;
+
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth() - btnW) * 0.5f);
+        ImVec2 pos = ImGui::GetCursorScreenPos();
+        ImGui::InvisibleButton("##addcomp", {btnW, btnH});
+        bool hovered = ImGui::IsItemHovered();
+        bool held    = ImGui::IsItemActive();
+        bool clicked = ImGui::IsItemClicked();
+
+        ImDrawList *dl = ImGui::GetWindowDrawList();
+        if (hovered || held) {
+            ImU32 bg = ImGui::GetColorU32(held ? ImGuiCol_ButtonActive
+                                                : ImGuiCol_ButtonHovered);
+            dl->AddRectFilled(pos, {pos.x + btnW, pos.y + btnH}, bg, 6.0f);
+        }
+        dl->AddText({pos.x + padX, pos.y + padY},
+                    ImGui::ColorConvertFloat4ToU32(kAccent), label);
+
+        if (clicked) {
+            ImGui::OpenPopup("Add Component");
+        }
+
+        if (HBeginStyledPopup("Add Component")) {
+            if (!m_Sprite && HComboItem(ICON_FA_IMAGE "  Sprite", false)) {
+                m_Scene->AddEntityComponent<Hamster::Sprite>(m_SelectedEntity);
+                m_Sprite = &m_Scene->GetEntityComponent<Hamster::Sprite>(m_SelectedEntity);
+            }
+            if (!m_Behaviour && HComboItem(ICON_FA_CODE "  Script", false)) {
+                m_Scene->AddEntityComponent<Hamster::Behaviour>(m_SelectedEntity);
+                m_Behaviour = &m_Scene->GetEntityComponent<Hamster::Behaviour>(m_SelectedEntity);
+            }
+            if (!m_Rigidbody && HComboItem(ICON_FA_SHAPES "  Rigidbody", false)) {
+                m_Scene->AddEntityComponent<Hamster::Rigidbody>(m_SelectedEntity);
+                m_Rigidbody = &m_Scene->GetEntityComponent<Hamster::Rigidbody>(m_SelectedEntity);
+            }
+            if (!m_Animation && HComboItem(ICON_FA_FILM "  Animation", false)) {
+                m_Scene->AddEntityComponent<Hamster::Animation>(m_SelectedEntity);
+                m_Animation = &m_Scene->GetEntityComponent<Hamster::Animation>(m_SelectedEntity);
+            }
+            HEndStyledPopup();
+        }
+    }
+
+    ImGui::Dummy({0, 16});
+    g_PropPanel.EndContent();
 }

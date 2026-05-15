@@ -23,8 +23,12 @@ namespace Hamster {
     // Hamster-Wheel is running
     Application *Application::s_Instance = nullptr;
 
-    Application::Application() {
+    Application::Application() : Application(WindowProps{}) {}
+
+    Application::Application(const WindowProps &props) {
         std::cout << "Application created" << std::endl;
+
+        m_WindowProps = props;
 
         s_Instance = this;
 
@@ -83,6 +87,18 @@ namespace Hamster {
             });
 
         Scripting::InitInterpreter(m_Dispatcher.get());
+
+        // glfwMaximizeWindow runs inside Window's constructor — before this
+        // dispatcher exists — so its framebuffer-resize event has no
+        // subscribers. Re-post the current size now that everything is wired
+        // up; otherwise the renderer keeps its placeholder 1920x1080 until
+        // the user manually resizes the window.
+        {
+            int fbW, fbH;
+            glfwGetFramebufferSize(m_Window->GetGLFWWindowPointer(), &fbW, &fbH);
+            FramebufferResizeEvent e(fbW, fbH);
+            m_Dispatcher->Post<FramebufferResizeEvent>(e);
+        }
 
         m_Running = true;
     }

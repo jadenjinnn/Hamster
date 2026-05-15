@@ -32,7 +32,6 @@ private:
   EditorLayer *m_EditorLayer = nullptr;
   ProjectRegistry m_Registry;
 
-  // Create modal state
   bool m_ShowCreateModal = false;
   char m_ProjectName[128] = "Untitled";
   char m_SearchBuffer[128] = {};
@@ -41,22 +40,18 @@ private:
   bool m_NoDirectorySelected = false;
   bool m_DirectoryExists = false;
 
-  // Ellipsis / context menu state
   int m_ContextMenuIndex = -1;
 
-  // Rename modal state
   bool m_ShowRenameModal = false;
   int m_RenameIndex = -1;
   char m_RenameBuffer[128] = {};
   bool m_RenameError = false;
 
-  // Delete confirmation state
   bool m_ShowDeleteConfirm = false;
   int m_DeleteIndex = -1;
 
-  // Missing project dialog state
   bool m_ShowMissingDialog = false;
   int m_MissingIndex = -1;
 };
 
-#endif // PROJECTHUBLAYER_H
+#endif

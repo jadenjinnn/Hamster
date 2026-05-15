@@ -13,10 +13,14 @@ struct WindowData {
 struct WindowProps {
   float height, width;
   std::string title;
+  bool borderless;
+  bool maximized;
 
   WindowProps(float height = 500, float width = 500,
-              std::string title = "Hamster")
-      : height(height), width(width), title(title) {};
+              std::string title = "Hamster", bool borderless = false,
+              bool maximized = false)
+      : height(height), width(width), title(title), borderless(borderless),
+        maximized(maximized) {};
 };
 
 class Window {

@@ -144,5 +144,10 @@ target_compile_definitions(Hamster-Core PRIVATE HAMSTER_CORE_SRC_DIR="${CMAKE_SO
 
 target_link_libraries(Hamster-Core PUBLIC glfw imgui box2d Hamster-C)
 
+# Comctl32 provides SetWindowSubclass (used for borderless-with-snap on Win32).
+if(WIN32)
+    target_link_libraries(Hamster-Core PUBLIC Comctl32)
+endif()
+
 install(TARGETS Hamster-Core
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})

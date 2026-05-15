@@ -1,40 +1,27 @@
-//
-// Created by Jaden on 25/08/2024.
-//
+#ifndef UIPROTO_HIERARCHY_H
+#define UIPROTO_HIERARCHY_H
 
-#ifndef HIERARCHY_H
-#define HIERARCHY_H
-
-#include "RenameModal.h"
-
-#include <entt/entt.hpp>
-
-#include <Gui/Panel.h>
 #include <Hamster.h>
+#include <entt/entt.hpp>
+#include <memory>
 
-namespace Hamster { class Renderer; }
-
-class Hierarchy : public Hamster::Panel {
+class Hierarchy {
 public:
-  Hierarchy(Hamster::EventDispatcher *dispatcher,
-            std::shared_ptr<Hamster::Scene> scene,
-            Hamster::Renderer *renderer)
-      : Hamster::Panel(dispatcher, scene, true),
-        m_Renderer(renderer) {};
+    Hierarchy(Hamster::EventDispatcher *dispatcher,
+              std::shared_ptr<Hamster::Scene> scene);
 
-  void SetSelectedEntity(entt::entity entity);
+    void Render();
 
-  entt::entity GetSelectedEntity() const;
+    entt::entity GetSelectedEntity() const { return m_SelectedEntity; }
+    void SetSelectedEntity(entt::entity e) { m_SelectedEntity = e; }
 
-  void Render() override;
+    void OnActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e);
 
 private:
-  Hamster::Renderer *m_Renderer;
-  entt::entity m_SelectedEntity = entt::null;
-  std::shared_ptr<RenameModal> m_RenameModal;
-
-  bool m_RenameModalOpen = false;
-  char m_SearchBuffer[128] = {};
+    Hamster::EventDispatcher *m_Dispatcher;
+    std::shared_ptr<Hamster::Scene> m_Scene;
+    entt::entity m_SelectedEntity = entt::null;
+    char m_SearchBuffer[128] = {0};
 };
 
-#endif // HIERARCHY_H
+#endif // UIPROTO_HIERARCHY_H

@@ -153,6 +153,7 @@ build.ninja
 
 ### Build artifacts ###
 build/
+imgui.ini
 
 ### Python ###
 __pycache__/
