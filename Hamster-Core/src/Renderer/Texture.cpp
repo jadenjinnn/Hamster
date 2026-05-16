@@ -90,4 +90,10 @@ void Texture::BindTexture() {
 
   glBindTexture(GL_TEXTURE_2D, m_ID);
 }
+
+Texture::~Texture() {
+  if (m_ID != 0) {
+    glDeleteTextures(1, &m_ID);
+  }
+}
 } // namespace Hamster

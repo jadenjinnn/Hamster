@@ -9,6 +9,7 @@ class Hierarchy {
 public:
     Hierarchy(Hamster::EventDispatcher *dispatcher,
               std::shared_ptr<Hamster::Scene> scene);
+    ~Hierarchy();
 
     void Render();
 
@@ -19,6 +20,7 @@ public:
 
 private:
     Hamster::EventDispatcher *m_Dispatcher;
+    Hamster::SubscriptionHandle m_ActiveSceneSub = 0;
     std::shared_ptr<Hamster::Scene> m_Scene;
     entt::entity m_SelectedEntity = entt::null;
     char m_SearchBuffer[128] = {0};

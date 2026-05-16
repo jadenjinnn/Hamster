@@ -16,10 +16,14 @@ static Panel g_HierarchyPanel = {"Hierarchy", "...##hi"};
 Hierarchy::Hierarchy(Hamster::EventDispatcher *dispatcher,
                      std::shared_ptr<Hamster::Scene> scene)
     : m_Dispatcher(dispatcher), m_Scene(std::move(scene)) {
-    m_Dispatcher->Subscribe(
+    m_ActiveSceneSub = m_Dispatcher->Subscribe(
         Hamster::ActiveSceneChanged,
         FORWARD_CALLBACK_FUNCTION(Hierarchy::OnActiveSceneChanged,
                                   Hamster::ActiveSceneChangedEvent));
+}
+
+Hierarchy::~Hierarchy() {
+    m_Dispatcher->Unsubscribe(Hamster::ActiveSceneChanged, m_ActiveSceneSub);
 }
 
 void Hierarchy::OnActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e) {

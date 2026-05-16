@@ -36,6 +36,10 @@ namespace Hamster {
 
         app->RemoveAllScenes();
 
+        // Drop any previously-loaded project's assets so the new project does
+        // not inherit them. See bug 0004.
+        assetManager->Clear();
+
         std::filesystem::create_directory(config.ProjectDirectory);
         std::filesystem::current_path(config.ProjectDirectory);
 
@@ -106,6 +110,10 @@ namespace Hamster {
         app->StopActiveScene();
 
         app->RemoveAllScenes();
+
+        // Drop any previously-loaded project's assets so the new project does
+        // not inherit them. See bug 0004.
+        assetManager->Clear();
 
         std::ifstream projectFile(projectPath, std::ios::binary);
 

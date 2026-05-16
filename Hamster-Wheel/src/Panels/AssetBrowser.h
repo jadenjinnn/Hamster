@@ -14,6 +14,7 @@ public:
     AssetBrowser(Hamster::EventDispatcher *dispatcher,
                  std::shared_ptr<Hamster::Scene> scene,
                  Hamster::AssetManager *assetManager);
+    ~AssetBrowser();
 
     void Render();
 
@@ -21,6 +22,7 @@ public:
 
 private:
     Hamster::EventDispatcher *m_Dispatcher;
+    Hamster::SubscriptionHandle m_ActiveSceneSub = 0;
     std::shared_ptr<Hamster::Scene> m_Scene;
     Hamster::AssetManager *m_AssetManager;
 };

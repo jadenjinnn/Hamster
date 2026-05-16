@@ -11,7 +11,8 @@
 
 namespace Hamster {
 FramebufferTexture::FramebufferTexture(unsigned int width,
-                                       unsigned int height) {
+                                       unsigned int height)
+    : m_Width(width), m_Height(height) {
   glGenFramebuffers(1, &m_ID);
   glBindFramebuffer(GL_FRAMEBUFFER, m_ID);
 
@@ -38,12 +39,26 @@ FramebufferTexture::FramebufferTexture(unsigned int width,
   glBindRenderbuffer(GL_RENDERBUFFER, 0);
 }
 
+FramebufferTexture::~FramebufferTexture() {
+  if (m_RenderBufferID != 0) glDeleteRenderbuffers(1, &m_RenderBufferID);
+  if (m_TextureID != 0)      glDeleteTextures(1, &m_TextureID);
+  if (m_ID != 0)             glDeleteFramebuffers(1, &m_ID);
+}
+
 void FramebufferTexture::Bind() { glBindFramebuffer(GL_FRAMEBUFFER, m_ID); }
 
 void FramebufferTexture::Unbind() { glBindFramebuffer(GL_FRAMEBUFFER, 0); }
 
 void FramebufferTexture::ResizeFrameBuffer(unsigned int width,
                                            unsigned int height) {
+  // No-op when size unchanged. EditorLayer calls this every frame; without
+  // this guard the driver reallocates GPU storage 60×/second and leaves the
+  // previous allocation pending release, inflating the kernel handle count.
+  if (width == m_Width && height == m_Height) return;
+
+  m_Width = width;
+  m_Height = height;
+
   glBindTexture(GL_TEXTURE_2D, m_TextureID);
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
                GL_UNSIGNED_BYTE, NULL);

@@ -9,6 +9,10 @@ namespace Hamster {
     class FramebufferTexture {
     public:
         FramebufferTexture(unsigned int width, unsigned int height);
+        ~FramebufferTexture();
+
+        FramebufferTexture(const FramebufferTexture &) = delete;
+        FramebufferTexture &operator=(const FramebufferTexture &) = delete;
 
         void Bind();
 
@@ -19,9 +23,11 @@ namespace Hamster {
         unsigned int GetTextureID();
 
     private:
-        unsigned int m_ID;
-        unsigned int m_TextureID;
-        unsigned int m_RenderBufferID;
+        unsigned int m_ID = 0;
+        unsigned int m_TextureID = 0;
+        unsigned int m_RenderBufferID = 0;
+        unsigned int m_Width = 0;
+        unsigned int m_Height = 0;
     };
 } // Hamster
 

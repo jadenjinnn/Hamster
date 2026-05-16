@@ -12,26 +12,33 @@ class Panel {
 public:
   Panel(EventDispatcher *dispatcher, std::shared_ptr<Scene> scene,
         bool defaultOpen = true)
-      : m_WindowOpen(defaultOpen), m_Scene(std::move(scene)) {
-    dispatcher->Subscribe(
+      : m_Dispatcher(dispatcher), m_WindowOpen(defaultOpen),
+        m_Scene(std::move(scene)) {
+    m_ActiveSceneSub = m_Dispatcher->Subscribe(
         ActiveSceneChanged,
         FORWARD_CALLBACK_FUNCTION(Panel::OnActiveSceneChanged,
                                   ActiveSceneChangedEvent));
   };
 
   Panel(EventDispatcher *dispatcher, bool defaultOpen)
-      : m_WindowOpen(defaultOpen) {
-    dispatcher->Subscribe(
+      : m_Dispatcher(dispatcher), m_WindowOpen(defaultOpen) {
+    m_ActiveSceneSub = m_Dispatcher->Subscribe(
         ActiveSceneChanged,
         FORWARD_CALLBACK_FUNCTION(Panel::OnActiveSceneChanged,
                                   ActiveSceneChangedEvent));
   };
 
-  explicit Panel(EventDispatcher *dispatcher) {
-    dispatcher->Subscribe(
+  explicit Panel(EventDispatcher *dispatcher) : m_Dispatcher(dispatcher) {
+    m_ActiveSceneSub = m_Dispatcher->Subscribe(
         ActiveSceneChanged,
         FORWARD_CALLBACK_FUNCTION(Panel::OnActiveSceneChanged,
                                   ActiveSceneChangedEvent));
+  };
+
+  virtual ~Panel() {
+    if (m_Dispatcher) {
+      m_Dispatcher->Unsubscribe(ActiveSceneChanged, m_ActiveSceneSub);
+    }
   };
 
   virtual void Render() = 0;
@@ -42,6 +49,8 @@ public:
   void ClosePanel() { m_WindowOpen = false; }
 
 protected:
+  EventDispatcher *m_Dispatcher = nullptr;
+  SubscriptionHandle m_ActiveSceneSub = 0;
   bool m_WindowOpen = true;
   std::shared_ptr<Scene> m_Scene = nullptr;
 

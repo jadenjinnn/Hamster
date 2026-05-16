@@ -88,6 +88,12 @@ Shader::Shader(const char *vertexShaderPath, const char *fragmentShaderPath) {
   glDeleteShader(fragmentShader);
 }
 
+Shader::~Shader() {
+  if (m_shaderID != 0) {
+    glDeleteProgram(m_shaderID);
+  }
+}
+
 void Shader::use() { glUseProgram(m_shaderID); }
 
 void Shader::setUniformi(const char *name, int value) {

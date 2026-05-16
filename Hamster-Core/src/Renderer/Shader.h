@@ -6,6 +6,10 @@ namespace Hamster {
 class Shader {
 public:
   Shader(const char *vertexShaderPath, const char *fragmentShaderPath);
+  ~Shader();
+
+  Shader(const Shader &) = delete;
+  Shader &operator=(const Shader &) = delete;
 
   void use();
 
@@ -18,6 +22,6 @@ public:
   void setUniformVec3(const char *name, const glm::vec3 &value);
 
 private:
-  unsigned int m_shaderID;
+  unsigned int m_shaderID = 0;
 };
 } // namespace Hamster

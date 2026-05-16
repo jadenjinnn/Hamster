@@ -19,10 +19,14 @@ AnimationPanel::AnimationPanel(Hamster::EventDispatcher *dispatcher,
                                Hamster::AssetManager *assetManager)
     : m_Dispatcher(dispatcher), m_Scene(std::move(scene)),
       m_AssetManager(assetManager) {
-    m_Dispatcher->Subscribe(
+    m_ActiveSceneSub = m_Dispatcher->Subscribe(
         Hamster::ActiveSceneChanged,
         FORWARD_CALLBACK_FUNCTION(AnimationPanel::OnActiveSceneChanged,
                                   Hamster::ActiveSceneChangedEvent));
+}
+
+AnimationPanel::~AnimationPanel() {
+    m_Dispatcher->Unsubscribe(Hamster::ActiveSceneChanged, m_ActiveSceneSub);
 }
 
 void AnimationPanel::OnActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e) {

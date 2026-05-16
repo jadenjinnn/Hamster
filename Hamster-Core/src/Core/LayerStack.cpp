@@ -19,6 +19,7 @@ void LayerStack::PopLayer(Layer *layer) {
   if (it != m_LayerStack.end()) {
     layer->OnDetach();
     m_LayerStack.erase(it);
+    delete layer;
   }
 }
 

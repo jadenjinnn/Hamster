@@ -20,6 +20,7 @@
 class EditorLayer : public Hamster::Layer {
 public:
     EditorLayer(Hamster::Application *app);
+    ~EditorLayer() override;
 
     void OnAttach() override;
     void OnUpdate() override;
@@ -31,6 +32,8 @@ public:
 private:
     Hamster::Application *m_App;
     Hamster::EventDispatcher *m_Dispatcher;
+    Hamster::SubscriptionHandle m_ActiveSceneSub = 0;
+    Hamster::SubscriptionHandle m_FramebufferSub = 0;
     Hamster::Renderer *m_Renderer;
     std::shared_ptr<Hamster::Scene> m_Scene;
 

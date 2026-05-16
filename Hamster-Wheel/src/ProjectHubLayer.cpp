@@ -23,14 +23,6 @@ static constexpr ImVec4 kHubGreenAct = {0.20f, 0.65f, 0.33f, 1.0f};
 ProjectHubLayer::ProjectHubLayer(Hamster::Application *app)
     : m_App(app), m_Dispatcher(app->GetEventDispatcher().get()) {}
 
-void ProjectHubLayer::OnAttach() {
-  m_Dispatcher->Subscribe(Hamster::ProjectOpened, [this](Hamster::Event &) {
-    m_EditorLayer = new EditorLayer(m_App);
-    m_App->PushLayer(m_EditorLayer);
-    m_App->PopLayer(this);
-  });
-}
-
 void ProjectHubLayer::OnImGuiUpdate() {
   m_App->GetRenderer()->Clear();
 
@@ -69,6 +61,12 @@ void ProjectHubLayer::OnImGuiUpdate() {
 }
 
 void ProjectHubLayer::RenderTopBar(float width) {
+  // We hit-test geometrically via IsMouseHoveringRect; ImGui's modal input
+  // blocking is focus-based and won't stop clicks from leaking through to
+  // these widgets. Suppress hit-testing while any popup is open. See bug 0005.
+  const bool inputBlocked = ImGui::IsPopupOpen(
+      "", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+
   ImVec2 cursor = ImGui::GetCursorScreenPos();
   ImDrawList *dl = ImGui::GetWindowDrawList();
 
@@ -105,7 +103,7 @@ void ProjectHubLayer::RenderTopBar(float width) {
   ImVec2 btnMin = ImVec2(btnX, btnY);
   ImVec2 btnMax = ImVec2(btnX + btnW, btnY + btnH);
 
-  bool hovered = ImGui::IsMouseHoveringRect(btnMin, btnMax);
+  bool hovered = !inputBlocked && ImGui::IsMouseHoveringRect(btnMin, btnMax);
   bool clicked = hovered && ImGui::IsMouseClicked(0);
   ImU32 btnCol = ImGui::ColorConvertFloat4ToU32(hovered ? kHubGreenHov : kHubGreen);
 
@@ -123,7 +121,7 @@ void ProjectHubLayer::RenderTopBar(float width) {
   ImVec2 openMin = ImVec2(openX - 8.0f, btnY);
   ImVec2 openMax = ImVec2(openX + openW + 8.0f, btnY + btnH);
 
-  bool openHov = ImGui::IsMouseHoveringRect(openMin, openMax);
+  bool openHov = !inputBlocked && ImGui::IsMouseHoveringRect(openMin, openMax);
   bool openClk = openHov && ImGui::IsMouseClicked(0);
   if (openHov)
     dl->AddRectFilled(openMin, openMax,
@@ -158,6 +156,11 @@ void ProjectHubLayer::RenderHeader(float width) {
 }
 
 void ProjectHubLayer::RenderCardGrid(float width, float startY, float height) {
+  // Suppress hit-testing while any popup/modal is open — modals block focus,
+  // not geometry, so clicks would otherwise leak through. See bug 0005.
+  const bool inputBlocked = ImGui::IsPopupOpen(
+      "", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+
   auto &entries = m_Registry.GetEntries();
   int projectCount = static_cast<int>(entries.size());
 
@@ -191,7 +194,7 @@ void ProjectHubLayer::RenderCardGrid(float width, float startY, float height) {
     ImVec2 cardMin = ImVec2(x, y);
     ImVec2 cardMax = ImVec2(x + cardW, y + cardH);
 
-    bool hovered = ImGui::IsMouseHoveringRect(cardMin, cardMax);
+    bool hovered = !inputBlocked && ImGui::IsMouseHoveringRect(cardMin, cardMax);
 
     if (idx == 0) {
       // "Create New Project" card
@@ -308,7 +311,8 @@ void ProjectHubLayer::RenderCardGrid(float width, float startY, float height) {
       ImVec2 ellipsisMax =
           ImVec2(ellipsisX + ellipsisSize.x + 4.0f, ellipsisY + 20.0f);
 
-      bool ellipsisHov = ImGui::IsMouseHoveringRect(ellipsisMin, ellipsisMax);
+      bool ellipsisHov = !inputBlocked &&
+                         ImGui::IsMouseHoveringRect(ellipsisMin, ellipsisMax);
       if (ellipsisHov)
         dl->AddRectFilled(ellipsisMin, ellipsisMax,
                           ImGui::ColorConvertFloat4ToU32(kSurfaceHov), 4.0f);

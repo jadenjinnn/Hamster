@@ -17,6 +17,7 @@ public:
     AnimationPanel(Hamster::EventDispatcher *dispatcher,
                    std::shared_ptr<Hamster::Scene> scene,
                    Hamster::AssetManager *assetManager);
+    ~AnimationPanel();
 
     void Render();
     void OnActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e);
@@ -25,6 +26,7 @@ private:
     void UpdatePreview();
 
     Hamster::EventDispatcher *m_Dispatcher;
+    Hamster::SubscriptionHandle m_ActiveSceneSub = 0;
     std::shared_ptr<Hamster::Scene> m_Scene;
     Hamster::AssetManager *m_AssetManager;
 

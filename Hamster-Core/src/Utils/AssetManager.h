@@ -89,6 +89,11 @@ namespace Hamster {
 
         std::shared_ptr<Texture> AddTexture(const std::string &texturePath);
 
+        // Resets project-scoped state. Call between project loads so a new
+        // project does not inherit textures / scripts / animations from the
+        // previously-loaded one.
+        void Clear();
+
     private:
         std::unordered_map<std::string, std::shared_ptr<Shader> > m_Shaders;
         std::unordered_map<UUID, std::shared_ptr<Texture> > m_Textures;

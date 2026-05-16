@@ -18,6 +18,13 @@ namespace Hamster {
         m_Textures.clear();
         m_Shaders.clear();
         m_Scripts.clear();
+        m_Animations.clear();
+    }
+
+    void AssetManager::Clear() {
+        m_Textures.clear();
+        m_Scripts.clear();
+        m_Animations.clear();
     }
 
     std::shared_ptr<Shader>

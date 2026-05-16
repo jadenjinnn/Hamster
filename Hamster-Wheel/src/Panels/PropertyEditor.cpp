@@ -21,10 +21,14 @@ PropertyEditor::PropertyEditor(Hamster::EventDispatcher *dispatcher,
                                ColliderEditor *colliderEditor)
     : m_Dispatcher(dispatcher), m_Scene(std::move(scene)),
       m_AssetManager(assetManager), m_ColliderEditor(colliderEditor) {
-    m_Dispatcher->Subscribe(
+    m_ActiveSceneSub = m_Dispatcher->Subscribe(
         Hamster::ActiveSceneChanged,
         FORWARD_CALLBACK_FUNCTION(PropertyEditor::OnActiveSceneChanged,
                                   Hamster::ActiveSceneChangedEvent));
+}
+
+PropertyEditor::~PropertyEditor() {
+    m_Dispatcher->Unsubscribe(Hamster::ActiveSceneChanged, m_ActiveSceneSub);
 }
 
 void PropertyEditor::OnActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e) {

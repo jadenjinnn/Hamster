@@ -17,6 +17,10 @@ class Texture {
 public:
   Texture(const std::string &texturePath);
   Texture() {};
+  ~Texture();
+
+  Texture(const Texture &) = delete;
+  Texture &operator=(const Texture &) = delete;
 
   void Init(const TextureData &textData);
 
@@ -38,7 +42,7 @@ public:
   int GetHeight() const { return m_Height; }
 
 private:
-  GLuint m_ID;
+  GLuint m_ID = 0;
   int m_Width = 0;
   int m_Height = 0;
   std::string m_TexturePath;

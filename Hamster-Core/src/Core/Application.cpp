@@ -48,8 +48,9 @@ namespace Hamster {
 
         m_Dispatcher = std::make_shared<EventDispatcher>();
 
-        m_ImGuiLayer.SetWindow(m_Window->GetGLFWWindowPointer());
-        PushLayer(&m_ImGuiLayer);
+        m_ImGuiLayer = new ImGuiLayer();
+        m_ImGuiLayer->SetWindow(m_Window->GetGLFWWindowPointer());
+        PushLayer(m_ImGuiLayer);
 
         m_Window->SetWindowEventDispatcher(m_Dispatcher.get());
 
@@ -114,6 +115,20 @@ namespace Hamster {
             Scene::SaveScene(scene);
         }
 
+        // LayerStack owns its layers — pop+delete each one (including
+        // m_ImGuiLayer, which is in the stack). PopLayer deletes via the
+        // Layer* it was given, so the m_ImGuiLayer raw pointer is freed here.
+        for (Layer *layer : m_LayersPendingPush) {
+            delete layer;
+        }
+        m_LayersPendingPush.clear();
+        m_LayersPendingPop.clear();
+
+        while (m_LayerStack.begin() != m_LayerStack.end()) {
+            m_LayerStack.PopLayer(*m_LayerStack.begin());
+        }
+        m_ImGuiLayer = nullptr;
+
         std::cout << "Application destroyed" << std::endl;
     }
 
@@ -173,13 +188,13 @@ namespace Hamster {
             m_LayersPendingPop.clear();
             m_LayersPendingPush.clear();
 
-            m_ImGuiLayer.Begin();
+            m_ImGuiLayer->Begin();
 
             for (Layer *layer: m_LayerStack) {
                 layer->OnImGuiUpdate();
             }
 
-            m_ImGuiLayer.End();
+            m_ImGuiLayer->End();
 
             if (m_ActiveScene != nullptr) {
                 m_ActiveScene->OnUpdate();

@@ -18,10 +18,14 @@ AssetBrowser::AssetBrowser(Hamster::EventDispatcher *dispatcher,
                            Hamster::AssetManager *assetManager)
     : m_Dispatcher(dispatcher), m_Scene(std::move(scene)),
       m_AssetManager(assetManager) {
-    m_Dispatcher->Subscribe(
+    m_ActiveSceneSub = m_Dispatcher->Subscribe(
         Hamster::ActiveSceneChanged,
         FORWARD_CALLBACK_FUNCTION(AssetBrowser::OnActiveSceneChanged,
                                   Hamster::ActiveSceneChangedEvent));
+}
+
+AssetBrowser::~AssetBrowser() {
+    m_Dispatcher->Unsubscribe(Hamster::ActiveSceneChanged, m_ActiveSceneSub);
 }
 
 void AssetBrowser::OnActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e) {

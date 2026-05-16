@@ -1,5 +1,61 @@
 # Session handoff
 
+## 2026-05-15 (session 4) — Bug 0002 investigated, fix approved, implementation deferred
+
+- **Phase 1A measurement results** (done):
+  - Idle is clean — CPU 5–6% on a 16-core box ≈ 1 core, FPS locked at 60 matching refresh. **Vsync is somehow already working** despite no `glfwSwapInterval(1)` in our source. Original plan's #1 fix is now de-prioritized.
+  - No idle memory / handle / GDI / user-object growth over several minutes.
+- **Project-switch leak confirmed** — Task Manager Handles 588 → ~1500 over 8 open/close cycles via `File → Open Project` (≈ +114 handles/cycle). UI duplication symptom (Add Component dropdown listing every option × N, Property Editor "select an entity first" × N) pinned the root cause to layer-stack accumulation.
+- **Bug 0002** (`docs/bugs/active/0002-project-switch-handle-leak.md`) — Tier 2, severity High, status `investigating`. Investigation, root cause, fix plan, and author rubber-stamp are all in the bug file. Three compounding root-cause threads:
+  1. `ProjectHubLayer::OnAttach` subscribes to `ProjectOpened`, discards the `SubscriptionHandle`, never unsubscribes. Lambda outlives the hub's tenure in the layer stack.
+  2. `LayerStack::PopLayer` removes from the vector + calls `OnDetach` but never `delete`s the layer. Hub heap allocation + its captured lambda persist forever.
+  3. No swap-main-layer API; the hub's orphaned lambda is the only `ProjectOpened` subscriber and naively `PushLayer`s a new `EditorLayer` on every fire without popping the previous one. Each accumulated `EditorLayer` keeps its FBO + logo `Texture` + panel objects + panel-level dispatcher subscriptions alive.
+- **Fix plan (approved, not yet implemented)** — 4 files:
+  1. `Hamster-Core/src/Core/LayerStack.cpp` — `PopLayer` should `delete layer` after `OnDetach` (LayerStack owns layers transferred at push).
+  2. `Hamster-Core/src/Core/Application.cpp` — `~Application` should pop+delete remaining layers before the existing scene-save loop.
+  3. `Hamster-Wheel/src/ProjectHubLayer.cpp` + `.h` — remove the `ProjectOpened` subscription entirely; remove `OnAttach`; remove `m_EditorLayer` member.
+  4. `Hamster-Wheel/src/main.cpp` — install one persistent `ProjectOpened` handler that tracks the current main layer via a captured local, pops + deletes the previous one, pushes a new `EditorLayer`.
+- **Scope note**: this fix does **not** address missing GL destructors on `Texture` / `Shader` / `FramebufferTexture` — those still leak driver-side handles per construction, but after this fix each construction only happens once per actual switch instead of stacking. Re-measure handle growth after the fix; if non-zero, follow up with destructor work as a separate bug.
+- **Smoke test impact**: none expected — no Python/simulation changes.
+- **Verification after fix**: re-run the bug's reproduction (10 project switches via `File → Open Project`); Handles should stay flat.
+- **Next session step**: implement the 4-file fix, build, run smoke test, then re-run the handle-count reproduction to verify it's flat. After commit, decide whether residual handle growth warrants logging a follow-up bug for the GL destructors.
+
+## 2026-05-15 (session 3) — Performance/leak investigation queued for measurement
+
+- Plan at `C:\Users\Jaden\.claude\plans\velvety-crafting-sketch.md` (saved as `velvety-crafting-sketch.md`, approved). Read-only audit identified four likely causes of system slowdown when running Hamster:
+  1. **No `glfwSwapInterval`** anywhere in our source — main loop runs uncapped, pegs a CPU core.
+  2. **`Texture`, `Shader`, `FramebufferTexture` have no destructors** — every `glGen*` leaks its GL handle. Renderer's `VBO` is also generated into a local var that goes out of scope, leaking on every Renderer construction.
+  3. **`FramebufferTexture::ResizeFrameBuffer` called every frame unconditionally** at `EditorLayer.cpp:246` — two GPU allocs/frame.
+  4. **Hover-pick re-renders the whole scene** to the FBO + `glReadPixels` stall every hovered frame at `EditorLayer.cpp:74–105`. Combined with the main display render, that's 2–3 full scene draws/frame while hovering.
+- Lower-severity findings (Scene without destructor, per-frame Python `attr` lookup, per-frame EnTT group sort, unbounded main-thread queue) listed in the plan.
+- **ASan was tried first, did not work**:
+  - Windows ASan does not support leak detection (`detect_leaks=1` prints "not supported on this platform"). Pre-build attempt confirmed.
+  - Smoke test crashes inside ASan's instruction interceptor: `interception_win: unhandled instruction` (known Win11 issue, likely Python interop).
+  - `build-asan/` directory left intact for possible future use-after-free / heap-overflow checking — feel free to delete it if reclaiming disk space.
+- **Plan pivoted to Visual Studio 2022 Diagnostic Tools (Memory Usage)** for heap leak detection. VS 2022 Enterprise already installed. No rebuild needed — runs on the existing `build/Hamster-Wheel/Hamster-Wheel.exe`.
+- **Queued user-driven measurements** (not yet run):
+  1. Task Manager symptom check — CPU%, Memory, Handles, GDI, GPU%, FPS at idle + while hovering viewport for 30s + after 5min idle.
+  2. VS 2022 Performance Profiler → Memory Usage → attach to Hamster-Wheel.exe → snapshot → open/close 5 projects → snapshot → diff the heap.
+  3. (Optional) RenderDoc Resource Inspector for GL handle counts across project switches.
+- **Next session step**: run the queued measurements above and paste the readings / heap-diff screenshot back so we can confirm which findings are real and prioritize fixes (vsync is almost certainly fix #1 regardless).
+
+## 2026-05-15 (session 2) — UI polish + project hub port + windows snap
+
+- Committed `302ce5f9` and pushed (129 files, +44860/-2376). This bundle also captured the prior editor-rewrite work that had never been committed.
+- **Resolved from previous handoff**:
+  - ProjectHubLayer ported from Hamster-Wheel-old; `main.cpp` pushes it instead of EditorLayer directly. `ProjectOpened` event triggers the layer swap.
+  - Hardcoded debug project path removed from `main.cpp`.
+- **Still deferred**:
+  - `RenameModal` wiring — only the AssetBrowser texture rename path uses it. Hierarchy entity rename + PropertyEditor name-field rename modal not wired.
+  - Title bar drag + Aero Snap are Win32-only (`#ifdef _WIN32`). Linux port deferred.
+  - Portable serialization still open (architecture.md open question).
+- **Architectural notes worth remembering**:
+  - Borderless-with-snap pattern lives in `Window.cpp` via `SetWindowSubclass` + WM_NCCALCSIZE clamping to `mi.rcWork` when `SW_SHOWMAXIMIZED`. WS_THICKFRAME is required for Aero Snap; GLFW_DECORATED=FALSE strips it, so the subclass re-adds it.
+  - Initial viewport size fix: Application ctor posts a synthesized `FramebufferResizeEvent` after subsystems are wired, so the renderer picks up the real maximized size instead of the hardcoded 1920×1080.
+  - Panel focus state is read from `ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)` in `Panel::DrawHeader`/`DrawTabbedHeader`. No global focus tracking — mutual exclusion is free.
+  - First-render auto-focus is avoided via `ImGuiWindowFlags_NoFocusOnAppearing` on panel windows; LevelEditor uses `SetNextWindowFocus` once on first frame so it's the default-selected panel.
+- **Next session step**: nothing specific. Options — wire RenameModal into Hierarchy/PropertyEditor, work an active spec, or pick from architecture.md open questions (portable serialization).
+
 ## 2026-05-15 — Editor rewrite from prototype shipped
 
 - **`Hamster-UIPrototype/` → `Hamster-Wheel/`** rename complete. The new editor is the prototype with engine deps and per-panel data wiring added. Old editor preserved as `Hamster-Wheel-old/`, not built (`add_subdirectory` commented in root `CMakeLists.txt`).

@@ -18,6 +18,7 @@ public:
                    std::shared_ptr<Hamster::Scene> scene,
                    Hamster::AssetManager *assetManager,
                    ColliderEditor *colliderEditor);
+    ~PropertyEditor();
 
     void Render();
     void SetSelectedEntity(Hamster::UUID uuid);
@@ -26,6 +27,7 @@ public:
 
 private:
     Hamster::EventDispatcher *m_Dispatcher;
+    Hamster::SubscriptionHandle m_ActiveSceneSub = 0;
     std::shared_ptr<Hamster::Scene> m_Scene;
     Hamster::AssetManager *m_AssetManager;
     ColliderEditor *m_ColliderEditor;

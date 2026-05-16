@@ -7,10 +7,14 @@ Console::Console(Hamster::EventDispatcher *dispatcher,
                  std::shared_ptr<Hamster::Scene> scene)
     : m_Dispatcher(dispatcher), m_Scene(std::move(scene)) {
     if (m_Scene) m_ClientLogger = m_Scene->GetClientLogger();
-    m_Dispatcher->Subscribe(
+    m_ActiveSceneSub = m_Dispatcher->Subscribe(
         Hamster::ActiveSceneChanged,
         FORWARD_CALLBACK_FUNCTION(Console::OnActiveSceneChanged,
                                   Hamster::ActiveSceneChangedEvent));
+}
+
+Console::~Console() {
+    m_Dispatcher->Unsubscribe(Hamster::ActiveSceneChanged, m_ActiveSceneSub);
 }
 
 void Console::OnActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e) {

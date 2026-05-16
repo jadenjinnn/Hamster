@@ -41,14 +41,19 @@ EditorLayer::EditorLayer(Hamster::Application *app)
     m_ProjectCreator  = std::make_unique<ProjectCreator>(m_Dispatcher);
 }
 
+EditorLayer::~EditorLayer() {
+    m_Dispatcher->Unsubscribe(Hamster::ActiveSceneChanged, m_ActiveSceneSub);
+    m_Dispatcher->Unsubscribe(Hamster::FramebufferResize, m_FramebufferSub);
+}
+
 void EditorLayer::OnAttach() {
     glfwGetFramebufferSize(m_App->GetWindow(), &m_ViewportWidth, &m_ViewportHeight);
 
-    m_Dispatcher->Subscribe(Hamster::ActiveSceneChanged,
+    m_ActiveSceneSub = m_Dispatcher->Subscribe(Hamster::ActiveSceneChanged,
         FORWARD_CALLBACK_FUNCTION(EditorLayer::ActiveSceneChanged,
                                   Hamster::ActiveSceneChangedEvent));
 
-    m_Dispatcher->Subscribe(Hamster::FramebufferResize,
+    m_FramebufferSub = m_Dispatcher->Subscribe(Hamster::FramebufferResize,
         FORWARD_CALLBACK_FUNCTION(EditorLayer::FramebufferSizeChanged,
                                   Hamster::FramebufferResizeEvent));
 

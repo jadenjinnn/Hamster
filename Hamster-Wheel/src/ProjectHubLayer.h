@@ -4,14 +4,12 @@
 #include <Hamster.h>
 #include <filesystem>
 
-#include "EditorLayer.h"
 #include "ProjectRegistry.h"
 
 class ProjectHubLayer : public Hamster::Layer {
 public:
   explicit ProjectHubLayer(Hamster::Application *app);
 
-  void OnAttach() override;
   void OnImGuiUpdate() override;
 
 private:
@@ -29,7 +27,6 @@ private:
 
   Hamster::Application *m_App;
   Hamster::EventDispatcher *m_Dispatcher;
-  EditorLayer *m_EditorLayer = nullptr;
   ProjectRegistry m_Registry;
 
   bool m_ShowCreateModal = false;

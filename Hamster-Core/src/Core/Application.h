@@ -104,7 +104,7 @@ namespace Hamster {
         std::shared_ptr<EventDispatcher> m_Dispatcher;
         LayerStack m_LayerStack;
 
-        ImGuiLayer m_ImGuiLayer;
+        ImGuiLayer *m_ImGuiLayer = nullptr;
 
         std::unique_ptr<Window> m_Window;
 
