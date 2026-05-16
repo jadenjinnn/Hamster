@@ -24,8 +24,8 @@ add_executable(Hamster-Wheel
     src/Panels/BottomPanel.cpp
     src/Panels/AssetBrowser.cpp
     src/Panels/Console.cpp
-    src/Panels/ProjectSelector.cpp
-    src/Panels/ProjectCreator.cpp
+    src/Panels/CreateProjectModal.cpp
+    src/Panels/OpenProjectModal.cpp
     src/Panels/ColliderEditor.cpp
     src/Panels/RenameModal.cpp
 )

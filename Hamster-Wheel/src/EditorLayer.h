@@ -13,9 +13,10 @@
 #include "Panels/Hierarchy.h"
 #include "Panels/PropertyEditor.h"
 #include "Panels/BottomPanel.h"
-#include "Panels/ProjectSelector.h"
-#include "Panels/ProjectCreator.h"
+#include "Panels/CreateProjectModal.h"
+#include "Panels/OpenProjectModal.h"
 #include "Panels/ColliderEditor.h"
+#include "ProjectRegistry.h"
 
 class EditorLayer : public Hamster::Layer {
 public:
@@ -49,9 +50,10 @@ private:
     std::unique_ptr<Hierarchy> m_Hierarchy;
     std::unique_ptr<PropertyEditor> m_PropertyEditor;
     std::unique_ptr<BottomPanel> m_BottomPanel;
-    std::unique_ptr<ProjectSelector> m_ProjectSelector;
-    std::unique_ptr<ProjectCreator> m_ProjectCreator;
+    std::unique_ptr<CreateProjectModal> m_CreateModal;
+    std::unique_ptr<OpenProjectModal> m_OpenModal;
     std::unique_ptr<ColliderEditor> m_ColliderEditor;
+    ProjectRegistry m_Registry;
 
     // Picking / drag state
     bool m_EntityHeld          = false;

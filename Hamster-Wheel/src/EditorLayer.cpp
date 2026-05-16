@@ -20,6 +20,7 @@
 #include "IconsFontAwesome6.h"
 #include "Theme.h"
 #include "Panel.h"
+#include "Components/Components.h"
 #include "Panels/PropertyEditor.h"
 #include "Panels/Hierarchy.h"
 #include "Panels/BottomPanel.h"
@@ -37,8 +38,8 @@ EditorLayer::EditorLayer(Hamster::Application *app)
         m_Dispatcher, m_Scene, app->GetAssetManager(), m_ColliderEditor.get());
     m_BottomPanel = std::make_unique<BottomPanel>(
         m_Dispatcher, m_Scene, app->GetAssetManager());
-    m_ProjectSelector = std::make_unique<ProjectSelector>(m_Dispatcher);
-    m_ProjectCreator  = std::make_unique<ProjectCreator>(m_Dispatcher);
+    m_CreateModal = std::make_unique<CreateProjectModal>(m_App);
+    m_OpenModal   = std::make_unique<OpenProjectModal>(m_App);
 }
 
 EditorLayer::~EditorLayer() {
@@ -348,27 +349,27 @@ void EditorLayer::OnImGuiUpdate() {
             }
             ImGui::SameLine(0, 16);
 
-            if (ImGui::BeginMenu("File")) {
-                if (ImGui::MenuItem("Save Scene")) {
+            if (HBeginMenu("File")) {
+                if (HMenuItem("Save Scene")) {
                     if (m_Scene) Hamster::Scene::SaveScene(m_Scene);
                 }
-                if (ImGui::MenuItem("New Project")) {
-                    m_ProjectCreator->OpenPanel();
+                if (HMenuItem("New Project")) {
+                    m_CreateModal->Show();
                 }
-                if (ImGui::MenuItem("Open Project")) {
-                    m_ProjectSelector->OpenPanel();
+                if (HMenuItem("Open Project")) {
+                    m_OpenModal->Show();
                 }
-                ImGui::Separator();
-                if (ImGui::MenuItem("Exit")) {
+                HMenuSeparator();
+                if (HMenuItem("Exit")) {
                     Hamster::WindowCloseEvent e;
                     m_Dispatcher->Post<Hamster::WindowCloseEvent>(e);
                 }
-                ImGui::EndMenu();
+                HEndMenu();
             }
-            if (ImGui::BeginMenu("Edit"))   { ImGui::MenuItem("Undo"); ImGui::MenuItem("Redo"); ImGui::EndMenu(); }
-            if (ImGui::BeginMenu("View"))   { ImGui::MenuItem("Property Editor"); ImGui::MenuItem("Hierarchy"); ImGui::MenuItem("Console"); ImGui::EndMenu(); }
-            if (ImGui::BeginMenu("Build"))  { ImGui::MenuItem("Build Project"); ImGui::EndMenu(); }
-            if (ImGui::BeginMenu("Help"))   { ImGui::MenuItem("About"); ImGui::EndMenu(); }
+            if (HBeginMenu("Edit"))   { HMenuItem("Undo"); HMenuItem("Redo"); HEndMenu(); }
+            if (HBeginMenu("View"))   { HMenuItem("Property Editor"); HMenuItem("Hierarchy"); HMenuItem("Console"); HEndMenu(); }
+            if (HBeginMenu("Build"))  { HMenuItem("Build Project"); HEndMenu(); }
+            if (HBeginMenu("Help"))   { HMenuItem("About"); HEndMenu(); }
 
             // Window controls (right-aligned)
             float btnW = 32.0f;
@@ -624,8 +625,8 @@ void EditorLayer::OnImGuiUpdate() {
     ImGui::End();
 
     // Modal-style floating windows
-    if (m_ProjectCreator->IsPanelOpen())  m_ProjectCreator->Render();
-    if (m_ProjectSelector->IsPanelOpen()) m_ProjectSelector->Render();
+    m_CreateModal->Render(&m_Registry);
+    m_OpenModal->Render(&m_Registry);
     if (m_ColliderEditor->IsOpen())       m_ColliderEditor->Render();
 }
 

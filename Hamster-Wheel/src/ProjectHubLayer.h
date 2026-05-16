@@ -3,8 +3,10 @@
 
 #include <Hamster.h>
 #include <filesystem>
+#include <memory>
 
 #include "ProjectRegistry.h"
+#include "Panels/CreateProjectModal.h"
 
 class ProjectHubLayer : public Hamster::Layer {
 public:
@@ -16,7 +18,6 @@ private:
   void RenderTopBar(float width);
   void RenderHeader(float width);
   void RenderCardGrid(float width, float startY, float height);
-  void RenderCreateModal();
   void RenderRenameModal();
   void RenderDeleteConfirmation();
   void RenderMissingProjectDialog();
@@ -28,14 +29,9 @@ private:
   Hamster::Application *m_App;
   Hamster::EventDispatcher *m_Dispatcher;
   ProjectRegistry m_Registry;
+  std::unique_ptr<CreateProjectModal> m_CreateModal;
 
-  bool m_ShowCreateModal = false;
-  char m_ProjectName[128] = "Untitled";
   char m_SearchBuffer[128] = {};
-  std::filesystem::path m_ProjectDirectory;
-  int m_SelectedTemplate = 0;
-  bool m_NoDirectorySelected = false;
-  bool m_DirectoryExists = false;
 
   int m_ContextMenuIndex = -1;
 

@@ -19,6 +19,9 @@ inline constexpr ImVec4 kAccentDim  = {0.300f, 0.520f, 0.960f, 0.30f};
 inline constexpr ImVec4 kHeader     = {0.094f, 0.102f, 0.133f, 1.0f};
 inline constexpr ImVec4 kGreen      = {0.133f, 0.773f, 0.369f, 1.0f};
 inline constexpr ImVec4 kRed        = {0.850f, 0.250f, 0.250f, 1.0f};
+inline constexpr ImVec4 kHubGreen    = {0.24f, 0.75f, 0.39f, 1.0f};
+inline constexpr ImVec4 kHubGreenHov = {0.30f, 0.82f, 0.45f, 1.0f};
+inline constexpr ImVec4 kHubGreenAct = {0.20f, 0.65f, 0.33f, 1.0f};
 
 // ─── Fonts ───────────────────────────────────────────────────────
 extern ImFont *g_Font;

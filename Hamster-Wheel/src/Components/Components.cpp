@@ -81,6 +81,42 @@ void HEndStyledPopup() {
     ImGui::PopStyleColor();
 }
 
+bool HBeginMenu(const char *label) {
+    // Style pushes here affect both the menu-bar trigger AND the popup.
+    // Pushing ItemSpacing(0, ...) before BeginMenu collapsed the gap
+    // between adjacent triggers in the menu bar — keep that push inside
+    // the popup only.
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, kSurface);
+    ImGui::PushStyleColor(ImGuiCol_Header, kSurfaceHov);
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, kSurfaceHov);
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive, kSurfaceAct);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12, 6));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
+    bool open = ImGui::BeginMenu(label);
+    ImGui::PopStyleVar();  // FramePadding — trigger already rendered.
+    if (open) {
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 6));
+    } else {
+        ImGui::PopStyleVar();  // WindowPadding
+        ImGui::PopStyleColor(4);
+    }
+    return open;
+}
+
+void HEndMenu() {
+    ImGui::EndMenu();
+    ImGui::PopStyleVar(2);  // ItemSpacing + WindowPadding
+    ImGui::PopStyleColor(4);
+}
+
+bool HMenuItem(const char *label, const char *shortcut, bool enabled) {
+    return ImGui::MenuItem(label, shortcut, false, enabled);
+}
+
+void HMenuSeparator() {
+    ImGui::Separator();
+}
+
 bool HComboItem(const char *label, bool selected) {
     ImDrawList *dl = ImGui::GetWindowDrawList();
     ImVec2 textSz = ImGui::CalcTextSize(label);

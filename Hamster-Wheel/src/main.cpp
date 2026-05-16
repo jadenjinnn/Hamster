@@ -15,7 +15,9 @@ int main() {
         "/../share/Resources/Hamster-Wheel/Resources";
 
     ImGuiIO &io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    // Keyboard nav left disabled — Alt activating menu nav while a modal
+    // popup is open causes a delayed crash inside the modal's Render
+    // a few frames after the keypress.
     LoadFonts(io, resourcePath);
     ApplyTheme();
 
