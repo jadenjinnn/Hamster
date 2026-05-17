@@ -171,16 +171,38 @@ namespace Hamster {
         return scriptUUID;
     }
 
+    // Derives the dotted Python module name for a script file from its path
+    // relative to the project root. enemies/boss.py → "enemies.boss".
+    static std::string ModuleNameForScript(
+        const std::filesystem::path &scriptPath,
+        const std::filesystem::path &projectDir) {
+        std::error_code ec;
+        std::filesystem::path rel =
+            std::filesystem::relative(scriptPath, projectDir, ec);
+        if (ec || rel.empty()) return scriptPath.stem().string();
+
+        std::filesystem::path parent = rel.parent_path();
+        std::string stem = rel.stem().string();
+        if (parent.empty()) return stem;
+
+        std::string dotted = parent.string();
+        std::replace(dotted.begin(), dotted.end(), '\\', '.');
+        std::replace(dotted.begin(), dotted.end(), '/', '.');
+        return dotted + "." + stem;
+    }
+
     void AssetManager::LoadProjectScripts(const std::filesystem::path &projectDir) {
         if (!std::filesystem::exists(projectDir) ||
             !std::filesystem::is_directory(projectDir)) {
             return;
         }
 
-        // Pass 1: walk for .py files; register each with its sidecar UUID
-        // (minting one + writing the sidecar if it's absent).
+        // Pass 1: walk recursively for .py files; register each with its
+        // sidecar UUID (minting one + writing the sidecar if it's absent).
+        // Recursive so subdirectories ("enemies/", "players/", ...) are
+        // first-class.
         for (auto const &entry :
-             std::filesystem::directory_iterator(projectDir)) {
+             std::filesystem::recursive_directory_iterator(projectDir)) {
             if (!entry.is_regular_file()) continue;
             const auto &path = entry.path();
             if (path.extension() != ".py") continue;
@@ -193,26 +215,25 @@ namespace Hamster {
                 MetaFile::Write(path, uuid);
             }
 
-            const std::string stem = path.stem().string();
+            const std::string moduleName = ModuleNameForScript(path, projectDir);
 
             std::shared_ptr<HamsterScript> script =
-                    std::make_shared<HamsterScript>(path, stem);
+                    std::make_shared<HamsterScript>(path, moduleName);
             script->SetUUID(uuid);
-            script->SetName(stem);
+            script->SetName(path.stem().string());
 
             m_Scripts.emplace(uuid, script);
         }
 
-        // Pass 2: delete orphan .py.meta files (paired .py is gone). Keeping
-        // these around would let stale UUIDs come back to life next session.
+        // Pass 2: recursively delete orphan .py.meta files (paired .py is
+        // gone). Keeping these around would let stale UUIDs come back to
+        // life next session.
         for (auto const &entry :
-             std::filesystem::directory_iterator(projectDir)) {
+             std::filesystem::recursive_directory_iterator(projectDir)) {
             if (!entry.is_regular_file()) continue;
             const auto &path = entry.path();
             if (path.extension() != ".meta") continue;
 
-            // Sidecars are "<asset>.<ext>.meta" — strip ".meta" then check the
-            // remaining path. We only own .py sidecars in Phase 1.
             std::filesystem::path paired = path;
             paired.replace_extension(); // drops ".meta"
             if (paired.extension() != ".py") continue;
@@ -237,9 +258,6 @@ namespace Hamster {
 
             switch (ev.kind) {
             case FileEvent::Kind::Added: {
-                // If a sidecar already exists, adopt its UUID (e.g., the user
-                // copy-pasted the file with its .meta intact). Otherwise mint
-                // and write.
                 std::optional<UUID> persisted = MetaFile::Read(path);
                 UUID uuid;
                 if (persisted) uuid = *persisted;
@@ -247,10 +265,15 @@ namespace Hamster {
 
                 if (m_Scripts.find(uuid) != m_Scripts.end()) break;
 
-                const std::string stem = path.stem().string();
-                auto script = std::make_shared<HamsterScript>(path, stem);
+                const std::filesystem::path projectDir =
+                    Project::GetCurrentProject()->GetConfig().ProjectDirectory;
+                const std::string moduleName =
+                    ModuleNameForScript(path, projectDir);
+
+                auto script =
+                    std::make_shared<HamsterScript>(path, moduleName);
                 script->SetUUID(uuid);
-                script->SetName(stem);
+                script->SetName(path.stem().string());
                 m_Scripts.emplace(uuid, script);
                 break;
             }
@@ -297,10 +320,15 @@ namespace Hamster {
                 if (persisted) uuid = *persisted;
                 else MetaFile::Write(path, uuid);
 
-                const std::string stem = path.stem().string();
-                auto script = std::make_shared<HamsterScript>(path, stem);
+                const std::filesystem::path projectDir =
+                    Project::GetCurrentProject()->GetConfig().ProjectDirectory;
+                const std::string moduleName =
+                    ModuleNameForScript(path, projectDir);
+
+                auto script =
+                    std::make_shared<HamsterScript>(path, moduleName);
                 script->SetUUID(uuid);
-                script->SetName(stem);
+                script->SetName(path.stem().string());
                 m_Scripts.emplace(uuid, script);
                 break;
             }
@@ -358,10 +386,15 @@ namespace Hamster {
             }
 
             // Teach the in-memory script about its new location. Shared
-            // pointers held by Behaviour components stay valid.
-            const std::string newStem = newPath.stem().string();
-            script->SetScriptPath(newPath, newStem);
-            script->SetName(newStem);
+            // pointers held by Behaviour components stay valid. The dotted
+            // module name reflects the new path so future ReloadScript calls
+            // import from the right place.
+            const std::filesystem::path projectDir =
+                Project::GetCurrentProject()->GetConfig().ProjectDirectory;
+            const std::string moduleName =
+                ModuleNameForScript(newPath, projectDir);
+            script->SetScriptPath(newPath, moduleName);
+            script->SetName(newPath.stem().string());
             return true;
         }
 

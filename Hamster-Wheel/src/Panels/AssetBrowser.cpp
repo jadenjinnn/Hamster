@@ -5,12 +5,14 @@
 
 #include <Core/Application.h>
 #include <Core/Components.h>
+#include <Core/Project.h>
 #include <Renderer/Texture.h>
 #include <Utils/AssetManager.h>
 #include <tinyfiledialogs.h>
 
 #include <imgui.h>
 #include <algorithm>
+#include <filesystem>
 #include <sstream>
 
 AssetBrowser::AssetBrowser(Hamster::EventDispatcher *dispatcher,
@@ -215,14 +217,93 @@ void AssetBrowser::Render() {
         nextRow();
     }
 
-    // Script assets
+    // ── Breadcrumb (only when navigating below the project root) ──
+    std::filesystem::path projectDir;
+    auto activeProject = Hamster::Project::GetCurrentProject();
+    if (activeProject) projectDir = activeProject->GetConfig().ProjectDirectory;
+
+    if (!m_CurrentFolder.empty() && !projectDir.empty()) {
+        ImGui::Dummy({0, 2});
+        // "Project" link returns to root.
+        if (ImGui::SmallButton(ICON_FA_FOLDER_OPEN "  Project")) {
+            m_CurrentFolder.clear();
+        }
+        std::filesystem::path crumb;
+        for (auto const &segment : m_CurrentFolder) {
+            crumb /= segment;
+            ImGui::SameLine(0, 4);
+            ImGui::TextDisabled("/");
+            ImGui::SameLine(0, 4);
+            std::string label = segment.string() + "##crumb_" + crumb.string();
+            if (ImGui::SmallButton(label.c_str())) {
+                m_CurrentFolder = crumb;
+            }
+        }
+        ImGui::Dummy({0, 4});
+        colIdx = 0; // breadcrumb broke our row layout — reset
+    }
+
+    // ── Folder cards (direct subdirectories of the current folder) ──
+    std::filesystem::path activeFolder =
+        projectDir.empty() ? std::filesystem::path{}
+                            : (projectDir / m_CurrentFolder);
+
+    if (!activeFolder.empty() && std::filesystem::is_directory(activeFolder)) {
+        for (auto const &entry :
+             std::filesystem::directory_iterator(activeFolder)) {
+            if (!entry.is_directory()) continue;
+            const std::string name = entry.path().filename().string();
+            // Reserved subdirectories — managed by the engine, not user
+            // browsing. Hide from the script section.
+            if (name == "Animations" || name == "Scenes") continue;
+
+            // Render a folder card; double-click to enter.
+            ImGui::PushID(("folder_" + name).c_str());
+            ImVec2 pos = ImGui::GetCursorScreenPos();
+            ImDrawList *dl = ImGui::GetWindowDrawList();
+            const float cardR = 6.0f;
+
+            bool clicked = ImGui::InvisibleButton("##folder", {cardW, cardH});
+            bool hovered = ImGui::IsItemHovered();
+            dl->AddRectFilled(pos, {pos.x + cardW, pos.y + cardH},
+                              ImGui::ColorConvertFloat4ToU32(
+                                  hovered ? kSurfaceHov : kSurface),
+                              cardR);
+
+            if (g_IconLarge) {
+                const char *icon = ICON_FA_FOLDER;
+                ImVec2 iSz = g_IconLarge->CalcTextSizeA(36.0f, FLT_MAX, 0, icon);
+                float iconX = pos.x + (cardW - iSz.x) * 0.5f;
+                float iconY = pos.y + (cardH - 30.0f - iSz.y) * 0.5f + 4;
+                dl->AddText(g_IconLarge, 36.0f, {iconX, iconY},
+                            ImGui::ColorConvertFloat4ToU32(kAccent), icon);
+            }
+            ImVec2 nSz = ImGui::CalcTextSize(name.c_str());
+            dl->AddText({pos.x + (cardW - nSz.x) * 0.5f, pos.y + cardH - 20},
+                        ImGui::ColorConvertFloat4ToU32(kText), name.c_str());
+
+            ImGui::PopID();
+
+            if (clicked) {
+                m_CurrentFolder /= name;
+            }
+            nextRow();
+        }
+    }
+
+    // ── Script assets (filtered to the current folder) ──
     for (const auto &[uuid, script] : m_AssetManager->GetScriptMap()) {
+        std::filesystem::path scriptPath(script->GetScriptPath());
+        std::filesystem::path scriptParent = scriptPath.parent_path();
+        if (!activeFolder.empty() && scriptParent != activeFolder) {
+            continue; // script is in a different folder than the current view
+        }
+
         Hamster::UUID mUUID = uuid;
         std::string id = "scr_" + mUUID.GetUUIDString();
         DrawAssetCard(id.c_str(), ICON_FA_FILE_CODE,
                       script->GetName().c_str(), nullptr, cardW, cardH);
-        std::filesystem::path p(script->GetScriptPath());
-        contextMenu(mUUID, p.filename().string());
+        contextMenu(mUUID, scriptPath.filename().string());
         nextRow();
     }
 

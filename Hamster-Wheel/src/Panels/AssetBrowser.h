@@ -3,6 +3,7 @@
 
 #include <Hamster.h>
 #include <Core/UUID.h>
+#include <filesystem>
 #include <memory>
 
 namespace Hamster {
@@ -31,6 +32,11 @@ private:
     char          m_RenameBuffer[128] = {0};
     bool          m_OpenRenamePopup = false; // request the popup on next frame
     bool          m_RenameCollision = false; // shown inline in the modal
+
+    // Current folder for the script section, relative to the project root.
+    // Empty string = project root. Single-level breadcrumb in v1; deeper
+    // tree view is future work per the spec.
+    std::filesystem::path m_CurrentFolder;
 };
 
 #endif // UIPROTO_ASSET_BROWSER_H

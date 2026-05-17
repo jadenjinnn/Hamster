@@ -87,7 +87,7 @@ void ProjectWatcher::WorkerLoop() {
         DWORD bytesReturned = 0;
         BOOL ok = ReadDirectoryChangesW(
             dir, buffer.data(), static_cast<DWORD>(buffer.size()),
-            /*watchSubtree*/ FALSE, kNotifyFilter, &bytesReturned,
+            /*watchSubtree*/ TRUE, kNotifyFilter, &bytesReturned,
             &overlapped, nullptr);
 
         if (!ok) {
