@@ -105,8 +105,6 @@ namespace Hamster {
     }
 
     Application::~Application() {
-        Scripting::FinaliseInterpreter();
-
         Project::SaveCurrentProject(m_AssetManager.get());
 
         for (auto const &[uuid, scene]: m_Scenes) {
@@ -128,6 +126,16 @@ namespace Hamster {
             m_LayerStack.PopLayer(*m_LayerStack.begin());
         }
         m_ImGuiLayer = nullptr;
+
+        // Tear down everything that owns pybind11 handles BEFORE finalizing
+        // the interpreter. Otherwise the implicit member-destruction at the
+        // end of this destructor would decref Python objects on a dead
+        // interpreter (HamsterScript::m_Module, Behaviour::pyObjects), which
+        // is UB and crashes in practice once enough modules accumulate.
+        m_Scenes.clear();
+        m_AssetManager.reset();
+
+        Scripting::FinaliseInterpreter();
 
         std::cout << "Application destroyed" << std::endl;
     }
