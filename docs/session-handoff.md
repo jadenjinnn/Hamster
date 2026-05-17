@@ -1,5 +1,15 @@
 # Session handoff
 
+## 2026-05-17 (session 2) — asset-sidecars shipped (locally); manual UI tests pending; 10 commits unpushed
+
+- **Feature done**: asset-sidecars closed out across 7 phases + bug 0007 fix + close-out docs. Spec at `docs/features/shipped/2026-05-17-asset-sidecars.md`. Smoke test 15/15.
+- **Not yet pushed**: 10 commits on `master` since `56a0eba6` (entity-hierarchy). No `git push` ran — user should review the manual-test results first.
+- **Manual test checklist** (given to user, not yet run): 11 tests covering fresh-project sidecar writes, editor + external rename, sloppy-rename + MISSING UI, simulation guard, subdirectories + dotted imports, same-name-across-folders. Tests 5–11 exercise the Win32 file watcher + subdir browser UI which couldn't be smoke-tested. **Anything that fails should be reported with the test number and the exact symptom.**
+- **Bug 0003** (`docs/bugs/active/0003-getscript-throws-on-missing-uuid.md`) is effectively resolved by Phase 5: `AssetManager::GetScript` now returns `nullptr` instead of throwing. Worth moving the file to `closed/` and writing a short verification note — but I left it active so author can confirm intent before closing.
+- **Bug 0007** discovered + fixed: `Application::~Application` finalized Python before pybind member dtors ran (latent UB; smoke segfault at exit). Fix moved `FinaliseInterpreter()` to the LAST line of the dtor with explicit `m_Scenes.clear()` + `m_AssetManager.reset()` before it. See `docs/bugs/closed/0007-...md`.
+- **Leftover on disk**: `build-asan/` directory from earlier leak-investigation (still gitignored / untracked). Safe to delete to reclaim disk if you want.
+- **Next session step**: run the manual test checklist (Q&A response in chat). If everything passes, `git push origin master`. If something fails, fix → smoke → push.
+
 ## 2026-05-15 (session 4) — Bug 0002 investigated, fix approved, implementation deferred
 
 - **Phase 1A measurement results** (done):

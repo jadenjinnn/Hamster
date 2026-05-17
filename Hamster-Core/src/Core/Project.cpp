@@ -7,7 +7,9 @@
 #include "Project.h"
 
 #include "Application.h"
+#include "Components.h"
 #include "ProjectSerialiser.h"
+#include "Scene.h"
 #include "SceneSerialiser.h"
 #include "Utils/AssetManager.h"
 #include "Utils/ProjectWatcher.h"
@@ -28,8 +30,24 @@ namespace Hamster {
             app->AppendToMainThreadQueue(fn);
         };
 
-        auto onEvents = [assetManager](std::vector<FileEvent> events) {
+        auto onEvents = [assetManager, app](std::vector<FileEvent> events) {
             assetManager->HandleFileEvents(events);
+            // External delete / rename can drop a script from the AssetManager
+            // while Behaviour components still hold a live shared_ptr to it.
+            // The missing-script UI and the simulation guard both key off
+            // a null shared_ptr, so null any entry whose UUID is no longer
+            // registered. This also catches renames where the .meta did NOT
+            // move with the file (a fresh UUID surfaces, old goes missing).
+            if (auto scene = app->GetActiveScene()) {
+                auto view = scene->GetRegistry().view<Behaviour>();
+                view.each([assetManager](auto &beh) {
+                    for (auto &[uuid, script] : beh.scripts) {
+                        if (script && !assetManager->GetScript(uuid)) {
+                            script.reset();
+                        }
+                    }
+                });
+            }
         };
 
         m_Watcher = std::make_unique<ProjectWatcher>(
