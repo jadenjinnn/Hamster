@@ -223,6 +223,94 @@ namespace Hamster {
         }
     }
 
+    void AssetManager::HandleFileEvents(
+        const std::vector<FileEvent> &events) {
+        for (auto const &ev : events) {
+            // .meta files are editor-internal — we own them, ignore events.
+            const std::filesystem::path &path = ev.path;
+            if (path.extension() == ".meta") continue;
+
+            // v1: react only to .py. Other extensions roll in with later
+            // phases (textures + animations live mostly outside the
+            // watched dir anyway).
+            if (path.extension() != ".py") continue;
+
+            switch (ev.kind) {
+            case FileEvent::Kind::Added: {
+                // If a sidecar already exists, adopt its UUID (e.g., the user
+                // copy-pasted the file with its .meta intact). Otherwise mint
+                // and write.
+                std::optional<UUID> persisted = MetaFile::Read(path);
+                UUID uuid;
+                if (persisted) uuid = *persisted;
+                else MetaFile::Write(path, uuid);
+
+                if (m_Scripts.find(uuid) != m_Scripts.end()) break;
+
+                const std::string stem = path.stem().string();
+                auto script = std::make_shared<HamsterScript>(path, stem);
+                script->SetUUID(uuid);
+                script->SetName(stem);
+                m_Scripts.emplace(uuid, script);
+                break;
+            }
+            case FileEvent::Kind::Removed: {
+                // Need the UUID to drop the right entry. The .py is already
+                // gone, but the .meta may or may not be — check both. If we
+                // can't resolve, scan the map for a matching path.
+                std::optional<UUID> persisted = MetaFile::Read(path);
+                if (persisted) {
+                    m_Scripts.erase(*persisted);
+                } else {
+                    for (auto it = m_Scripts.begin(); it != m_Scripts.end(); ) {
+                        if (it->second->GetScriptPath() == path) {
+                            it = m_Scripts.erase(it);
+                        } else {
+                            ++it;
+                        }
+                    }
+                }
+                // Clean orphan sidecar if it survived alone.
+                std::error_code ec;
+                std::filesystem::remove(MetaFile::SidecarPath(path), ec);
+                break;
+            }
+            case FileEvent::Kind::Renamed: {
+                // Editor-initiated renames handle their own bookkeeping (see
+                // Phase 4). External renames: if the .meta moved alongside
+                // the .py, the new path's sidecar carries the OLD UUID, so
+                // we drop the old entry and register the new one — same UUID
+                // resurfaces, attachments survive on next project load. If
+                // the .meta DID NOT move, the new file gets a fresh UUID
+                // and the old UUID becomes a dangling reference (Phase 6 UI).
+                std::optional<UUID> oldUUID;
+                for (auto it = m_Scripts.begin(); it != m_Scripts.end(); ++it) {
+                    if (it->second->GetScriptPath() == ev.oldPath) {
+                        oldUUID = it->first;
+                        break;
+                    }
+                }
+                if (oldUUID) m_Scripts.erase(*oldUUID);
+
+                std::optional<UUID> persisted = MetaFile::Read(path);
+                UUID uuid;
+                if (persisted) uuid = *persisted;
+                else MetaFile::Write(path, uuid);
+
+                const std::string stem = path.stem().string();
+                auto script = std::make_shared<HamsterScript>(path, stem);
+                script->SetUUID(uuid);
+                script->SetName(stem);
+                m_Scripts.emplace(uuid, script);
+                break;
+            }
+            case FileEvent::Kind::Modified:
+                // v1: no hot reload — content changes don't affect identity.
+                break;
+            }
+        }
+    }
+
     void AssetManager::LoadProjectAnimations(
         const std::filesystem::path &projectDir) {
         const std::filesystem::path animDir = projectDir / "Animations";

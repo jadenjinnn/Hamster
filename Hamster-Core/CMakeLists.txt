@@ -68,6 +68,8 @@ set(Utils
         src/Utils/InputManager.cpp src/Utils/InputManager.h
 
         src/Utils/MetaFile.cpp src/Utils/MetaFile.h
+
+        src/Utils/ProjectWatcher.cpp src/Utils/ProjectWatcher.h
 )
 
 

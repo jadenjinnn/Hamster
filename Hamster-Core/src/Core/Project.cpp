@@ -10,12 +10,30 @@
 #include "ProjectSerialiser.h"
 #include "SceneSerialiser.h"
 #include "Utils/AssetManager.h"
+#include "Utils/ProjectWatcher.h"
 
 namespace Hamster {
     Project::Project(const ProjectConfig &config) : m_Config(config) {
         std::filesystem::create_directory(config.ProjectDirectory);
 
         std::filesystem::current_path(config.ProjectDirectory);
+    }
+
+    Project::~Project() = default;
+
+    void Project::StartWatcher(Application *app) {
+        AssetManager *assetManager = app->GetAssetManager();
+
+        auto enqueue = [app](std::function<void()> fn) {
+            app->AppendToMainThreadQueue(fn);
+        };
+
+        auto onEvents = [assetManager](std::vector<FileEvent> events) {
+            assetManager->HandleFileEvents(events);
+        };
+
+        m_Watcher = std::make_unique<ProjectWatcher>(
+            m_Config.ProjectDirectory, std::move(enqueue), std::move(onEvents));
     }
 
     bool Project::New(ProjectConfig &config, Application *app) {
@@ -96,6 +114,7 @@ namespace Hamster {
         app->GetEventDispatcher()
                 ->Post<ProjectOpenedEvent>(e);
 
+        s_ActiveProject->StartWatcher(app);
 
         return true;
     }
@@ -151,6 +170,8 @@ namespace Hamster {
                 ->Post<ProjectOpenedEvent>(e);
 
         std::filesystem::current_path(config.ProjectDirectory);
+
+        s_ActiveProject->StartWatcher(app);
 
         return true;
     }

@@ -9,6 +9,7 @@
 #include "Core/Components.h"
 #include "Core/Project.h"
 #include "Scripting/HamsterScript.h"
+#include "Utils/ProjectWatcher.h"
 
 namespace Hamster {
     class AssetManager {
@@ -60,6 +61,11 @@ namespace Hamster {
         // LoadAnimationFile. .hanim files are self-identifying (UUID is
         // stored inside the file), so no sidecar is needed for animations.
         void LoadProjectAnimations(const std::filesystem::path &projectDir);
+
+        // Reconcile a batch of file system events from ProjectWatcher. Runs
+        // on the main thread (the watcher posts via the main-thread enqueue).
+        // Handles .py add/remove/rename in v1 — other extensions are ignored.
+        void HandleFileEvents(const std::vector<FileEvent> &events);
 
         void RemoveTexture(UUID uuid);
         void RemoveScript(UUID uuid);
