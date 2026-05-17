@@ -586,13 +586,15 @@ void Scene::OnRender(bool renderFlat) {
   auto *renderer = m_App->GetRenderer();
 
   if (!renderFlat) {
+    renderer->BeginSpriteBatch();
     m_RenderGroup.each([renderer](auto &sprite, auto &transform) {
       if (sprite.texture != nullptr) {
-        renderer->DrawSprite(*sprite.texture, transform.position,
-                             transform.size, transform.rotation,
-                             sprite.colour);
+        renderer->SubmitSprite(*sprite.texture, transform.position,
+                               transform.size, transform.rotation,
+                               sprite.colour, transform.position.z);
       }
     });
+    renderer->EndSpriteBatch();
   } else {
     m_RenderGroup.each([renderer](auto entity, auto &sprite, auto &transform) {
       if (sprite.texture != nullptr) {
@@ -754,51 +756,57 @@ void Scene::PauseSceneSimulation() {
     m_PendingBodies.clear();
     m_DestroyQueue.clear();
 
-    // Restore from the snapshot taken at RunSceneSimulation start. Order
-    // matters: physics + animation + pyObject cleanup above must finish
-    // before we wipe the registry, otherwise their teardown touches freed
-    // entities. After restore, the registry holds the pre-play state and a
-    // subsequent RunSceneSimulation rebuilds physics and pyObjects from
-    // scratch — the snapshot only carries component data, never b2BodyId
-    // handles or live Python objects.
+    // Mark the snapshot restore as pending — ProcessPendingRestore at the
+    // top of the next frame will do the registry clear+deserialise. Doing
+    // it inline here would be unsafe: PauseSceneSimulation can be called
+    // mid-iteration (e.g. when on_create throws inside RunSceneSimulation's
+    // pyObject instantiation view.each), and clearing the registry while
+    // the outer iterator is still alive crashes with a use-after-free on
+    // the next bucket-node dereference.
     if (!m_PlaySnapshot.empty()) {
-      auto behView = m_Registry.view<Behaviour>();
-      behView.each([](auto &beh) { beh.pyObjects.clear(); });
-
-      m_Registry.clear();
-      m_Entities.clear();
-      m_ChildrenIndex.clear();
-
-      try {
-        std::stringstream in(m_PlaySnapshot,
-                             std::ios::in | std::ios::out | std::ios::binary);
-        SceneSerialiser restore(m_App->GetActiveScene(),
-                                m_App->GetAssetManager());
-        restore.Deserialise(in);
-        m_PlaySnapshot.clear();
-
-        // Panels (PropertyEditor especially) cache raw component pointers
-        // into the registry across frames. The clear+deserialise above
-        // invalidates every one of those pointers — if the user had an
-        // entity selected when they hit Stop, the same frame's later panel
-        // render would deref freed component memory and crash. Reposting
-        // ActiveSceneChangedEvent runs each panel's reset path synchronously
-        // (selection cleared, cached pointers nulled), so subsequent
-        // rendering finds a clean slate.
-        ActiveSceneChangedEvent e(m_App->GetActiveScene());
-        m_Dispatcher->Post<ActiveSceneChangedEvent>(e);
-      } catch (std::exception &e) {
-        m_ClientLogger->Log(
-            Error, std::string("Snapshot restore failed: ") + e.what());
-        // Keep the snapshot alive so a future fix attempt could retry. The
-        // registry is currently empty — user will see a blank scene; better
-        // than partial restore writing garbage to disk on next save.
-      }
+      m_PendingRestore = true;
     }
 
     m_IsSimulationPaused = true;
 
     std::cout << "Scene paused" << std::endl;
+  }
+}
+
+void Scene::ProcessPendingRestore() {
+  if (!m_PendingRestore) return;
+  m_PendingRestore = false;
+
+  // Order matters: pyObjects hold pybind11::object refs that share lifetime
+  // with the Python interpreter — release them before destroying the
+  // owning Behaviour components by clearing the registry.
+  auto behView = m_Registry.view<Behaviour>();
+  behView.each([](auto &beh) { beh.pyObjects.clear(); });
+
+  m_Registry.clear();
+  m_Entities.clear();
+  m_ChildrenIndex.clear();
+
+  try {
+    std::stringstream in(m_PlaySnapshot,
+                         std::ios::in | std::ios::out | std::ios::binary);
+    SceneSerialiser restore(m_App->GetActiveScene(),
+                            m_App->GetAssetManager());
+    restore.Deserialise(in);
+    m_PlaySnapshot.clear();
+
+    // Panels cache raw component pointers across frames; the registry
+    // clear+deserialise invalidated them. Reposting ActiveSceneChangedEvent
+    // runs each panel's reset path synchronously so the next render finds
+    // a clean slate.
+    ActiveSceneChangedEvent e(m_App->GetActiveScene());
+    m_Dispatcher->Post<ActiveSceneChangedEvent>(e);
+  } catch (std::exception &e) {
+    m_ClientLogger->Log(
+        Error, std::string("Snapshot restore failed: ") + e.what());
+    // Keep the snapshot alive so a future fix attempt could retry. The
+    // registry is currently empty — user will see a blank scene; better
+    // than partial restore writing garbage to disk on next save.
   }
 }
 } // namespace Hamster

@@ -11,6 +11,7 @@
 #include "Core/Components.h"
 #include "Core/Scene.h"
 #include "Core/SceneSerialiser.h"
+#include "Renderer/Renderer.h"
 #include "Scripting/HamsterScript.h"
 #include "Utils/AssetManager.h"
 
@@ -620,8 +621,10 @@ int main() {
       return 1;
     }
 
-    // Stop — snapshot restore should fire.
+    // Stop — snapshot restore is deferred; ProcessPendingRestore simulates
+    // the next frame's Application::Run prologue.
     snapScene->PauseSceneSimulation();
+    snapScene->ProcessPendingRestore();
 
     uint32_t countAfterRestore = snapScene->GetEntityCount();
     if (countAfterRestore != countBeforePlay) {
@@ -644,6 +647,69 @@ int main() {
 
     std::cout << "PASS: simulation snapshot reverts runtime spawns and "
                  "component mutations" << std::endl;
+  }
+
+  // --- sprite-batching scenario ---
+  // 4 sprites, 2 textures (A, A, B, B), all z = 0. One Scene::OnRender pass
+  // should produce exactly 2 batches: one per unique texture. Asserts the
+  // submit/flush API counts correctly. Pre-existing 15 scenarios cover the
+  // per-sprite path indirectly (they go through DrawSprite for the pick
+  // pass which we deliberately left unbatched).
+  {
+    auto batchScene = std::make_shared<Hamster::Scene>(
+        app.GetEventDispatcher().get(), &app);
+    auto *am2 = app.GetAssetManager();
+
+    Hamster::UUID texAUUID;
+    Hamster::UUID texBUUID;
+    am2->AddTexture(texAUUID, "batchA", "A");
+    am2->AddTexture(texBUUID, "batchB", "B");
+    auto texA = am2->GetTexture(texAUUID);
+    auto texB = am2->GetTexture(texBUUID);
+
+    // Two sprites per texture, sorted-equivalent z. The render group sorts
+    // by transform.position.z, so identical z means batch order is
+    // determined by EnTT iteration — both texA sprites come first or both
+    // texB come first, never interleaved (we don't control the order, but
+    // we know there are exactly 2 distinct textures → 2 flushes).
+    for (int i = 0; i < 2; ++i) {
+      Hamster::UUID e = batchScene->CreateEntity();
+      auto &t = batchScene->GetEntityComponent<Hamster::Transform>(e);
+      t.position = {static_cast<float>(i * 40), 0.0f, 0.0f};
+      t.size = {32.0f, 32.0f};
+      batchScene->AddEntityComponent<Hamster::Sprite>(e, texA, glm::vec3(1.0f));
+    }
+    for (int i = 0; i < 2; ++i) {
+      Hamster::UUID e = batchScene->CreateEntity();
+      auto &t = batchScene->GetEntityComponent<Hamster::Transform>(e);
+      t.position = {static_cast<float>(100 + i * 40), 0.0f, 0.0f};
+      t.size = {32.0f, 32.0f};
+      batchScene->AddEntityComponent<Hamster::Sprite>(e, texB, glm::vec3(1.0f));
+    }
+
+    app.AddScene(batchScene);
+    app.SetSceneActive(batchScene->GetUUID());
+
+    // Drain any pre-existing GL error state from earlier scenarios so the
+    // post-render check measures the batch path in isolation.
+    while (glGetError() != GL_NO_ERROR) {}
+
+    batchScene->OnRender(false);
+
+    uint32_t drawCalls = app.GetRenderer()->GetLastFrameDrawCallCount();
+    if (drawCalls != 2) {
+      std::cerr << "FAIL: expected 2 draw calls for 4 sprites + 2 textures, "
+                << "got " << drawCalls << std::endl;
+      return 1;
+    }
+    GLenum glErr = glGetError();
+    if (glErr != GL_NO_ERROR) {
+      std::cerr << "FAIL: glGetError after batched render: 0x"
+                << std::hex << glErr << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: sprite batching emitted " << drawCalls
+              << " draw call(s) for 4 sprites / 2 textures" << std::endl;
   }
 
   return 0;

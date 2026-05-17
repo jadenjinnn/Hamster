@@ -104,6 +104,21 @@ void LevelEditor::Render(unsigned int fbTexId,
         dl->AddText({fpsX, fpsY}, IM_COL32(255, 255, 255, 220), fpsBuf);
     }
 
+    // ── Draw-call HUD (top-right, always visible during edit) ──
+    if (renderer) {
+        char dcBuf[32];
+        std::snprintf(dcBuf, sizeof(dcBuf), "%u draws",
+                      renderer->GetLastFrameDrawCallCount());
+        ImVec2 textSize = ImGui::CalcTextSize(dcBuf);
+        float dcX = vpPos.x + vpSize.x - textSize.x - 12.0f;
+        // Stack below the FPS pill when running; otherwise sit where FPS would.
+        float dcY = vpPos.y + (scene && scene->IsSceneRunning() ? 36.0f : 12.0f);
+        dl->AddRectFilled({dcX - 6, dcY - 3},
+                          {dcX + textSize.x + 6, dcY + textSize.y + 3},
+                          IM_COL32(0, 0, 0, 140), 4.0f);
+        dl->AddText({dcX, dcY}, IM_COL32(255, 255, 255, 220), dcBuf);
+    }
+
     // ── Zoom slider (bottom-right) ──
     float zoomTotalW = 0, zoomBx = 0, zoomBy = 0;
     if (renderer) {

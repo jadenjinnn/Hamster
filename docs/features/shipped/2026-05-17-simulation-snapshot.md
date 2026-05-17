@@ -167,6 +167,14 @@ First manual test crashed the editor on stop. Root cause: `PropertyEditor` (and 
 
 <!-- Append-only log of times the spec changed mid-implementation. -->
 
+### 2026-05-17 (post-ship) — Defer snapshot restore to a frame boundary
+
+Discovered while testing sprite-batching: when a script's `on_create` throws, the C++ catch handler calls `PauseSceneSimulation()` *while still inside* `RunSceneSimulation`'s `view<ID, Behaviour>.each(...)` lambda. The original restore code ran `m_Registry.clear()` inline — invalidating the outer iterator. The next bucket-node dereference tripped MSVC's debug iterator validation ("cannot increment value-initialized list iterator").
+
+Fix: split restore out of `PauseSceneSimulation` into a new `Scene::ProcessPendingRestore()` method. `PauseSceneSimulation` now just sets `m_PendingRestore = true`. `Application::Run` calls `ProcessPendingRestore()` at the top of each frame loop, between frames, when no iterators are alive. Editor stop button and exception-path stop both go through the same deferred path. One-frame visual lag of the post-play state is acceptable; was previously zero but only because the bug was latent.
+
+Smoke test extended to call `ProcessPendingRestore()` explicitly after `PauseSceneSimulation()` (the test driver doesn't run an `Application::Run` loop, so the deferred restore wouldn't fire otherwise). 17/17.
+
 ---
 
 ## Future work (out-of-scope ideas surfaced during this feature)

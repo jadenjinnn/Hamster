@@ -103,6 +103,14 @@ public:
 
   void PauseSceneSimulation();
 
+  // Snapshot restore is deferred to here (called from Application::Run at
+  // the top of each frame) so it never runs while the registry is being
+  // iterated. PauseSceneSimulation can be called mid-iteration (e.g. from
+  // a script's on_create throwing inside the pyObject instantiation loop);
+  // clearing the registry there would invalidate the outer view iterator.
+  // Doing the clear+deserialise between frames sidesteps that.
+  void ProcessPendingRestore();
+
   UUID GetUUID() const { return m_UUID; }
 
   void SetUUID(const UUID &uuid);
@@ -167,6 +175,12 @@ private:
   // simulation is active. Holds the raw bytes a SceneSerialiser stringstream
   // round-trip produces — same format as on-disk .scene files.
   std::string m_PlaySnapshot;
+
+  // Set true by PauseSceneSimulation when a snapshot is waiting to be
+  // restored; cleared by ProcessPendingRestore at the top of the next
+  // frame. Defers registry mutation so PauseSceneSimulation is safe to
+  // call mid-iteration (e.g. from on_create exception handlers).
+  bool m_PendingRestore = false;
 
   // Reverse-index for the hierarchy tree. m_ChildrenIndex[parent] holds the
   // children of `parent` in sibling order. Top-level entities live under

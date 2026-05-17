@@ -58,7 +58,7 @@ void HamsterBehaviourBinding(pybind11::module_ m) {
                   "create_entity: parent UUID invalid or would create cycle");
             }
           }
-          return EntityHandle{uuid, self.GetScene()};
+          return EntityHandle{uuid, self.GetScene(), self.GetApp()};
       },
       pybind11::arg("name"), pybind11::arg("transform"),
       pybind11::arg("parent") = pybind11::none())

@@ -79,6 +79,7 @@ public:
   void SetParent(UUID newParent);
 
   std::shared_ptr<Scene> GetScene() const { return m_Scene; }
+  Application *GetApp() const { return m_App; }
 
 private:
   UUID m_UUID;

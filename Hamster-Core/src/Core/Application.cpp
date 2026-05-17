@@ -167,6 +167,14 @@ namespace Hamster {
 
             ExecuteMainThread();
 
+            // Run any deferred scene-state restore from the previous frame
+            // (simulation-snapshot feature). Must happen between frames so
+            // the registry clear+deserialise doesn't trip iterators that
+            // were live when the previous frame called PauseSceneSimulation.
+            if (m_ActiveScene) {
+                m_ActiveScene->ProcessPendingRestore();
+            }
+
             for (Layer *layer: m_LayersPendingPop) {
                 {
                     m_LayerStack.PopLayer(layer);

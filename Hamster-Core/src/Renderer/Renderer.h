@@ -17,6 +17,7 @@ namespace Hamster {
     class Renderer {
     public:
         Renderer(int viewportHeight, int viewportWidth, AssetManager *assetManager);
+        ~Renderer();
 
         void SetViewport(FramebufferResizeEvent &e);
 
@@ -28,6 +29,16 @@ namespace Hamster {
 
         void DrawSprite(Texture &texture, glm::vec2 position, glm::vec2 size,
                         float rotation, glm::vec3 colour);
+
+        // Sprite batching API (v1 — same-texture batching). Accumulates sprite
+        // quads in a pre-allocated VBO, flushes one draw call per texture or
+        // z-boundary change. Pick path (Scene::OnRender(true)) intentionally
+        // keeps using DrawSprite — see sprite-batching feature spec.
+        void BeginSpriteBatch();
+        void SubmitSprite(Texture &texture, glm::vec2 position, glm::vec2 size,
+                          float rotation, glm::vec3 colour, float z);
+        void EndSpriteBatch();
+        uint32_t GetLastFrameDrawCallCount() const { return m_DrawCallsLastFrame; }
 
         void DrawFlat(glm::vec2 position, glm::vec2 size, float rotation,
                       glm::vec3 colour);
@@ -56,7 +67,20 @@ namespace Hamster {
 
         std::shared_ptr<Shader> m_SpriteShader;
         std::shared_ptr<Shader> m_FlatShader;
+        std::shared_ptr<Shader> m_SpriteBatchShader;
         unsigned int m_VAO = 0;
+
+        // Batching state. m_BatchVBO is pre-allocated once at construction
+        // (sized for kMaxBatchSprites) so SubmitSprite never reallocates GPU
+        // memory at frame time. m_BatchVerts is the CPU staging buffer, sized
+        // to exactly the same maximum to avoid runtime growth.
+        unsigned int m_BatchVAO = 0;
+        unsigned int m_BatchVBO = 0;
+        std::vector<float> m_BatchVerts;
+        Texture *m_BatchTexture = nullptr;
+        float m_BatchZ = 0.0f;
+        uint32_t m_DrawCallsThisFrame = 0;
+        uint32_t m_DrawCallsLastFrame = 0;
 
         int m_ViewportHeight = 1080;
         int m_ViewportWidth = 1920;
@@ -65,5 +89,7 @@ namespace Hamster {
 
         glm::mat4 m_ViewMatrix{1.0f};
         glm::vec2 m_CameraOffset{0.0f, 0.0f};
+
+        void FlushSpriteBatch();
     };
 } // namespace Hamster

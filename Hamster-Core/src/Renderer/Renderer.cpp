@@ -11,6 +11,17 @@
 #include "Utils/AssetManager.h"
 
 namespace Hamster {
+    namespace {
+        // Per-sprite cap on a single batch. 10k sprites × 6 verts × 7 floats
+        // × 4 bytes ≈ 1.68 MB pre-allocated VBO. SubmitSprite flushes early
+        // if appending would overflow, so this is a hard cap on per-flush
+        // sprites, not on per-frame sprites.
+        constexpr int kMaxBatchSprites = 10000;
+        constexpr int kFloatsPerVertex = 7;
+        constexpr int kVertsPerSprite  = 6;
+        constexpr int kFloatsPerSprite = kVertsPerSprite * kFloatsPerVertex;
+    }
+
     Renderer::Renderer(int viewportHeight, int viewportWidth, AssetManager *assetManager) {
         if (!gladLoadGLLoader((GLADloadproc) glfwGetProcAddress)) {
             std::cout << "Failed to initialise glad" << std::endl;
@@ -24,6 +35,11 @@ namespace Hamster {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         InitRendererData(assetManager);
+    }
+
+    Renderer::~Renderer() {
+        if (m_BatchVBO) glDeleteBuffers(1, &m_BatchVBO);
+        if (m_BatchVAO) glDeleteVertexArrays(1, &m_BatchVAO);
     }
 
     void Renderer::SetViewport(FramebufferResizeEvent &e) {
@@ -63,6 +79,11 @@ namespace Hamster {
             "flat", hamsterCorePath + "/Renderer/DefaultShaders/FlatShader.vs",
             hamsterCorePath + "/Renderer/DefaultShaders/FlatShader.fs");
 
+        m_SpriteBatchShader = assetManager->AddShader(
+            "sprite_batch",
+            hamsterCorePath + "/Renderer/DefaultShaders/SpriteBatchShader.vs",
+            hamsterCorePath + "/Renderer/DefaultShaders/SpriteBatchShader.fs");
+
         SetViewport(m_ViewportHeight, m_ViewportWidth);
         SetClearColour(0.0f, 0.0f, 0.0f, 1.0f);
 
@@ -77,6 +98,33 @@ namespace Hamster {
         m_FlatShader->setUniformi("borderMode", 0);
         m_FlatShader->setUniformf("borderWidthX", 0.0f);
         m_FlatShader->setUniformf("borderWidthY", 0.0f);
+
+        m_SpriteBatchShader->use();
+        m_SpriteBatchShader->setUniformi("image", 0);
+        m_SpriteBatchShader->setUniformMat4("projection", m_ViewMatrix);
+
+        // Pre-allocated batch VBO. Vertex layout: vec2 pos, vec2 uv, vec3
+        // colour (7 floats, 28 bytes). Glued together for cache locality;
+        // any v2 sampler-array additions append a new attribute at location 3.
+        m_BatchVerts.reserve(kMaxBatchSprites * kFloatsPerSprite);
+        glGenVertexArrays(1, &m_BatchVAO);
+        glGenBuffers(1, &m_BatchVBO);
+        glBindVertexArray(m_BatchVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, m_BatchVBO);
+        glBufferData(GL_ARRAY_BUFFER,
+                     kMaxBatchSprites * kFloatsPerSprite * sizeof(float),
+                     nullptr, GL_DYNAMIC_DRAW);
+        constexpr GLsizei stride = kFloatsPerVertex * sizeof(float);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride,
+                              (void*)(2 * sizeof(float)));
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, stride,
+                              (void*)(4 * sizeof(float)));
+        glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
 
         float vertices[] = {
             0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
@@ -303,6 +351,12 @@ namespace Hamster {
         m_FlatShader->use();
         m_FlatShader->setUniformi("image", 0);
         m_FlatShader->setUniformMat4("projection", m_ViewMatrix);
+
+        if (m_SpriteBatchShader) {
+            m_SpriteBatchShader->use();
+            m_SpriteBatchShader->setUniformi("image", 0);
+            m_SpriteBatchShader->setUniformMat4("projection", m_ViewMatrix);
+        }
     }
 
     void Renderer::AdjustZoom(float factor, float mousePosX, float mousePosY) {
@@ -339,5 +393,106 @@ namespace Hamster {
         m_CameraOffset.y -= offset.y;
 
         UpdateViewMatrix();
+    }
+
+    void Renderer::BeginSpriteBatch() {
+        m_DrawCallsThisFrame = 0;
+        m_BatchVerts.clear();
+        m_BatchTexture = nullptr;
+        m_BatchZ = 0.0f;
+    }
+
+    void Renderer::SubmitSprite(Texture &texture, glm::vec2 position,
+                                glm::vec2 size, float rotation,
+                                glm::vec3 colour, float z) {
+        // Flush on key change. Identity-by-pointer is safe — Texture is owned
+        // by AssetManager and stable for the frame.
+        const bool textureChanged = m_BatchTexture != &texture;
+        const bool zChanged = z != m_BatchZ;
+        if (!m_BatchVerts.empty() && (textureChanged || zChanged)) {
+            FlushSpriteBatch();
+        }
+
+        // Hard cap on per-batch sprites — pre-allocated VBO can't grow.
+        if (m_BatchVerts.size() + kFloatsPerSprite >
+            static_cast<size_t>(kMaxBatchSprites * kFloatsPerSprite)) {
+            FlushSpriteBatch();
+        }
+
+        if (m_BatchVerts.empty()) {
+            m_BatchTexture = &texture;
+            m_BatchZ = z;
+        }
+
+        // Compute 4 rotated/translated corners on CPU, matching DrawSprite's
+        // model = T(pos) · T(half) · R(rad) · T(-half) · S(size) semantics
+        // (rotate around sprite centre, then translate).
+        const float hw = size.x * 0.5f;
+        const float hh = size.y * 0.5f;
+        const float cx = position.x + hw;
+        const float cy = position.y + hh;
+        const float rad = glm::radians(rotation);
+        const float c = std::cos(rad);
+        const float s = std::sin(rad);
+
+        auto worldXY = [&](float lx, float ly) -> glm::vec2 {
+            return {lx * c - ly * s + cx, lx * s + ly * c + cy};
+        };
+
+        const glm::vec2 tl = worldXY(-hw, -hh);
+        const glm::vec2 tr = worldXY( hw, -hh);
+        const glm::vec2 bl = worldXY(-hw,  hh);
+        const glm::vec2 br = worldXY( hw,  hh);
+
+        // 6 verts: (BL, BR, TR), (BL, TR, TL) — matches original unit-quad
+        // winding in InitRendererData.
+        auto push = [&](const glm::vec2 &p, float u, float v) {
+            m_BatchVerts.push_back(p.x);
+            m_BatchVerts.push_back(p.y);
+            m_BatchVerts.push_back(u);
+            m_BatchVerts.push_back(v);
+            m_BatchVerts.push_back(colour.r);
+            m_BatchVerts.push_back(colour.g);
+            m_BatchVerts.push_back(colour.b);
+        };
+        push(bl, 0.0f, 1.0f);
+        push(br, 1.0f, 1.0f);
+        push(tr, 1.0f, 0.0f);
+        push(bl, 0.0f, 1.0f);
+        push(tr, 1.0f, 0.0f);
+        push(tl, 0.0f, 0.0f);
+    }
+
+    void Renderer::FlushSpriteBatch() {
+        if (m_BatchVerts.empty() || !m_BatchTexture) return;
+
+        m_SpriteBatchShader->use();
+
+        glActiveTexture(GL_TEXTURE0);
+        m_BatchTexture->BindTexture();
+
+        glBindVertexArray(m_BatchVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, m_BatchVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0,
+                        m_BatchVerts.size() * sizeof(float),
+                        m_BatchVerts.data());
+
+        const GLsizei vertexCount =
+            static_cast<GLsizei>(m_BatchVerts.size() / kFloatsPerVertex);
+        glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+
+        glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+        m_BatchVerts.clear();
+        m_DrawCallsThisFrame++;
+    }
+
+    void Renderer::EndSpriteBatch() {
+        if (!m_BatchVerts.empty()) {
+            FlushSpriteBatch();
+        }
+        m_BatchTexture = nullptr;
+        m_DrawCallsLastFrame = m_DrawCallsThisFrame;
     }
 } // namespace Hamster

@@ -1,7 +1,7 @@
 # Feature spec: sprite-batching
 
 > Tier: **Sketch**
-> Status: **draft**
+> Status: **approved**
 > Started: 2026-05-17
 > Spec author: Jaden
 
@@ -128,6 +128,12 @@ The benchmark script itself is *not* part of the smoke test (it spawns 5000 enti
 ## Spec amendments
 
 <!-- Append-only log of times the spec changed mid-implementation. -->
+
+### 2026-05-17 — Add `EntityHandle.set_texture(name)` Python binding
+
+The spec assumed the benchmark script could create textured sprites at runtime via the existing `add_component(Sprite(...))` call. Reading the bindings: `Hamster.Sprite(color)` takes only a colour — there's no Python API to assign a texture to a Sprite. Without textures, `Scene::OnRender` skips draws (`if (sprite.texture != nullptr)`), so a Python-only benchmark produces zero draw calls and the measurement is meaningless.
+
+Minimum fix: a new `EntityHandle::set_texture(name)` method that looks up the texture in AssetManager by display name and assigns it to the entity's Sprite. Requires `EntityHandle` to carry an `Application*` (added) and `HamsterBehaviour` to expose `GetApp()` (added). Throws `ValueError` if the name is unknown or the entity has no Sprite. Approved by author 2026-05-17 over the alternatives (manual editor setup; defer benchmark).
 
 ---
 
