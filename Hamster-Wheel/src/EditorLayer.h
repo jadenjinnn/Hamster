@@ -31,6 +31,16 @@ public:
     void FramebufferSizeChanged(Hamster::FramebufferResizeEvent &e);
 
 private:
+    // Panel-relative mouse → world. Different from Renderer::ScreenToWorldPos
+    // because the renderer's projection covers the full window framebuffer
+    // (m_ViewportHeight) but the level-editor FBO + scissor only render the
+    // panel-sized area. The visible world rectangle is the BOTTOM portion of
+    // the projection (gl-y ∈ [0, panel_h]) which corresponds to world Y in
+    // [cam.y + (vp_h - panel_h)/zoom, cam.y + vp_h/zoom]. So mouse panel_y=0
+    // is world cam.y + (vp_h - panel_h)/zoom, NOT cam.y. ScreenToWorldPos
+    // misses this offset and picks land ~(vp_h - panel_h)/zoom px too high.
+    glm::vec2 PanelMouseToWorld(float panelX, float panelY) const;
+
     Hamster::Application *m_App;
     Hamster::EventDispatcher *m_Dispatcher;
     Hamster::SubscriptionHandle m_ActiveSceneSub = 0;

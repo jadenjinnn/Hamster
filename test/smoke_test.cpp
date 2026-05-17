@@ -14,6 +14,7 @@
 #include "Renderer/Renderer.h"
 #include "Scripting/HamsterScript.h"
 #include "Utils/AssetManager.h"
+#include "Utils/SpatialIndex.h"
 
 int main() {
   std::filesystem::path fixtureDir = SMOKE_TEST_FIXTURE_DIR;
@@ -710,6 +711,192 @@ int main() {
     }
     std::cout << "PASS: sprite batching emitted " << drawCalls
               << " draw call(s) for 4 sprites / 2 textures" << std::endl;
+  }
+
+  // --- spatial-index scenario A: point query ---
+  // 5 entries at known positions. Hit/miss/overlap-with-z-tiebreak.
+  {
+    using namespace Hamster;
+    SpatialIndex idx;
+    UUID a, b, c, d, e;
+    std::vector<std::pair<UUID, AABB>> entries = {
+      {a, AABB{{  0.0f,   0.0f}, { 10.0f,  10.0f}}},
+      {b, AABB{{100.0f, 100.0f}, {200.0f, 200.0f}}},
+      {c, AABB{{  0.0f,   0.0f}, {  5.0f,   5.0f}}},  // overlaps a
+      {d, AABB{{500.0f, 500.0f}, {510.0f, 510.0f}}},
+      {e, AABB{{ 50.0f,  50.0f}, { 60.0f,  60.0f}}},
+    };
+    idx.Rebuild(entries);
+
+    auto zMap = [&](UUID u) -> float {
+      if (u == a) return 1.0f;
+      if (u == c) return 2.0f;
+      return 0.0f;
+    };
+
+    UUID hit1 = idx.QueryPoint({105.0f, 150.0f}, zMap);
+    if (hit1 != b) {
+      std::cerr << "FAIL: point query: expected b at (105,150)" << std::endl;
+      return 1;
+    }
+    UUID hit2 = idx.QueryPoint({1000.0f, 1000.0f}, zMap);
+    if (!UUID::IsNil(hit2)) {
+      std::cerr << "FAIL: point query: expected Nil at (1000,1000)"
+                << std::endl;
+      return 1;
+    }
+    // (3,3) hits both a and c; c has higher z → wins.
+    UUID hit3 = idx.QueryPoint({3.0f, 3.0f}, zMap);
+    if (hit3 != c) {
+      std::cerr << "FAIL: point query: expected c (higher z) at (3,3)"
+                << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: spatial index point query (hit, miss, z-tiebreak)"
+              << std::endl;
+  }
+
+  // --- spatial-index scenario B: rect query ---
+  {
+    using namespace Hamster;
+    SpatialIndex idx;
+    UUID a, b, c, d, e;
+    std::vector<std::pair<UUID, AABB>> entries = {
+      {a, AABB{{  0.0f,   0.0f}, { 10.0f,  10.0f}}},
+      {b, AABB{{100.0f, 100.0f}, {200.0f, 200.0f}}},
+      {c, AABB{{  0.0f,   0.0f}, {  5.0f,   5.0f}}},
+      {d, AABB{{500.0f, 500.0f}, {510.0f, 510.0f}}},
+      {e, AABB{{ 50.0f,  50.0f}, { 60.0f,  60.0f}}},
+    };
+    idx.Rebuild(entries);
+
+    // Rect covering a/c only (both at origin)
+    auto r1 = idx.QueryRect(AABB{{-5.0f, -5.0f}, {6.0f, 6.0f}});
+    bool hasA = false, hasC = false;
+    for (UUID u : r1) {
+      if (u == a) hasA = true;
+      if (u == c) hasC = true;
+    }
+    if (!hasA || !hasC || r1.size() != 2) {
+      std::cerr << "FAIL: rect query: expected {a,c} at origin rect, got "
+                << r1.size() << " entries" << std::endl;
+      return 1;
+    }
+
+    auto r2 = idx.QueryRect(AABB{{900.0f, 900.0f}, {1000.0f, 1000.0f}});
+    if (!r2.empty()) {
+      std::cerr << "FAIL: rect query: expected empty far away" << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: spatial index rect query (subset + empty)" << std::endl;
+  }
+
+  // --- spatial-index scenario C: rotated AABB end-to-end via Scene ---
+  // One 45°-rotated 100×100 sprite at origin. Tight bbox should fit a
+  // diagonal of length 100√2 ≈ 141, half ≈ 70.7. Centre of the sprite is
+  // at (50, 50) (position + half-size).
+  {
+    auto rotScene = std::make_shared<Hamster::Scene>(
+        app.GetEventDispatcher().get(), &app);
+    auto *amR = app.GetAssetManager();
+    Hamster::UUID texUUID;
+    amR->AddTexture(texUUID, "rotTex", "R");
+    auto tex = amR->GetTexture(texUUID);
+
+    Hamster::UUID eUUID = rotScene->CreateEntity();
+    auto &t = rotScene->GetEntityComponent<Hamster::Transform>(eUUID);
+    t.position = {0.0f, 0.0f, 0.0f};
+    t.size = {100.0f, 100.0f};
+    t.rotation = 45.0f;
+    rotScene->AddEntityComponent<Hamster::Sprite>(eUUID, tex,
+                                                  glm::vec3(1.0f));
+
+    app.AddScene(rotScene);
+    app.SetSceneActive(rotScene->GetUUID());
+
+    while (glGetError() != GL_NO_ERROR) {}
+    rotScene->OnRender(false);
+
+    // Sprite centre is at (50, 50). Tight bbox should cover roughly
+    // (50 - 70.7) .. (50 + 70.7), so points near the diagonal corners
+    // are inside.
+    auto zMap = [](Hamster::UUID) -> float { return 0.0f; };
+    const auto &idx = rotScene->GetSpatialIndex();
+    Hamster::UUID centre = idx.QueryPoint({50.0f, 50.0f}, zMap);
+    if (centre != eUUID) {
+      std::cerr << "FAIL: rotated AABB: centre point did not pick entity"
+                << std::endl;
+      return 1;
+    }
+    // Point well outside the tight bbox (say 200, 200) — should miss.
+    Hamster::UUID miss = idx.QueryPoint({200.0f, 200.0f}, zMap);
+    if (!Hamster::UUID::IsNil(miss)) {
+      std::cerr << "FAIL: rotated AABB: distant point unexpectedly hit"
+                << std::endl;
+      return 1;
+    }
+    // Point at (50, 115) — just outside an axis-aligned 100×100 bbox but
+    // INSIDE the rotated tight bbox (which extends ~70 units in each
+    // direction from the centre).
+    Hamster::UUID rotated = idx.QueryPoint({50.0f, 115.0f}, zMap);
+    if (rotated != eUUID) {
+      std::cerr << "FAIL: rotated AABB: point inside tight bbox did not "
+                   "pick entity (rotation math wrong?)" << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: spatial index rotated-sprite AABB" << std::endl;
+  }
+
+  // --- spatial-index scenario D: viewport culling integration ---
+  // 4 sprites at different positions; viewport covers only 2. After
+  // OnRender, draw-call count should reflect only the visible 2 (one per
+  // unique texture). Confirms RebuildSpatialIndex + QueryRect + the cull
+  // loop in Scene::OnRender all line up.
+  {
+    auto cullScene = std::make_shared<Hamster::Scene>(
+        app.GetEventDispatcher().get(), &app);
+    auto *amC = app.GetAssetManager();
+    Hamster::UUID texXUUID, texYUUID;
+    amC->AddTexture(texXUUID, "cullX", "X");
+    amC->AddTexture(texYUUID, "cullY", "Y");
+    auto texX = amC->GetTexture(texXUUID);
+    auto texY = amC->GetTexture(texYUUID);
+
+    auto place = [&](float px, float py,
+                     std::shared_ptr<Hamster::Texture> tex) {
+      Hamster::UUID id = cullScene->CreateEntity();
+      auto &tr = cullScene->GetEntityComponent<Hamster::Transform>(id);
+      tr.position = {px, py, 0.0f};
+      tr.size = {32.0f, 32.0f};
+      cullScene->AddEntityComponent<Hamster::Sprite>(id, tex,
+                                                     glm::vec3(1.0f));
+    };
+    place(   0.0f,    0.0f, texX);    // inside default viewport
+    place(  60.0f,    0.0f, texY);    // inside default viewport
+    place(5000.0f, 5000.0f, texX);    // far outside — should be culled
+    place(6000.0f, 6000.0f, texY);    // far outside — should be culled
+
+    app.AddScene(cullScene);
+    app.SetSceneActive(cullScene->GetUUID());
+
+    while (glGetError() != GL_NO_ERROR) {}
+    cullScene->OnRender(false);
+
+    uint32_t drawCalls = app.GetRenderer()->GetLastFrameDrawCallCount();
+    if (drawCalls != 2) {
+      std::cerr << "FAIL: cull: expected 2 draw calls (2 visible / 2 unique "
+                << "textures), got " << drawCalls << std::endl;
+      return 1;
+    }
+    GLenum glErr = glGetError();
+    if (glErr != GL_NO_ERROR) {
+      std::cerr << "FAIL: cull: glGetError after render: 0x"
+                << std::hex << glErr << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: viewport culling — " << drawCalls
+              << " draw call(s) for 2 visible of 4 total sprites"
+              << std::endl;
   }
 
   return 0;

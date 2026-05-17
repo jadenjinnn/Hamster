@@ -19,6 +19,7 @@
 #include "Events/ApplicationEvents.h"
 #include "Events/WindowEvents.h"
 #include "Log.h"
+#include "Utils/SpatialIndex.h"
 
 namespace Hamster {
 class Application;
@@ -91,6 +92,11 @@ public:
   void CacheVelocities();
 
   void OnRender(bool renderFlat);
+
+  // Spatial-index facade. Rebuilt at the top of OnRender each frame from
+  // current Transform + Sprite state. Renderer uses it for viewport-rect
+  // culling; EditorLayer uses it for cursor-point picking.
+  const SpatialIndex &GetSpatialIndex() const { return m_SpatialIndex; }
 
   bool IsSceneRunning() const { return m_IsRunning; }
   bool IsSceneSimulationPaused() const { return m_IsSimulationPaused; }
@@ -181,6 +187,11 @@ private:
   // frame. Defers registry mutation so PauseSceneSimulation is safe to
   // call mid-iteration (e.g. from on_create exception handlers).
   bool m_PendingRestore = false;
+
+  // Quadtree over (UUID, AABB). Rebuilt at top of OnRender each frame.
+  SpatialIndex m_SpatialIndex;
+
+  void RebuildSpatialIndex();
 
   // Reverse-index for the hierarchy tree. m_ChildrenIndex[parent] holds the
   // children of `parent` in sibling order. Top-level entities live under

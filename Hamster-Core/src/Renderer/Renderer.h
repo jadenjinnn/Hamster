@@ -6,6 +6,7 @@
 #include "GLFW/glfw3.h"
 #include "Shader.h"
 #include "Texture.h"
+#include "Utils/SpatialIndex.h"
 #include <glm/glm.hpp>
 
 namespace Hamster {
@@ -55,6 +56,10 @@ namespace Hamster {
         void ChangeCameraOffset(const glm::vec2 &offset);
 
         glm::vec2 ScreenToWorldPos(const glm::vec2 &mousePos);
+
+        // World-space AABB the current camera covers. Used by Scene to cull
+        // sprites outside the view before submission.
+        AABB GetViewportWorldAABB() const;
 
         float GetZoom() const { return m_Zoom; }
         void SetZoom(float zoom);

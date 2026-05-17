@@ -70,6 +70,8 @@ set(Utils
         src/Utils/MetaFile.cpp src/Utils/MetaFile.h
 
         src/Utils/ProjectWatcher.cpp src/Utils/ProjectWatcher.h
+
+        src/Utils/SpatialIndex.cpp src/Utils/SpatialIndex.h
 )
 
 

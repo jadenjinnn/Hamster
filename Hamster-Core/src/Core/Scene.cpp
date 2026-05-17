@@ -585,15 +585,33 @@ void Scene::OnRender(bool renderFlat) {
 
   auto *renderer = m_App->GetRenderer();
 
+  // Rebuild the spatial index every frame from the just-sorted view.
+  // Consumers: renderer (viewport cull below) + EditorLayer (picking).
+  // Cheap rebuild keeps the diff small; switch to incremental if profiling
+  // demands it (see spec future-work).
+  RebuildSpatialIndex();
+
   if (!renderFlat) {
+    // Viewport-rect cull: submit only sprites whose AABB intersects the
+    // camera rect. At zoom=1 with the camera covering N sprites of 5000,
+    // SubmitSprite runs ~N times instead of 5000.
+    AABB viewport = renderer->GetViewportWorldAABB();
+    std::vector<UUID> visible = m_SpatialIndex.QueryRect(viewport);
+
     renderer->BeginSpriteBatch();
-    m_RenderGroup.each([renderer](auto &sprite, auto &transform) {
+    for (const UUID &uuid : visible) {
+      auto it = m_Entities.find(uuid);
+      if (it == m_Entities.end()) continue;
+      entt::entity e = it->second;
+      if (!m_Registry.all_of<Sprite, Transform>(e)) continue;
+      const auto &sprite = m_Registry.get<Sprite>(e);
+      const auto &transform = m_Registry.get<Transform>(e);
       if (sprite.texture != nullptr) {
         renderer->SubmitSprite(*sprite.texture, transform.position,
                                transform.size, transform.rotation,
                                sprite.colour, transform.position.z);
       }
-    });
+    }
     renderer->EndSpriteBatch();
   } else {
     m_RenderGroup.each([renderer](auto entity, auto &sprite, auto &transform) {
@@ -604,6 +622,51 @@ void Scene::OnRender(bool renderFlat) {
       }
     });
   }
+}
+
+void Scene::RebuildSpatialIndex() {
+  // Build (UUID, tight-AABB) pairs over every entity with Sprite+Transform.
+  // Rotated sprites: AABB encloses all 4 rotated corners. Cost: 4 sin/cos
+  // per rotated sprite per frame — dwarfed by the vertex generation in
+  // SubmitSprite, which runs only for the visible subset after this.
+  std::vector<std::pair<UUID, AABB>> entries;
+  entries.reserve(m_Entities.size());
+
+  auto view = m_Registry.view<ID, Sprite, Transform>();
+  view.each([&entries](auto &id, auto &sprite, auto &transform) {
+    (void)sprite; // sprite component existence gates index membership
+    const float hw = transform.size.x * 0.5f;
+    const float hh = transform.size.y * 0.5f;
+    const float cx = transform.position.x + hw;
+    const float cy = transform.position.y + hh;
+    AABB box;
+    if (transform.rotation == 0.0f) {
+      box.min = {transform.position.x, transform.position.y};
+      box.max = {transform.position.x + transform.size.x,
+                 transform.position.y + transform.size.y};
+    } else {
+      const float rad = glm::radians(transform.rotation);
+      const float c = std::cos(rad);
+      const float s = std::sin(rad);
+      glm::vec2 corners[4] = {
+          {-hw * c - -hh * s + cx, -hw * s + -hh * c + cy},
+          { hw * c - -hh * s + cx,  hw * s + -hh * c + cy},
+          {-hw * c -  hh * s + cx, -hw * s +  hh * c + cy},
+          { hw * c -  hh * s + cx,  hw * s +  hh * c + cy},
+      };
+      box.min = corners[0];
+      box.max = corners[0];
+      for (int i = 1; i < 4; ++i) {
+        box.min.x = std::min(box.min.x, corners[i].x);
+        box.min.y = std::min(box.min.y, corners[i].y);
+        box.max.x = std::max(box.max.x, corners[i].x);
+        box.max.y = std::max(box.max.y, corners[i].y);
+      }
+    }
+    entries.emplace_back(id.uuid, box);
+  });
+
+  m_SpatialIndex.Rebuild(entries);
 }
 
 void Scene::SaveScene(std::shared_ptr<Scene> scene) {
@@ -786,6 +849,14 @@ void Scene::ProcessPendingRestore() {
   m_Registry.clear();
   m_Entities.clear();
   m_ChildrenIndex.clear();
+
+  // Drop the spatial index — its entries hold UUIDs whose entt::entity
+  // mapping in m_Entities has just been wiped. A stale QueryPoint hit
+  // would dereference GetEntityComponent<Transform> through operator[]
+  // (which would insert a phantom entt::null entry) and then crash inside
+  // registry.get<Transform>(null). The next OnRender rebuilds the index
+  // from the restored entity set.
+  m_SpatialIndex.Rebuild({});
 
   try {
     std::stringstream in(m_PlaySnapshot,

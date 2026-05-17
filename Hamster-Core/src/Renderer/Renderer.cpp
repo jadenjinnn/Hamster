@@ -371,6 +371,17 @@ namespace Hamster {
         ChangeCameraOffset(newWorldMousePos - worldMousePos);
     }
 
+    AABB Renderer::GetViewportWorldAABB() const {
+        // Mirror of the ortho projection in UpdateViewMatrix — the world rect
+        // mapped onto the framebuffer.
+        AABB rect;
+        rect.min = m_CameraOffset;
+        rect.max = m_CameraOffset +
+                   glm::vec2(static_cast<float>(m_ViewportWidth),
+                             static_cast<float>(m_ViewportHeight)) / m_Zoom;
+        return rect;
+    }
+
     glm::vec2 Renderer::ScreenToWorldPos(const glm::vec2 &mousePos) {
         float normalizedX = mousePos.x / static_cast<float>(m_ViewportWidth);
         float normalizedY = mousePos.y / static_cast<float>(m_ViewportHeight);

@@ -47,3 +47,23 @@ Rationale for per-file sidecars over a single project-wide manifest: cleaner git
 `SceneSerialiser::Serialise` / `Deserialise` already take `std::ostream&` / `std::istream&` rather than file paths — the file I/O is the caller's job. In-memory snapshot/restore for play mode therefore needs no new methods: pass a `std::stringstream(std::ios::in | std::ios::out | std::ios::binary)` and store `.str()` in a `std::string m_PlaySnapshot` on `Scene`. The original feature spec planned a factor + new `SerialiseToBuffer` API; that turned out to be unnecessary.
 
 File→Save is gated behind `!IsSceneSimulationPaused()` to pair with the PropertyEditor lock — during play, neither the in-memory scene state nor the on-disk scene file can be mutated. Allowing the menu save would write runtime physics/script state to disk before the snapshot has a chance to revert it, defeating the "non-destructive play" guarantee.
+
+## Editor pick coords differ from `Renderer::ScreenToWorldPos` (2026-05-17)
+
+The renderer's projection covers the full window framebuffer (`m_ViewportWidth × m_ViewportHeight`) and `glViewport` is set to the same size. The level-editor FBO is panel-sized, so when the larger viewport renders to the smaller FBO, only the bottom `panel_h` rows of the projection are actually written (fragments with `gl_y ≥ panel_h` are discarded by pixel ownership). ImGui then displays the FBO UV-flipped, so panel-top corresponds to FBO-top-row, which is world Y `cam.y + (vp_h − panel_h) / zoom`, NOT `cam.y`.
+
+`Renderer::ScreenToWorldPos` doesn't know about the panel and assumes the projection's world rect is what the user sees. It gives wrong world coords for cursor picking by an offset of `(vp_h − panel_h) / zoom` in Y (~380 px at maximized window + typical panel size).
+
+EditorLayer therefore has its own `PanelMouseToWorld(panelX, panelY)` that adds the offset. Used for all 3 pick paths (hover-pick, click-pick, right-click context). The old FBO-pixel-readback pick path didn't have this problem because it sampled the panel-sized FBO directly — the coord mismatch was hidden.
+
+The deeper fix is to make the renderer aware of the actual rendered region (or to clip the projection rather than the framebuffer). Deferred — see `docs/features/active/` for future work.
+
+## Quadtree spatial index — rebuilt every frame, hybrid picking with grabber FBO (2026-05-17)
+
+Scene owns a `SpatialIndex` (recursive quadtree, bucket cap 8, depth cap 8) rebuilt from scratch at the start of `Scene::OnRender` each frame. Stores `(UUID, AABB)` pairs only — full Transform/Sprite components stay in EnTT. Two consumers: Scene::OnRender uses `QueryRect(viewport)` to cull off-screen entities before sprite submission; EditorLayer uses `QueryPoint(cursor)` for entity picking.
+
+Chose unconditional rebuild over incremental updates because the rebuild is sub-millisecond at scale (5000 entities ≈ <1 ms release) and incremental tracking would require EnTT signals plus careful invariants. Switch to incremental only if profiling at higher entity counts demands it.
+
+Picking is hybrid: entity hit-test uses the spatial index; transform-grabber hit-test still goes through the existing FBO-color-readback path (8 quads, trivial cost). Lets the editor reuse `DrawGuizmo`'s grabber color encoding without porting the whole hit-test scheme to a precise rect-vs-point check.
+
+`ProcessPendingRestore` (simulation-snapshot's deferred restore) must clear the spatial index immediately after wiping `m_Registry`/`m_Entities` — otherwise stale UUIDs in the tree feed back into the next frame's hover-pick, whose zMap callback calls `GetEntityComponent<Transform>(stale_uuid)`, which inserts a phantom `entt::null` into `m_Entities` via `operator[]`, and then `registry.get<Transform>(null)` segfaults.

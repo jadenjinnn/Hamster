@@ -70,7 +70,8 @@ void EditorLayer::OnUpdate() {
     if (!m_Scene) return;
     if (m_LevelEditorAvailRegion.x <= 0 || m_LevelEditorAvailRegion.y <= 0) return;
 
-    // ── Hover-pick: flat-render scene to FBO + read pixel under cursor ──
+    // ── Hover-pick: spatial-index point query (was a full-scene FBO render
+    //    + glReadPixels every frame; that was the lag source at N≥1000) ──
     // Skipped while dragging (drag has its own held flags driving the selection).
     bool anyHeld = m_EntityHeld || m_BgHeld ||
                    m_TopLeftGrabberHeld || m_TopRightGrabberHeld ||
@@ -78,14 +79,6 @@ void EditorLayer::OnUpdate() {
                    m_TopGrabberHeld || m_BotGrabberHeld ||
                    m_LeftGrabberHeld || m_RightGrabberHeld;
     if (m_ViewportHovered && !anyHeld) {
-        glEnable(GL_SCISSOR_TEST);
-        glScissor(0, 0, m_LevelEditorAvailRegion.x, m_LevelEditorAvailRegion.y);
-        m_FramebufferTexture.Bind();
-        m_Renderer->Clear();
-        m_Scene->OnRender(true);
-
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        unsigned char data[4];
         ImVec2 imGuiMousePos = ImGui::GetMousePos();
         float mousePosX = imGuiMousePos.x - m_ViewportOffset.x;
         float mousePosY = imGuiMousePos.y - m_ViewportOffset.y;
@@ -94,94 +87,111 @@ void EditorLayer::OnUpdate() {
         if (mousePosX > 0 && mousePosY > 0 &&
             mousePosX < m_LevelEditorAvailRegion.x &&
             mousePosY < m_LevelEditorAvailRegion.y) {
-            glReadPixels((int)mousePosX,
-                         (int)m_LevelEditorAvailRegion.y - (int)mousePosY,
-                         1, 1, GL_RGBA, GL_UNSIGNED_BYTE, data);
-            int pickedID = Hamster::Application::ColourToId(
-                glm::vec3(data[0], data[1], data[2]));
-            auto pickedEntity = static_cast<entt::entity>(pickedID);
-            if (pickedID >= 0 && m_Scene->GetRegistry().valid(pickedEntity)) {
-                m_HoveredEntity = pickedEntity;
+            glm::vec2 world = PanelMouseToWorld(mousePosX, mousePosY);
+            Hamster::UUID hit = m_Scene->GetSpatialIndex().QueryPoint(
+                world,
+                [this](Hamster::UUID u) {
+                    return m_Scene->GetEntityComponent<Hamster::Transform>(u).position.z;
+                });
+            if (!Hamster::UUID::IsNil(hit)) {
+                m_HoveredEntity = m_Scene->GetEntity(hit);
             }
         }
-        m_FramebufferTexture.Unbind();
-        glDisable(GL_SCISSOR_TEST);
     } else if (!m_ViewportHovered) {
         m_HoveredEntity = entt::null;
     }
 
     // ── Mouse-pick when click lands inside viewport ──
+    // Hybrid: grabbers go through a tiny FBO render (8 quads — trivial) so
+    // their special IDs round-trip cleanly; entities go through the spatial
+    // index for O(log N + k) pick instead of O(N) full-scene render.
     if (ImGui::IsMouseClicked(0) && m_ViewportHovered) {
-        glEnable(GL_SCISSOR_TEST);
-        glScissor(0, 0, m_LevelEditorAvailRegion.x, m_LevelEditorAvailRegion.y);
+        ImVec2 imGuiMousePos = ImGui::GetMousePos();
+        float mousePosX = imGuiMousePos.x - m_ViewportOffset.x;
+        float mousePosY = imGuiMousePos.y - m_ViewportOffset.y;
+        bool insideViewport = mousePosX > 0 && mousePosY > 0 &&
+                              mousePosX < m_LevelEditorAvailRegion.x &&
+                              mousePosY < m_LevelEditorAvailRegion.y;
 
-        m_FramebufferTexture.Bind();
-        m_Renderer->Clear();
-        m_Scene->OnRender(true);
-
+        // Pass 1 — grabbers (only if something is selected).
+        int grabberID = -1;
         entt::entity selectedEntity = m_Hierarchy->GetSelectedEntity();
-        if (selectedEntity != entt::null &&
+        if (insideViewport && selectedEntity != entt::null &&
             m_Scene->GetRegistry().valid(selectedEntity)) {
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(0, 0, m_LevelEditorAvailRegion.x,
+                      m_LevelEditorAvailRegion.y);
+            m_FramebufferTexture.Bind();
+            // Clear to the IdToColour(-1) sentinel so non-grabber pixels
+            // round-trip back to ID -1 (no hit).
+            glm::vec3 sentinel = Hamster::Application::IdToColour(-1);
+            glClearColor(sentinel.r, sentinel.g, sentinel.b, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
             glDisable(GL_BLEND);
             m_Renderer->DrawGuizmo(
                 m_Scene->GetRegistry().get<Hamster::Transform>(selectedEntity),
                 Hamster::Translate, true);
             glEnable(GL_BLEND);
+
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            unsigned char data[4];
+            glReadPixels((int)mousePosX,
+                         (int)m_LevelEditorAvailRegion.y - (int)mousePosY,
+                         1, 1, GL_RGBA, GL_UNSIGNED_BYTE, data);
+            m_FramebufferTexture.Unbind();
+            glDisable(GL_SCISSOR_TEST);
+
+            int pickedID = Hamster::Application::ColourToId(
+                glm::vec3(data[0], data[1], data[2]));
+            switch (pickedID) {
+                case TopLeftGrabberID:
+                case TopRightGrabberID:
+                case BottomLeftGrabberID:
+                case BottomRightGrabberID:
+                case TopGrabberID:
+                case RightGrabberID:
+                case BottomGrabberID:
+                case LeftGrabberID:
+                    grabberID = pickedID;
+                    break;
+            }
         }
 
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        unsigned char data[4];
-        ImVec2 imGuiMousePos = ImGui::GetMousePos();
-        float mousePosX = imGuiMousePos.x - m_ViewportOffset.x;
-        float mousePosY = imGuiMousePos.y - m_ViewportOffset.y;
-
-        glReadPixels((int)mousePosX,
-                     (int)m_LevelEditorAvailRegion.y - (int)mousePosY,
-                     1, 1, GL_RGBA, GL_UNSIGNED_BYTE, data);
-
-        m_FramebufferTexture.Unbind();
-        glDisable(GL_SCISSOR_TEST);
-
-        int pickedID = Hamster::Application::ColourToId(
-            glm::vec3(data[0], data[1], data[2]));
-        auto pickedEntity = static_cast<entt::entity>(pickedID);
-
-        switch (pickedID) {
-            case -1: {
-                if (mousePosX > 0 && mousePosY > 0 &&
-                    mousePosX < m_LevelEditorAvailRegion.x &&
-                    mousePosY < m_LevelEditorAvailRegion.y) {
-                    m_Hierarchy->SetSelectedEntity(entt::null);
-                    m_PropertyEditor->SetSelectedEntity(boost::uuids::nil_uuid());
-                }
-                break;
+        if (grabberID != -1) {
+            switch (grabberID) {
+                case TopLeftGrabberID:     m_TopLeftGrabberHeld  = true; break;
+                case TopRightGrabberID:    m_TopRightGrabberHeld = true; break;
+                case BottomLeftGrabberID:  m_BotLeftGrabberHeld  = true; break;
+                case BottomRightGrabberID: m_BotRightGrabberHeld = true; break;
+                case TopGrabberID:         m_TopGrabberHeld      = true; break;
+                case RightGrabberID:       m_RightGrabberHeld    = true; break;
+                case BottomGrabberID:      m_BotGrabberHeld      = true; break;
+                case LeftGrabberID:        m_LeftGrabberHeld     = true; break;
             }
-            case TopLeftGrabberID:     m_TopLeftGrabberHeld  = true; break;
-            case TopRightGrabberID:    m_TopRightGrabberHeld = true; break;
-            case BottomLeftGrabberID:  m_BotLeftGrabberHeld  = true; break;
-            case BottomRightGrabberID: m_BotRightGrabberHeld = true; break;
-            case TopGrabberID:         m_TopGrabberHeld      = true; break;
-            case RightGrabberID:       m_RightGrabberHeld    = true; break;
-            case BottomGrabberID:      m_BotGrabberHeld      = true; break;
-            case LeftGrabberID:        m_LeftGrabberHeld     = true; break;
-            default: {
+        } else if (insideViewport) {
+            // Pass 2 — entity pick via spatial index.
+            glm::vec2 world = PanelMouseToWorld(mousePosX, mousePosY);
+            Hamster::UUID hit = m_Scene->GetSpatialIndex().QueryPoint(
+                world,
+                [this](Hamster::UUID u) {
+                    return m_Scene->GetEntityComponent<Hamster::Transform>(u)
+                        .position.z;
+                });
+            if (!Hamster::UUID::IsNil(hit)) {
+                entt::entity pickedEntity = m_Scene->GetEntity(hit);
                 if (m_Scene->GetRegistry().valid(pickedEntity)) {
                     m_Hierarchy->SetSelectedEntity(pickedEntity);
                     m_EntityHeld = true;
                     Hamster::Transform &t =
-                        m_Scene->GetRegistry().get<Hamster::Transform>(pickedEntity);
+                        m_Scene->GetRegistry().get<Hamster::Transform>(
+                            pickedEntity);
                     m_MouseHeldTransformX = t.position.x;
                     m_MouseHeldTransformY = t.position.y;
-                } else if (mousePosX > 0 && mousePosY > 0 &&
-                           mousePosX < m_LevelEditorAvailRegion.x &&
-                           mousePosY < m_LevelEditorAvailRegion.y) {
-                    // FBO clear-colour state leaks from the gap fill, so the
-                    // "empty" pixel can decode to a non-(-1) ID that isn't a
-                    // live entity. Treat that as a background click too.
-                    m_Hierarchy->SetSelectedEntity(entt::null);
-                    m_PropertyEditor->SetSelectedEntity(boost::uuids::nil_uuid());
                 }
-                break;
+            } else {
+                // Background click — deselect.
+                m_Hierarchy->SetSelectedEntity(entt::null);
+                m_PropertyEditor->SetSelectedEntity(boost::uuids::nil_uuid());
             }
         }
     }
@@ -536,28 +546,26 @@ void EditorLayer::OnImGuiUpdate() {
             float mpX = m_RightClickStartPos.x - m_ViewportOffset.x;
             float mpY = m_RightClickStartPos.y - m_ViewportOffset.y;
 
-            m_ContextMenuWorldPos = m_Renderer->ScreenToWorldPos({mpX, mpY});
+            m_ContextMenuWorldPos = PanelMouseToWorld(mpX, mpY);
 
-            // Render flat scene to FBO, pick at the release point
-            glEnable(GL_SCISSOR_TEST);
-            glScissor(0, 0, m_LevelEditorAvailRegion.x, m_LevelEditorAvailRegion.y);
-            m_FramebufferTexture.Bind();
-            m_Renderer->Clear();
-            m_Scene->OnRender(true);
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-            unsigned char data[4];
-            glReadPixels((int)mpX, (int)m_LevelEditorAvailRegion.y - (int)mpY,
-                         1, 1, GL_RGBA, GL_UNSIGNED_BYTE, data);
-            m_FramebufferTexture.Unbind();
-            glDisable(GL_SCISSOR_TEST);
+            // Spatial-index query replaces the previous full-scene flat
+            // render + glReadPixels. Same semantics, no per-frame O(N) cost.
+            Hamster::UUID hit = m_Scene->GetSpatialIndex().QueryPoint(
+                m_ContextMenuWorldPos,
+                [this](Hamster::UUID u) {
+                    return m_Scene->GetEntityComponent<Hamster::Transform>(u)
+                        .position.z;
+                });
 
-            int pickedID = Hamster::Application::ColourToId(
-                glm::vec3(data[0], data[1], data[2]));
-            auto pickedEntity = static_cast<entt::entity>(pickedID);
-
-            if (pickedID != -1 && m_Scene->GetRegistry().valid(pickedEntity)) {
-                m_ContextMenuEntity = pickedEntity;
-                m_OpenEntityContextMenu = true;
+            if (!Hamster::UUID::IsNil(hit)) {
+                entt::entity pickedEntity = m_Scene->GetEntity(hit);
+                if (m_Scene->GetRegistry().valid(pickedEntity)) {
+                    m_ContextMenuEntity = pickedEntity;
+                    m_OpenEntityContextMenu = true;
+                } else {
+                    m_ContextMenuEntity = entt::null;
+                    m_OpenSceneContextMenu = true;
+                }
             } else {
                 m_ContextMenuEntity = entt::null;
                 m_OpenSceneContextMenu = true;
@@ -635,6 +643,16 @@ void EditorLayer::OnImGuiUpdate() {
 
 void EditorLayer::ActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e) {
     m_Scene = e.GetActiveScene();
+}
+
+glm::vec2 EditorLayer::PanelMouseToWorld(float panelX, float panelY) const {
+    glm::vec2 cam = m_Renderer->GetCameraOffset();
+    float zoom = m_Renderer->GetZoom();
+    int vpH = m_Renderer->GetViewportHeight();
+    int panelH = static_cast<int>(m_LevelEditorAvailRegion.y);
+    float worldX = cam.x + panelX / zoom;
+    float worldY = cam.y + static_cast<float>(vpH - panelH + (int)panelY) / zoom;
+    return {worldX, worldY};
 }
 
 void EditorLayer::FramebufferSizeChanged(Hamster::FramebufferResizeEvent &e) {
