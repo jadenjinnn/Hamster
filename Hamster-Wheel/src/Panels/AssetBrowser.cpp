@@ -188,12 +188,30 @@ void AssetBrowser::Render() {
     }
     nextRow();
 
+    auto contextMenu = [&](Hamster::UUID uuid, const std::string &currentName) {
+        if (ImGui::BeginPopupContextItem()) {
+            if (ImGui::MenuItem(ICON_FA_PEN "  Rename")) {
+                m_RenameUUID = uuid;
+                std::strncpy(m_RenameBuffer, currentName.c_str(),
+                             sizeof(m_RenameBuffer) - 1);
+                m_RenameBuffer[sizeof(m_RenameBuffer) - 1] = '\0';
+                m_OpenRenamePopup = true;
+                m_RenameCollision = false;
+            }
+            ImGui::EndPopup();
+        }
+    };
+
     // Texture assets
     for (const auto &[uuid, texture] : m_AssetManager->GetTextureMap()) {
         Hamster::UUID mUUID = uuid;
         std::string id = "tex_" + mUUID.GetUUIDString();
         DrawAssetCard(id.c_str(), ICON_FA_IMAGE,
                       texture->GetName().c_str(), texture.get(), cardW, cardH);
+        // Use the filename (path stem + ext) as the rename default so the
+        // user can adjust the on-disk name, not the display name.
+        std::filesystem::path p(texture->GetTexturePath());
+        contextMenu(mUUID, p.filename().string());
         nextRow();
     }
 
@@ -203,6 +221,48 @@ void AssetBrowser::Render() {
         std::string id = "scr_" + mUUID.GetUUIDString();
         DrawAssetCard(id.c_str(), ICON_FA_FILE_CODE,
                       script->GetName().c_str(), nullptr, cardW, cardH);
+        std::filesystem::path p(script->GetScriptPath());
+        contextMenu(mUUID, p.filename().string());
         nextRow();
+    }
+
+    // Rename modal — opened from the per-card context menu above.
+    if (m_OpenRenamePopup) {
+        ImGui::OpenPopup("Rename Asset");
+        m_OpenRenamePopup = false;
+    }
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
+                            ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    if (ImGui::BeginPopupModal("Rename Asset", nullptr,
+                                ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::SetNextItemWidth(300);
+        ImGui::InputText("##rename_input", m_RenameBuffer,
+                          sizeof(m_RenameBuffer));
+
+        if (m_RenameCollision) {
+            ImGui::TextColored(ImVec4(0.95f, 0.4f, 0.4f, 1.0f),
+                                "A file with that name already exists.");
+        }
+
+        if (ImGui::Button("Rename", ImVec2(120, 0))) {
+            std::string newName = m_RenameBuffer;
+            if (!newName.empty()) {
+                if (m_AssetManager->RenameAsset(m_RenameUUID, newName)) {
+                    m_RenameUUID = Hamster::UUID::GetNil();
+                    m_RenameCollision = false;
+                    ImGui::CloseCurrentPopup();
+                } else {
+                    m_RenameCollision = true;
+                }
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+            m_RenameUUID = Hamster::UUID::GetNil();
+            m_RenameCollision = false;
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
     }
 }

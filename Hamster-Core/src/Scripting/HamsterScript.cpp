@@ -11,6 +11,15 @@ namespace Hamster {
     m_Module = pybind11::module_::import(m_FileName.c_str());
   }
 
+  void HamsterScript::SetScriptPath(const std::filesystem::path &newPath,
+                                    const std::string &newFileName) {
+    m_ScriptPath = newPath.string();
+    m_FileName = newFileName;
+    // Re-import under the new module name; the previous module entry stays
+    // in sys.modules but is no longer referenced from here.
+    m_Module = pybind11::module_::import(m_FileName.c_str());
+  }
+
   void HamsterScript::ReloadScript() {
     m_PyObjects.clear();
 

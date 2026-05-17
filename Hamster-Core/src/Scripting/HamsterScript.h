@@ -25,11 +25,19 @@ public:
   std::string &GetName() { return m_ScriptName; }
 
   const std::string &GetFileName() { return m_FileName; }
+
+  // Updates the script's on-disk path + Python module name. Called when the
+  // user renames a script via the editor — the AssetManager has already moved
+  // the .py and its .meta on disk, this just teaches the in-memory script
+  // about its new identity. The next ReloadScript will re-import the module
+  // under its new name.
+  void SetScriptPath(const std::filesystem::path &newPath,
+                     const std::string &newFileName);
   //
   std::vector<pybind11::handle> const &GetPyObjects() { return m_PyObjects; }
   //
 private:
-  const std::string m_ScriptPath;
+  std::string m_ScriptPath;
   std::string m_ScriptName = "Untitled Script";
   std::string m_FileName;
   UUID m_UUID;

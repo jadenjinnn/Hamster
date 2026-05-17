@@ -67,6 +67,13 @@ namespace Hamster {
         // Handles .py add/remove/rename in v1 — other extensions are ignored.
         void HandleFileEvents(const std::vector<FileEvent> &events);
 
+        // Editor-initiated rename: moves both <asset> and <asset>.meta on
+        // disk to a new filename in the same folder. Returns false if the
+        // new filename collides with an existing asset of the same type in
+        // that folder, or if the UUID doesn't match a registered asset.
+        // The UUID is preserved, so entity attachments survive.
+        bool RenameAsset(UUID uuid, const std::string &newFilename);
+
         void RemoveTexture(UUID uuid);
         void RemoveScript(UUID uuid);
 
