@@ -568,5 +568,83 @@ int main() {
               << std::endl;
   }
 
+  // --- simulation-snapshot scenario ---
+  // Covers spec success criteria #1 (runtime-spawn revert) and #2
+  // (component mutation revert). Manager entity carries a script that
+  // spawns 5 entities in on_create and mutates its own transform in
+  // on_update. After PauseSceneSimulation, the registry should hold only
+  // the manager again, and its transform must match the pre-play state.
+  {
+    auto snapScene = std::make_shared<Hamster::Scene>(
+        app.GetEventDispatcher().get(), &app);
+
+    Hamster::UUID managerUUID = snapScene->CreateEntity();
+    auto &preTransform =
+        snapScene->GetEntityComponent<Hamster::Transform>(managerUUID);
+    preTransform.position = {10.0f, 20.0f, 0.0f};
+
+    snapScene->AddEntityComponent<Hamster::Behaviour>(managerUUID);
+    auto probeScript = std::make_shared<Hamster::HamsterScript>(
+        fixtureDir / "snapshot_script.py", "snapshot_script");
+    auto &mgrBehaviour =
+        snapScene->GetEntityComponent<Hamster::Behaviour>(managerUUID);
+    mgrBehaviour.scripts[probeScript->GetUUID()] = probeScript;
+
+    app.AddScene(snapScene);
+    app.SetSceneActive(snapScene->GetUUID());
+    snapScene->RunScene();
+
+    uint32_t countBeforePlay = snapScene->GetEntityCount();
+    glm::vec3 posBeforePlay =
+        snapScene->GetEntityComponent<Hamster::Transform>(managerUUID).position;
+
+    snapScene->RunSceneSimulation();
+
+    // on_create ran inside RunSceneSimulation — 5 new entities should exist.
+    uint32_t countAfterSpawn = snapScene->GetEntityCount();
+    if (countAfterSpawn != countBeforePlay + 5) {
+      std::cerr << "FAIL: expected " << (countBeforePlay + 5)
+                << " entities after spawn, got " << countAfterSpawn
+                << std::endl;
+      return 1;
+    }
+
+    // on_update mutates the manager's transform to (999, 999).
+    snapScene->OnUpdate();
+    glm::vec3 posDuringPlay =
+        snapScene->GetEntityComponent<Hamster::Transform>(managerUUID).position;
+    if (posDuringPlay.x != 999.0f || posDuringPlay.y != 999.0f) {
+      std::cerr << "FAIL: on_update mutation did not take effect (got "
+                << posDuringPlay.x << "," << posDuringPlay.y << ")"
+                << std::endl;
+      return 1;
+    }
+
+    // Stop — snapshot restore should fire.
+    snapScene->PauseSceneSimulation();
+
+    uint32_t countAfterRestore = snapScene->GetEntityCount();
+    if (countAfterRestore != countBeforePlay) {
+      std::cerr << "FAIL: expected " << countBeforePlay
+                << " entities after restore (runtime-spawned reverted), got "
+                << countAfterRestore << std::endl;
+      return 1;
+    }
+
+    glm::vec3 posAfterRestore =
+        snapScene->GetEntityComponent<Hamster::Transform>(managerUUID).position;
+    if (posAfterRestore.x != posBeforePlay.x ||
+        posAfterRestore.y != posBeforePlay.y) {
+      std::cerr << "FAIL: transform did not revert on stop (expected "
+                << posBeforePlay.x << "," << posBeforePlay.y << " got "
+                << posAfterRestore.x << "," << posAfterRestore.y << ")"
+                << std::endl;
+      return 1;
+    }
+
+    std::cout << "PASS: simulation snapshot reverts runtime spawns and "
+                 "component mutations" << std::endl;
+  }
+
   return 0;
 }

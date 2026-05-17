@@ -350,7 +350,10 @@ void EditorLayer::OnImGuiUpdate() {
             ImGui::SameLine(0, 16);
 
             if (HBeginMenu("File")) {
-                if (HMenuItem("Save Scene")) {
+                // Save is blocked while simulation runs — pairs with the
+                // PropertyEditor lock so play mode can't mutate disk either.
+                const bool simRunning = m_Scene && !m_Scene->IsSceneSimulationPaused();
+                if (HMenuItem("Save Scene", nullptr, !simRunning)) {
                     if (m_Scene) Hamster::Scene::SaveScene(m_Scene);
                 }
                 if (HMenuItem("New Project")) {

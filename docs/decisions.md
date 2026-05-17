@@ -41,3 +41,9 @@ Rationale for per-file sidecars over a single project-wide manifest: cleaner git
 ## Application destructor finalizes Python LAST, after all pybind-holding members (2026-05-17)
 
 `Scripting::FinaliseInterpreter()` is called as the LAST line of `Application::~Application`'s body, after explicit `m_Scenes.clear()` and `m_AssetManager.reset()`. Anything that holds `pybind11::object` / `pybind11::module_` / `pybind11::handle` must be released before `Py_Finalize` — otherwise the implicit member destruction at the end of the destructor decrefs Python objects on a dead interpreter (UB, crashes in practice). General rule: high-level "shut everything down" calls run LAST, with state-holding members explicitly released just before. See bug 0007.
+
+## Play-mode snapshot reuses SceneSerialiser via stringstream; save is blocked during play (2026-05-17)
+
+`SceneSerialiser::Serialise` / `Deserialise` already take `std::ostream&` / `std::istream&` rather than file paths — the file I/O is the caller's job. In-memory snapshot/restore for play mode therefore needs no new methods: pass a `std::stringstream(std::ios::in | std::ios::out | std::ios::binary)` and store `.str()` in a `std::string m_PlaySnapshot` on `Scene`. The original feature spec planned a factor + new `SerialiseToBuffer` API; that turned out to be unnecessary.
+
+File→Save is gated behind `!IsSceneSimulationPaused()` to pair with the PropertyEditor lock — during play, neither the in-memory scene state nor the on-disk scene file can be mutated. Allowing the menu save would write runtime physics/script state to disk before the snapshot has a chance to revert it, defeating the "non-destructive play" guarantee.

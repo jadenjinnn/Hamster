@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <box2d/box2d.h>
 #include <pybind11/pybind11.h>
+#include <sstream>
 
 #include "Application.h"
 #include "Project.h"
@@ -657,6 +658,21 @@ void Scene::RunSceneSimulation() {
     });
     if (anyMissing) return;
 
+    // Capture a snapshot of the pre-play scene state so PauseSceneSimulation
+    // can revert any runtime mutations (script-set components, physics-moved
+    // transforms, runtime-created entities). Same binary format as the
+    // on-disk .scene file; SceneSerialiser is already stream-based so a
+    // stringstream round-trip works without any factoring. Snapshot fires
+    // AFTER the missing-script check above so a refused play doesn't leave
+    // a stale snapshot behind.
+    {
+      std::stringstream snap(std::ios::in | std::ios::out | std::ios::binary);
+      SceneSerialiser snapWriter(m_App->GetActiveScene(),
+                                 m_App->GetAssetManager());
+      snapWriter.Serialise(snap);
+      m_PlaySnapshot = snap.str();
+    }
+
     Project::SaveCurrentProject(m_App->GetAssetManager());
 
     SaveScene(m_App->GetActiveScene());
@@ -737,6 +753,48 @@ void Scene::PauseSceneSimulation() {
 
     m_PendingBodies.clear();
     m_DestroyQueue.clear();
+
+    // Restore from the snapshot taken at RunSceneSimulation start. Order
+    // matters: physics + animation + pyObject cleanup above must finish
+    // before we wipe the registry, otherwise their teardown touches freed
+    // entities. After restore, the registry holds the pre-play state and a
+    // subsequent RunSceneSimulation rebuilds physics and pyObjects from
+    // scratch — the snapshot only carries component data, never b2BodyId
+    // handles or live Python objects.
+    if (!m_PlaySnapshot.empty()) {
+      auto behView = m_Registry.view<Behaviour>();
+      behView.each([](auto &beh) { beh.pyObjects.clear(); });
+
+      m_Registry.clear();
+      m_Entities.clear();
+      m_ChildrenIndex.clear();
+
+      try {
+        std::stringstream in(m_PlaySnapshot,
+                             std::ios::in | std::ios::out | std::ios::binary);
+        SceneSerialiser restore(m_App->GetActiveScene(),
+                                m_App->GetAssetManager());
+        restore.Deserialise(in);
+        m_PlaySnapshot.clear();
+
+        // Panels (PropertyEditor especially) cache raw component pointers
+        // into the registry across frames. The clear+deserialise above
+        // invalidates every one of those pointers — if the user had an
+        // entity selected when they hit Stop, the same frame's later panel
+        // render would deref freed component memory and crash. Reposting
+        // ActiveSceneChangedEvent runs each panel's reset path synchronously
+        // (selection cleared, cached pointers nulled), so subsequent
+        // rendering finds a clean slate.
+        ActiveSceneChangedEvent e(m_App->GetActiveScene());
+        m_Dispatcher->Post<ActiveSceneChangedEvent>(e);
+      } catch (std::exception &e) {
+        m_ClientLogger->Log(
+            Error, std::string("Snapshot restore failed: ") + e.what());
+        // Keep the snapshot alive so a future fix attempt could retry. The
+        // registry is currently empty — user will see a blank scene; better
+        // than partial restore writing garbage to disk on next save.
+      }
+    }
 
     m_IsSimulationPaused = true;
 

@@ -73,8 +73,16 @@ void PropertyEditor::Render() {
     g_PropPanel.DrawHeader();
     g_PropPanel.BeginContent();
 
+    // Lock the panel while simulation is running. Edits would be discarded
+    // on stop anyway (simulation-snapshot reverts everything), so we make
+    // that explicit by greying out the widgets — matches Unity. Live values
+    // remain readable.
+    const bool simRunning = m_Scene && !m_Scene->IsSceneSimulationPaused();
+    ImGui::BeginDisabled(simRunning);
+
     if (Hamster::UUID::IsNil(m_SelectedEntity)) {
         ImGui::TextDisabled("No entity selected");
+        ImGui::EndDisabled();
         g_PropPanel.EndContent();
         return;
     }
@@ -435,5 +443,6 @@ void PropertyEditor::Render() {
     }
 
     ImGui::Dummy({0, 16});
+    ImGui::EndDisabled();
     g_PropPanel.EndContent();
 }

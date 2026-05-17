@@ -160,6 +160,14 @@ private:
   std::vector<UUID> m_DestroyQueue;
   std::vector<UUID> m_PendingBodies;
 
+  // In-memory snapshot of the entire scene captured at RunSceneSimulation
+  // start, restored on PauseSceneSimulation end. Implements Unity-style
+  // non-destructive play: runtime-spawned entities, physics-moved transforms,
+  // and script-mutated components all revert on stop. Empty when no
+  // simulation is active. Holds the raw bytes a SceneSerialiser stringstream
+  // round-trip produces — same format as on-disk .scene files.
+  std::string m_PlaySnapshot;
+
   // Reverse-index for the hierarchy tree. m_ChildrenIndex[parent] holds the
   // children of `parent` in sibling order. Top-level entities live under
   // UUID::GetNil(). Kept in sync with Hierarchy components by Scene's
