@@ -201,18 +201,65 @@ void PropertyEditor::Render() {
         ImGui::Dummy({0, 2});
 
         Hamster::UUID removeScriptUUID = Hamster::UUID::GetNil();
+        Hamster::UUID reassignFrom     = Hamster::UUID::GetNil();
+        Hamster::UUID reassignTo       = Hamster::UUID::GetNil();
+
         for (auto &[uuid, script] : m_Behaviour->scripts) {
             Hamster::UUID mutableUUID = uuid;
-            std::string id = ICON_FA_FILE_CODE "  " + script->GetName() +
-                             "##" + mutableUUID.GetUUIDString();
-            HButton(id.c_str(), avail);
-            if (ImGui::BeginPopupContextItem(("##sctx_" + mutableUUID.GetUUIDString()).c_str())) {
+            const bool missing = !script;
+
+            std::string label;
+            if (missing) {
+                auto it = m_Behaviour->cachedNames.find(uuid);
+                std::string cached =
+                    (it != m_Behaviour->cachedNames.end() && !it->second.empty())
+                        ? it->second
+                        : "(unknown)";
+                label = ICON_FA_TRIANGLE_EXCLAMATION "  MISSING: " + cached;
+            } else {
+                label = ICON_FA_FILE_CODE "  " + script->GetName();
+            }
+            const std::string fullId = label + "##" + mutableUUID.GetUUIDString();
+
+            if (missing) {
+                ImGui::PushStyleColor(ImGuiCol_Text,
+                                      ImVec4(0.95f, 0.4f, 0.4f, 1.0f));
+            }
+            HButton(fullId.c_str(), avail);
+            if (missing) ImGui::PopStyleColor();
+
+            if (ImGui::BeginPopupContextItem(
+                    ("##sctx_" + mutableUUID.GetUUIDString()).c_str())) {
+                if (missing) {
+                    if (ImGui::BeginMenu("Reassign to")) {
+                        for (const auto &[scrUuid, scrPtr] :
+                             m_AssetManager->GetScriptMap()) {
+                            if (m_Behaviour->scripts.count(scrUuid)) continue;
+                            if (ImGui::MenuItem(scrPtr->GetName().c_str())) {
+                                reassignFrom = uuid;
+                                reassignTo = scrUuid;
+                            }
+                        }
+                        ImGui::EndMenu();
+                    }
+                }
                 if (ImGui::Selectable("Remove")) removeScriptUUID = uuid;
                 ImGui::EndPopup();
             }
         }
         if (!Hamster::UUID::IsNil(removeScriptUUID)) {
             m_Behaviour->scripts.erase(removeScriptUUID);
+            m_Behaviour->cachedNames.erase(removeScriptUUID);
+        }
+        if (!Hamster::UUID::IsNil(reassignFrom) &&
+            !Hamster::UUID::IsNil(reassignTo)) {
+            m_Behaviour->scripts.erase(reassignFrom);
+            m_Behaviour->cachedNames.erase(reassignFrom);
+            auto newScript = m_AssetManager->GetScript(reassignTo);
+            m_Behaviour->scripts.emplace(reassignTo, newScript);
+            if (newScript) {
+                m_Behaviour->cachedNames[reassignTo] = newScript->GetName();
+            }
         }
 
         ImGui::Dummy({0, 4});
@@ -224,12 +271,17 @@ void PropertyEditor::Render() {
                 Hamster::UUID newId = m_AssetManager->AddDefaultScript();
                 auto newScript = m_AssetManager->GetScript(newId);
                 m_Behaviour->scripts.emplace(newId, newScript);
+                if (newScript) {
+                    m_Behaviour->cachedNames[newId] = newScript->GetName();
+                }
             }
             if (m_AssetManager->GetScriptCount() > 0) ImGui::Separator();
             for (const auto &[uuid, script] : m_AssetManager->GetScriptMap()) {
                 if (m_Behaviour->scripts.count(uuid) == 0) {
                     if (ImGui::Selectable(script->GetName().c_str())) {
                         m_Behaviour->scripts.emplace(script->GetUUID(), script);
+                        m_Behaviour->cachedNames[script->GetUUID()] =
+                            script->GetName();
                     }
                 }
             }

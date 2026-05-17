@@ -635,6 +635,28 @@ void Scene::SetUUID(const UUID &uuid) {
 
 void Scene::RunSceneSimulation() {
   if (m_IsSimulationPaused) {
+    // Pre-flight: refuse to start if any Behaviour points at a missing
+    // script. Each broken reference is logged with its entity name so the
+    // user can find and fix it (re-attach or remove).
+    bool anyMissing = false;
+    auto check = m_Registry.view<Behaviour, Name>();
+    check.each([this, &anyMissing](auto &beh, auto &name) {
+      for (auto const &[uuid, script] : beh.scripts) {
+        if (script) continue;
+        anyMissing = true;
+        std::string cached = "(unknown)";
+        auto it = beh.cachedNames.find(uuid);
+        if (it != beh.cachedNames.end() && !it->second.empty()) {
+          cached = it->second;
+        }
+        std::stringstream ss;
+        ss << "Entity '" << name.name << "' references missing script '"
+           << cached << "' — did you rename or delete it?";
+        m_ClientLogger->Log(Error, ss.str());
+      }
+    });
+    if (anyMissing) return;
+
     Project::SaveCurrentProject(m_App->GetAssetManager());
 
     SaveScene(m_App->GetActiveScene());
