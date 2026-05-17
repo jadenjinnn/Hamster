@@ -443,7 +443,13 @@ namespace Hamster {
     }
 
     std::shared_ptr<HamsterScript> AssetManager::GetScript(UUID uuid) {
-        return m_Scripts.at(uuid);
+        // Missing-tolerant: scenes can reference scripts whose .py vanished
+        // since the scene was saved (external delete / sloppy rename). The
+        // editor's missing-asset UI relies on nullptr here rather than an
+        // exception — see SceneSerialiser::Behaviour_ID deserialise.
+        auto it = m_Scripts.find(uuid);
+        if (it == m_Scripts.end()) return nullptr;
+        return it->second;
     }
 
     UUID AssetManager::AddAnimation(const std::string &name,

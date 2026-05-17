@@ -207,6 +207,20 @@ void SceneSerialiser::SerialiseEntity(std::ostream &out,
 
     for (auto const &[uuid, script] : behaviour.scripts) {
       UUID::Serialise(out, uuid);
+
+      // Refresh the cached name from the live script if possible, else
+      // fall back to the cachedNames entry (preserves last-known name
+      // even when the script went missing between load and save).
+      std::string name;
+      if (script) {
+        name = script->GetName();
+      } else {
+        auto it = behaviour.cachedNames.find(uuid);
+        if (it != behaviour.cachedNames.end()) name = it->second;
+      }
+      std::size_t nameLen = name.size();
+      out.write(reinterpret_cast<const char *>(&nameLen), sizeof(nameLen));
+      out.write(name.data(), nameLen);
     }
   }
 
@@ -302,11 +316,18 @@ UUID SceneSerialiser::DeserialiseEntity(std::istream &in) {
       for (uint32_t i = 0; i < scriptCount; i++) {
         UUID scriptUUID = UUID::Deserialise(in);
 
-        std::cout << "trying to add script with uuid of: "
-                  << scriptUUID.GetUUIDString() << std::endl;
+        std::size_t nameLen;
+        in.read(reinterpret_cast<char *>(&nameLen), sizeof(nameLen));
+        std::string cachedName(nameLen, '\0');
+        in.read(cachedName.data(), nameLen);
 
-        behaviour.scripts.emplace(scriptUUID,
-                                  m_AssetManager->GetScript(scriptUUID));
+        // Missing-tolerant: GetScript no longer throws — it returns a
+        // shared_ptr that's nullptr when the UUID has no live script. The
+        // cached name is kept so the property editor can show MISSING with
+        // the script's last-known display name.
+        auto script = m_AssetManager->GetScript(scriptUUID);
+        behaviour.scripts.emplace(scriptUUID, script);
+        behaviour.cachedNames.emplace(scriptUUID, cachedName);
       }
 
       break;

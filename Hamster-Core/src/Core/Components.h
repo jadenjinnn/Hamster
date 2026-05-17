@@ -123,6 +123,13 @@ struct Behaviour {
   std::unordered_map<UUID, std::shared_ptr<HamsterScript>>
       scripts; // A map was used for ease of removal of scripts
 
+  // Last-known display name per attached script UUID. Written on every scene
+  // save (from the live HamsterScript) and persisted so the property editor
+  // can show "MISSING — <cachedName>" when a UUID no longer resolves to a
+  // loaded script (e.g., the .py was renamed externally and the sidecar
+  // didn't follow). See the asset-sidecars feature.
+  std::unordered_map<UUID, std::string> cachedNames;
+
   std::vector<pybind11::object> pyObjects;
 };
 } // namespace Hamster

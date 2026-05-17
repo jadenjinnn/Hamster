@@ -643,6 +643,7 @@ void Scene::RunSceneSimulation() {
 
     scriptReloadView.each([](auto &behaviour) {
       for (auto const &[uuid, script] : behaviour.scripts) {
+        if (!script) continue; // missing script (Phase 6 UI handles this)
         script->ReloadScript();
       }
     });
@@ -673,6 +674,7 @@ void Scene::RunSceneSimulation() {
       behaviour.pyObjects.clear();
 
       for (auto const &[uuid, script] : behaviour.scripts) {
+        if (!script) continue; // missing script (Phase 6 UI handles this)
         for (auto &obj : script->GetPyObjects()) {
           pybind11::object pyObject = obj(
               ID.uuid, m_App->GetActiveScene(),
