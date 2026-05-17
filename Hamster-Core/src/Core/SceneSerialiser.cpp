@@ -52,6 +52,11 @@ void SceneSerialiser::Deserialise(std::istream &in) {
 
     DeserialiseEntity(in);
   }
+
+  // Now that every entity (and its Hierarchy component, if present) exists,
+  // rebuild m_ChildrenIndex so parent UUIDs referencing entities that appeared
+  // later in the file resolve correctly.
+  m_Scene->RebuildHierarchyIndex();
 }
 
 void SerialiseVec2(std::ostream &out, const glm::vec2 &v) {
@@ -177,6 +182,16 @@ void SceneSerialiser::SerialiseEntity(std::ostream &out,
 
     uint8_t loopByte = anim.loop ? 1 : 0;
     out.write(reinterpret_cast<const char *>(&loopByte), sizeof(loopByte));
+  }
+
+  if (m_Scene->EntityHasComponent<Hierarchy>(entity_uuid)) {
+    int id = static_cast<int>(Hierarchy_ID);
+    out.write(reinterpret_cast<const char *>(&id), sizeof(id));
+
+    Hierarchy &h = m_Scene->GetEntityComponent<Hierarchy>(entity_uuid);
+    UUID::Serialise(out, h.parent);
+    out.write(reinterpret_cast<const char *>(&h.siblingIndex),
+              sizeof(h.siblingIndex));
   }
 
   if (m_Scene->EntityHasComponent<Behaviour>(entity_uuid)) {
@@ -333,6 +348,22 @@ UUID SceneSerialiser::DeserialiseEntity(std::istream &in) {
         Rigidbody &rb = m_Scene->GetEntityComponent<Rigidbody>(uuid);
         rb.colliderOffset = offset;
         rb.colliderSize = size;
+      }
+
+      break;
+    }
+    case Hierarchy_ID: {
+      UUID parent = UUID::Deserialise(in);
+      uint32_t siblingIndex;
+      in.read(reinterpret_cast<char *>(&siblingIndex), sizeof(siblingIndex));
+
+      // CreateEntityWithUUID already inserted a default Hierarchy at the root
+      // — overwrite with the persisted parent/index here. Index rebuild happens
+      // post-load when SceneSerialiser::Deserialise calls FinaliseHierarchy().
+      if (m_Scene->EntityHasComponent<Hierarchy>(uuid)) {
+        Hierarchy &h = m_Scene->GetEntityComponent<Hierarchy>(uuid);
+        h.parent = parent;
+        h.siblingIndex = siblingIndex;
       }
 
       break;

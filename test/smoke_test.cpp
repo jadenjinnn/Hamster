@@ -10,6 +10,7 @@
 #include "Core/Application.h"
 #include "Core/Components.h"
 #include "Core/Scene.h"
+#include "Core/SceneSerialiser.h"
 #include "Scripting/HamsterScript.h"
 #include "Utils/AssetManager.h"
 
@@ -300,6 +301,124 @@ int main() {
   }
 
   std::cout << "PASS: animation played, stopped on last frame, sprite swapped correctly" << std::endl;
+
+  // --- Entity hierarchy: parent/child + cycle refuse + cascade destroy ---
+  {
+    auto hScene = std::make_shared<Hamster::Scene>(app.GetEventDispatcher().get(), &app);
+
+    Hamster::UUID a = hScene->CreateEntity();
+    Hamster::UUID b = hScene->CreateEntity();
+    Hamster::UUID c = hScene->CreateEntity();
+
+    // Build A → B → C tree.
+    if (!hScene->SetParent(b, a) || !hScene->SetParent(c, b)) {
+      std::cerr << "FAIL: SetParent rejected a valid reparent" << std::endl;
+      return 1;
+    }
+    auto &aKids = hScene->GetChildren(a);
+    auto &bKids = hScene->GetChildren(b);
+    if (aKids.size() != 1 || aKids[0] != b ||
+        bKids.size() != 1 || bKids[0] != c) {
+      std::cerr << "FAIL: hierarchy tree did not record A->B->C" << std::endl;
+      return 1;
+    }
+    if (hScene->GetParent(b) != a || hScene->GetParent(c) != b) {
+      std::cerr << "FAIL: GetParent disagrees with SetParent" << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: hierarchy built A->B->C" << std::endl;
+
+    // Cycle refusal: A under C would create a cycle.
+    if (hScene->SetParent(a, c)) {
+      std::cerr << "FAIL: cycle-creating reparent was accepted" << std::endl;
+      return 1;
+    }
+    // State unchanged.
+    if (hScene->GetParent(a) != Hamster::UUID::GetNil() || aKids.size() != 1) {
+      std::cerr << "FAIL: cycle refusal mutated state" << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: cycle-creating reparent refused" << std::endl;
+
+    // Cascade destroy: removing A drops all three.
+    uint32_t before = hScene->GetEntityCount();
+    hScene->DestroyEntity(a);
+    uint32_t after = hScene->GetEntityCount();
+    if (before - after != 3) {
+      std::cerr << "FAIL: cascade destroy removed " << (before - after)
+                << " entities, expected 3" << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: cascade destroy removed full subtree" << std::endl;
+  }
+
+  // --- Entity hierarchy: Python API via hierarchy_script.py ---
+  {
+    auto hScene = std::make_shared<Hamster::Scene>(app.GetEventDispatcher().get(), &app);
+    Hamster::UUID id = hScene->CreateEntity();
+    hScene->AddEntityComponent<Hamster::Behaviour>(id);
+    auto script = std::make_shared<Hamster::HamsterScript>(
+        fixtureDir / "hierarchy_script.py", "hierarchy_script");
+    auto &beh = hScene->GetEntityComponent<Hamster::Behaviour>(id);
+    beh.scripts[script->GetUUID()] = script;
+
+    app.AddScene(hScene);
+    app.SetSceneActive(hScene->GetUUID());
+    hScene->RunScene();
+
+    std::filesystem::create_directories(markerDir);
+    std::filesystem::remove(markerDir / "hierarchy_ok.ok");
+
+    hScene->RunSceneSimulation();
+
+    bool hierarchyOk = std::filesystem::exists(markerDir / "hierarchy_ok.ok");
+    std::filesystem::remove_all(markerDir);
+    if (!hierarchyOk) {
+      std::cerr << "FAIL: hierarchy_script did not write hierarchy_ok marker"
+                << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: Python hierarchy API (parent/children/set_parent/create_entity(parent=))"
+              << std::endl;
+  }
+
+  // --- Entity hierarchy: serialiser round-trip ---
+  {
+    auto src = std::make_shared<Hamster::Scene>(app.GetEventDispatcher().get(), &app);
+    Hamster::UUID a = src->CreateEntity();
+    Hamster::UUID b = src->CreateEntity();
+    Hamster::UUID c = src->CreateEntity();
+    src->SetParent(b, a);
+    src->SetParent(c, b);
+
+    std::filesystem::path tmpFile =
+        std::filesystem::temp_directory_path() / "hamster_smoke_hier.scene";
+    {
+      std::ofstream out(tmpFile, std::ios::binary);
+      Hamster::SceneSerialiser writer(src, app.GetAssetManager());
+      writer.Serialise(out);
+    }
+
+    auto dst = std::make_shared<Hamster::Scene>(app.GetEventDispatcher().get(), &app);
+    {
+      std::ifstream in(tmpFile, std::ios::binary);
+      Hamster::SceneSerialiser reader(dst, app.GetAssetManager());
+      reader.Deserialise(in);
+    }
+    std::filesystem::remove(tmpFile);
+
+    if (dst->GetParent(b) != a || dst->GetParent(c) != b) {
+      std::cerr << "FAIL: hierarchy did not survive serialise round-trip"
+                << std::endl;
+      return 1;
+    }
+    auto &kids = dst->GetChildren(a);
+    if (kids.size() != 1 || kids[0] != b) {
+      std::cerr << "FAIL: round-tripped children list wrong" << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: hierarchy survives serialise round-trip" << std::endl;
+  }
 
   return 0;
 }

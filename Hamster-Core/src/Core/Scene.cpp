@@ -6,6 +6,7 @@
 
 #include "Scene.h"
 
+#include <algorithm>
 #include <box2d/box2d.h>
 #include <pybind11/pybind11.h>
 
@@ -55,6 +56,14 @@ UUID Scene::CreateEntity() {
   AddEntityComponent<Transform>(uuid);
   AddEntityComponent<Name>(uuid);
 
+  // New entities start at the top level. Append to root sibling vector.
+  auto &topLevel = m_ChildrenIndex[UUID::GetNil()];
+  Hierarchy h;
+  h.parent = UUID::GetNil();
+  h.siblingIndex = static_cast<uint32_t>(topLevel.size());
+  AddEntityComponent<Hierarchy>(uuid, h);
+  topLevel.push_back(uuid);
+
   return uuid;
 }
 
@@ -63,11 +72,137 @@ void Scene::CreateEntityWithUUID(UUID uuid) {
 
   m_Registry.emplace<ID>(entity, uuid);
   m_Entities[uuid] = entity;
+
+  // Default-add Hierarchy at top level. Serialiser may override
+  // siblingIndex/parent later when restoring a Hierarchy_ID record.
+  auto &topLevel = m_ChildrenIndex[UUID::GetNil()];
+  Hierarchy h;
+  h.parent = UUID::GetNil();
+  h.siblingIndex = static_cast<uint32_t>(topLevel.size());
+  AddEntityComponent<Hierarchy>(uuid, h);
+  topLevel.push_back(uuid);
 }
 
 void Scene::DestroyEntity(UUID entityUUID) {
-  m_Registry.destroy(m_Entities[entityUUID]);
-  m_Entities.erase(entityUUID);
+  if (m_Entities.find(entityUUID) == m_Entities.end()) return;
+
+  // Snapshot descendants in post-order (leaves first) so we never iterate
+  // m_ChildrenIndex while mutating it.
+  std::vector<UUID> destroyList;
+  std::vector<UUID> stack{entityUUID};
+  while (!stack.empty()) {
+    UUID cur = stack.back();
+    stack.pop_back();
+    destroyList.push_back(cur);
+    auto it = m_ChildrenIndex.find(cur);
+    if (it != m_ChildrenIndex.end()) {
+      for (UUID c : it->second) stack.push_back(c);
+    }
+  }
+  // destroyList currently has root-first order; reverse for leaves-first.
+  std::reverse(destroyList.begin(), destroyList.end());
+
+  // Detach the top-level destroy target from its parent's children list.
+  if (EntityHasComponent<Hierarchy>(entityUUID)) {
+    UUID p = GetEntityComponent<Hierarchy>(entityUUID).parent;
+    auto &siblings = m_ChildrenIndex[p];
+    siblings.erase(std::remove(siblings.begin(), siblings.end(), entityUUID),
+                   siblings.end());
+    for (uint32_t i = 0; i < siblings.size(); i++) {
+      GetEntityComponent<Hierarchy>(siblings[i]).siblingIndex = i;
+    }
+  }
+
+  for (UUID u : destroyList) {
+    auto it = m_Entities.find(u);
+    if (it == m_Entities.end()) continue;
+    m_Registry.destroy(it->second);
+    m_Entities.erase(it);
+    m_ChildrenIndex.erase(u);
+  }
+}
+
+bool Scene::SetParent(UUID child, UUID newParent) {
+  if (m_Entities.find(child) == m_Entities.end()) return false;
+  if (child == newParent) return false;
+  if (!UUID::IsNil(newParent) && m_Entities.find(newParent) == m_Entities.end())
+    return false;
+
+  // Cycle check: walk newParent's ancestors; if `child` appears, refuse.
+  UUID walker = newParent;
+  while (!UUID::IsNil(walker)) {
+    if (walker == child) return false;
+    if (!EntityHasComponent<Hierarchy>(walker)) break;
+    walker = GetEntityComponent<Hierarchy>(walker).parent;
+  }
+
+  auto &childH = GetEntityComponent<Hierarchy>(child);
+  UUID oldParent = childH.parent;
+  if (oldParent == newParent) return true; // no-op
+
+  // Remove from old parent's children list.
+  auto &oldSiblings = m_ChildrenIndex[oldParent];
+  oldSiblings.erase(std::remove(oldSiblings.begin(), oldSiblings.end(), child),
+                    oldSiblings.end());
+  for (uint32_t i = 0; i < oldSiblings.size(); i++) {
+    GetEntityComponent<Hierarchy>(oldSiblings[i]).siblingIndex = i;
+  }
+
+  // Append under new parent.
+  auto &newSiblings = m_ChildrenIndex[newParent];
+  childH.parent = newParent;
+  childH.siblingIndex = static_cast<uint32_t>(newSiblings.size());
+  newSiblings.push_back(child);
+  return true;
+}
+
+UUID Scene::GetParent(UUID uuid) {
+  if (m_Entities.find(uuid) == m_Entities.end()) return UUID::GetNil();
+  if (!EntityHasComponent<Hierarchy>(uuid)) return UUID::GetNil();
+  return GetEntityComponent<Hierarchy>(uuid).parent;
+}
+
+const std::vector<UUID> &Scene::GetChildren(UUID parent) {
+  return m_ChildrenIndex[parent];
+}
+
+void Scene::RebuildHierarchyIndex() {
+  m_ChildrenIndex.clear();
+
+  // Bucket entities under their parent UUID, recording each child's
+  // serialised siblingIndex alongside it for the per-bucket sort.
+  std::unordered_map<UUID, std::vector<std::pair<uint32_t, UUID>>> tmp;
+  auto view = m_Registry.view<Hierarchy, ID>();
+  view.each([&](auto &h, auto &id) {
+    tmp[h.parent].emplace_back(h.siblingIndex, id.uuid);
+  });
+
+  for (auto &[parent, kids] : tmp) {
+    std::sort(kids.begin(), kids.end(),
+              [](const auto &a, const auto &b) { return a.first < b.first; });
+    auto &out = m_ChildrenIndex[parent];
+    out.reserve(kids.size());
+    for (uint32_t i = 0; i < kids.size(); i++) {
+      out.push_back(kids[i].second);
+      // Renumber to contiguous 0..n-1 in case the saved indices had gaps.
+      GetEntityComponent<Hierarchy>(kids[i].second).siblingIndex = i;
+    }
+  }
+}
+
+void Scene::ReorderSibling(UUID uuid, uint32_t newIndex) {
+  if (m_Entities.find(uuid) == m_Entities.end()) return;
+  if (!EntityHasComponent<Hierarchy>(uuid)) return;
+  UUID parent = GetEntityComponent<Hierarchy>(uuid).parent;
+  auto &siblings = m_ChildrenIndex[parent];
+  auto it = std::find(siblings.begin(), siblings.end(), uuid);
+  if (it == siblings.end()) return;
+  siblings.erase(it);
+  if (newIndex > siblings.size()) newIndex = static_cast<uint32_t>(siblings.size());
+  siblings.insert(siblings.begin() + newIndex, uuid);
+  for (uint32_t i = 0; i < siblings.size(); i++) {
+    GetEntityComponent<Hierarchy>(siblings[i]).siblingIndex = i;
+  }
 }
 
 UUID Scene::CreateEntityRuntime(const std::string &name, const Transform &transform) {

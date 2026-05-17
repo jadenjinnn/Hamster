@@ -48,11 +48,25 @@ void HamsterBehaviourBinding(pybind11::module_ m) {
       .def("set_velocity", &Hamster::HamsterBehaviour::SetVelocity)
       .def("create_entity", [](Hamster::HamsterBehaviour &self,
                                 const std::string &name,
-                                const Hamster::Transform &transform) {
+                                const Hamster::Transform &transform,
+                                pybind11::object parent_obj) {
           Hamster::UUID uuid = self.CreateEntityRuntime(name, transform);
+          if (!parent_obj.is_none() && !Hamster::UUID::IsNil(uuid)) {
+            Hamster::UUID parent = parent_obj.cast<Hamster::UUID>();
+            if (!self.GetScene()->SetParent(uuid, parent)) {
+              throw std::invalid_argument(
+                  "create_entity: parent UUID invalid or would create cycle");
+            }
+          }
           return EntityHandle{uuid, self.GetScene()};
-      })
+      },
+      pybind11::arg("name"), pybind11::arg("transform"),
+      pybind11::arg("parent") = pybind11::none())
       .def("destroy_entity", &Hamster::HamsterBehaviour::DestroyEntityRuntime)
+      .def_property_readonly("uuid", &Hamster::HamsterBehaviour::GetUUID)
+      .def_property_readonly("parent", &Hamster::HamsterBehaviour::GetParent)
+      .def_property_readonly("children", &Hamster::HamsterBehaviour::GetChildren)
+      .def("set_parent", &Hamster::HamsterBehaviour::SetParent)
       .def("animate", [](Hamster::HamsterBehaviour &self,
                          const std::string &name, pybind11::object loop_obj) {
           if (loop_obj.is_none()) {

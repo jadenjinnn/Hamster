@@ -38,6 +38,20 @@ public:
   void FlushDestroyQueue();
   void CreatePendingBodies();
 
+  // Hierarchy. parent == UUID::GetNil() means top-level.
+  // SetParent returns false on self-parent, cycle, or unknown UUIDs.
+  bool SetParent(UUID child, UUID newParent);
+  UUID GetParent(UUID uuid);
+  const std::vector<UUID> &GetChildren(UUID parent);
+  const std::vector<UUID> &GetTopLevelEntities() { return m_ChildrenIndex[UUID::GetNil()]; }
+  // Move `uuid` to a new position among its siblings (clamped to valid range).
+  void ReorderSibling(UUID uuid, uint32_t newIndex);
+
+  // Reconstruct m_ChildrenIndex from the Hierarchy components on every entity.
+  // Called by SceneSerialiser after all entities have been deserialised so
+  // parent UUIDs referencing entities appearing later in the file resolve.
+  void RebuildHierarchyIndex();
+
   entt::entity &GetEntity(UUID entityUUID) { return m_Entities[entityUUID]; }
 
   UUID GetEntityUUID(entt::entity entity) {
@@ -145,6 +159,12 @@ private:
 
   std::vector<UUID> m_DestroyQueue;
   std::vector<UUID> m_PendingBodies;
+
+  // Reverse-index for the hierarchy tree. m_ChildrenIndex[parent] holds the
+  // children of `parent` in sibling order. Top-level entities live under
+  // UUID::GetNil(). Kept in sync with Hierarchy components by Scene's
+  // create/destroy/SetParent/Reorder paths — no external mutators.
+  std::unordered_map<UUID, std::vector<UUID>> m_ChildrenIndex;
 
   std::shared_ptr<Logger> m_ClientLogger;
 

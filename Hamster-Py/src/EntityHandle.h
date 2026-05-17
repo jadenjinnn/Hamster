@@ -33,10 +33,22 @@ struct EntityHandle {
       throw py::type_error("Unknown component type");
     }
   }
+
+  Hamster::UUID GetParent() const { return scene->GetParent(uuid); }
+  std::vector<Hamster::UUID> GetChildren() const { return scene->GetChildren(uuid); }
+  void SetParent(Hamster::UUID newParent) {
+    if (!scene->SetParent(uuid, newParent)) {
+      throw py::value_error(
+          "set_parent failed: cycle, self-parent, or unknown UUID");
+    }
+  }
 };
 
 void EntityHandleBinding(py::module_ &m) {
   py::class_<EntityHandle>(m, "EntityHandle")
       .def_readonly("uuid", &EntityHandle::uuid)
-      .def("add_component", &EntityHandle::AddComponent);
+      .def("add_component", &EntityHandle::AddComponent)
+      .def_property_readonly("parent", &EntityHandle::GetParent)
+      .def_property_readonly("children", &EntityHandle::GetChildren)
+      .def("set_parent", &EntityHandle::SetParent);
 }

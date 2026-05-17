@@ -159,4 +159,19 @@ void HamsterBehaviour::OnCollision(CollisionEvent &e) {
   }
 }
 
+UUID HamsterBehaviour::GetParent() const {
+  return m_Scene->GetParent(m_UUID);
+}
+
+std::vector<UUID> HamsterBehaviour::GetChildren() const {
+  return m_Scene->GetChildren(m_UUID);
+}
+
+void HamsterBehaviour::SetParent(UUID newParent) {
+  if (!m_Scene->SetParent(m_UUID, newParent)) {
+    throw std::invalid_argument(
+        "set_parent failed: cycle, self-parent, or unknown UUID");
+  }
+}
+
 } // namespace Hamster

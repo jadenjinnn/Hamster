@@ -71,6 +71,13 @@ public:
   UUID CreateEntityRuntime(const std::string &name, const Transform &transform);
   void DestroyEntityRuntime(UUID uuid);
 
+  // Hierarchy helpers. SetParent raises std::invalid_argument on cycle / not-found
+  // so the Python binding can re-raise as ValueError.
+  UUID GetUUID() const { return m_UUID; }
+  UUID GetParent() const;
+  std::vector<UUID> GetChildren() const;
+  void SetParent(UUID newParent);
+
   std::shared_ptr<Scene> GetScene() const { return m_Scene; }
 
 private:

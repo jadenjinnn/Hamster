@@ -23,7 +23,8 @@ enum ComponentID {
   ID_ID = 5,
   Behaviour_ID,
   Collider_ID = 7,
-  Animation_ID = 8
+  Animation_ID = 8,
+  Hierarchy_ID = 9
 };
 
 // Transform component holding all needed transforms, ntities wanting to be
@@ -107,6 +108,14 @@ struct Animation {
   bool runtimeLoop = true;
   std::shared_ptr<Texture> originalTexture = nullptr;
   std::vector<std::string> completedAnimations;
+};
+
+// Parent/child organisational relationship. parent == nil means top-level.
+// siblingIndex is the entity's order among entities sharing the same parent.
+// Pure organisational — no transform inheritance. See entity-hierarchy feature spec.
+struct Hierarchy {
+  UUID parent = UUID::GetNil();
+  uint32_t siblingIndex = 0;
 };
 
 // Stores a map of scripts and a vector of classes that derive HamsterBehaviour

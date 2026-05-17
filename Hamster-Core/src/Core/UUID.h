@@ -25,6 +25,9 @@ public:
   [[nodiscard]] static bool IsNil(UUID uuid) { return uuid.GetUUID().is_nil(); }
   [[nodiscard]] static UUID GetNil() { return {boost::uuids::nil_uuid()}; }
 
+  bool operator==(const UUID &other) const { return m_UUID == other.m_UUID; }
+  bool operator!=(const UUID &other) const { return !(*this == other); }
+
   static void Serialise(std::ostream &out, const UUID &uuid);
 
   static UUID Deserialise(std::istream &in);
