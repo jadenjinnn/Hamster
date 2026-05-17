@@ -66,6 +66,8 @@ set(Utils
         src/Utils/AssetManager.cpp src/Utils/AssetManager.h
 
         src/Utils/InputManager.cpp src/Utils/InputManager.h
+
+        src/Utils/MetaFile.cpp src/Utils/MetaFile.h
 )
 
 

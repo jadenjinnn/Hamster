@@ -52,6 +52,13 @@ namespace Hamster {
 
         UUID AddDefaultScript();
 
+        // Walks the project directory for .py files. For each, reads its
+        // sibling .py.meta to recover the persisted UUID; mints a fresh UUID
+        // and writes a new sidecar when the .meta is missing. Orphan .py.meta
+        // files (whose paired .py is gone) are removed. Idempotent — safe to
+        // call on a fresh or partially-migrated project.
+        void LoadProjectScripts(const std::filesystem::path &projectDir);
+
         void RemoveTexture(UUID uuid);
         void RemoveScript(UUID uuid);
 

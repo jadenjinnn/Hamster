@@ -16,18 +16,25 @@
 #include "Core/Project.h"
 #include "Scripting/HamsterScript.h"
 #include "Utils/AssetManager.h"
+#include "Utils/MetaFile.h"
 
 namespace Hamster {
     std::filesystem::path Scripting::GenerateDefaultScript(UUID *uuidVal) {
         UUID scriptUUID;
 
-        std::string fileName = "Untitled_Script_" + scriptUUID.GetUUIDString();
-
-        std::filesystem::path scriptPath =
-                Project::GetCurrentProject()->GetConfig().ProjectDirectory /
-                (fileName + ".py");
-
-        // Init();
+        // Pick a human-friendly filename, bumping a numeric suffix until the
+        // path is free. Identity now lives in the sidecar — no UUID baked into
+        // the filename. Sidecar uniqueness is implied by filename uniqueness.
+        const std::filesystem::path projectDir =
+                Project::GetCurrentProject()->GetConfig().ProjectDirectory;
+        std::filesystem::path scriptPath = projectDir / "Untitled_Script.py";
+        for (int suffix = 1;
+             std::filesystem::exists(scriptPath) ||
+             std::filesystem::exists(MetaFile::SidecarPath(scriptPath));
+             ++suffix) {
+            scriptPath = projectDir /
+                         ("Untitled_Script_" + std::to_string(suffix) + ".py");
+        }
 
         std::ofstream scriptOut(scriptPath);
 
@@ -39,6 +46,8 @@ namespace Hamster {
         scriptOut << defaultContent;
 
         scriptOut.close();
+
+        MetaFile::Write(scriptPath, scriptUUID);
 
         if (uuidVal != nullptr) {
             *uuidVal = scriptUUID;

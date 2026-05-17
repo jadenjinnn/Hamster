@@ -125,6 +125,12 @@ namespace Hamster {
 
         projectFile.close();
 
+        // Script identity now lives in .py.meta sidecars next to each script.
+        // Reconcile them after the project blob is loaded (which fills in
+        // textures + animations) and before scene deserialisation (which
+        // resolves script UUIDs referenced by Behaviour components).
+        assetManager->LoadProjectScripts(config.ProjectDirectory);
+
         auto scene = std::make_shared<Scene>(app->GetEventDispatcher().get(), app);
         SceneSerialiser sceneSerialiser(scene, assetManager);
         std::ifstream sceneIn(config.StartScenePath, std::ios::binary);

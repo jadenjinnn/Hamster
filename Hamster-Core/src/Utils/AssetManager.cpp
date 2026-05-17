@@ -8,6 +8,7 @@
 
 #include "Core/Project.h"
 #include "Scripting/Scripting.h"
+#include "Utils/MetaFile.h"
 
 namespace Hamster {
     AssetManager::AssetManager(MainThreadEnqueue enqueue)
@@ -160,10 +161,63 @@ namespace Hamster {
                 std::make_shared<HamsterScript>(scriptPath, scriptPath.stem().string());
 
         script->SetUUID(scriptUUID);
+        script->SetName(scriptPath.stem().string());
 
         m_Scripts.emplace(scriptUUID, script);
 
         return scriptUUID;
+    }
+
+    void AssetManager::LoadProjectScripts(const std::filesystem::path &projectDir) {
+        if (!std::filesystem::exists(projectDir) ||
+            !std::filesystem::is_directory(projectDir)) {
+            return;
+        }
+
+        // Pass 1: walk for .py files; register each with its sidecar UUID
+        // (minting one + writing the sidecar if it's absent).
+        for (auto const &entry :
+             std::filesystem::directory_iterator(projectDir)) {
+            if (!entry.is_regular_file()) continue;
+            const auto &path = entry.path();
+            if (path.extension() != ".py") continue;
+
+            std::optional<UUID> persisted = MetaFile::Read(path);
+            UUID uuid;
+            if (persisted.has_value()) {
+                uuid = persisted.value();
+            } else {
+                MetaFile::Write(path, uuid);
+            }
+
+            const std::string stem = path.stem().string();
+
+            std::shared_ptr<HamsterScript> script =
+                    std::make_shared<HamsterScript>(path, stem);
+            script->SetUUID(uuid);
+            script->SetName(stem);
+
+            m_Scripts.emplace(uuid, script);
+        }
+
+        // Pass 2: delete orphan .py.meta files (paired .py is gone). Keeping
+        // these around would let stale UUIDs come back to life next session.
+        for (auto const &entry :
+             std::filesystem::directory_iterator(projectDir)) {
+            if (!entry.is_regular_file()) continue;
+            const auto &path = entry.path();
+            if (path.extension() != ".meta") continue;
+
+            // Sidecars are "<asset>.<ext>.meta" — strip ".meta" then check the
+            // remaining path. We only own .py sidecars in Phase 1.
+            std::filesystem::path paired = path;
+            paired.replace_extension(); // drops ".meta"
+            if (paired.extension() != ".py") continue;
+            if (std::filesystem::exists(paired)) continue;
+
+            std::error_code ec;
+            std::filesystem::remove(path, ec);
+        }
     }
 
     void AssetManager::RemoveTexture(UUID uuid) {
@@ -296,37 +350,10 @@ namespace Hamster {
             out.write(textureNameStr.data(), textureNameLength);
         }
 
-        uint32_t scriptCount = m_Scripts.size();
-
-        out.write(reinterpret_cast<const char *>(&scriptCount), sizeof(scriptCount));
-
-        for (auto const &[uuid, script]: m_Scripts) {
-            std::cout << "Serialising script with uuid: " << uuid.GetUUID()
-                    << std::endl;
-
-            UUID::Serialise(out, uuid);
-
-            std::string scriptPathStr = script->GetScriptPath().string();
-            std::size_t scriptPathLength = scriptPathStr.size();
-
-            out.write(reinterpret_cast<const char *>(&scriptPathLength),
-                      sizeof(scriptPathLength));
-            out.write(scriptPathStr.data(), scriptPathLength);
-
-            std::string scriptNameStr = script->GetName();
-            std::size_t scriptNameLength = scriptNameStr.size();
-            out.write(reinterpret_cast<const char *>(&scriptNameLength),
-                      sizeof(scriptNameLength));
-
-            out.write(scriptNameStr.data(), scriptNameLength);
-
-            std::string fileNameStr = script->GetFileName();
-            std::size_t fileNameStrLength = fileNameStr.size();
-
-            out.write(reinterpret_cast<const char *>(&fileNameStrLength),
-                      sizeof(fileNameStrLength));
-            out.write(fileNameStr.data(), fileNameStrLength);
-        }
+        // Scripts are persisted via .py.meta sidecars next to each .py file
+        // (see MetaFile + LoadProjectScripts). They are deliberately not
+        // written into the project blob — sidecars are the authoritative
+        // source of script identity from Phase 1 of the asset-sidecars feature.
 
         uint32_t animCount = static_cast<uint32_t>(m_Animations.size());
         out.write(reinterpret_cast<const char *>(&animCount), sizeof(animCount));
@@ -372,39 +399,8 @@ namespace Hamster {
             AddTexture(uuid, texturePathStr, textureNameStr);
         }
 
-        uint32_t scriptCount;
-        in.read(reinterpret_cast<char *>(&scriptCount), sizeof(scriptCount));
-
-        for (uint32_t i = 0; i < scriptCount; i++) {
-            UUID uuid = UUID::Deserialise(in);
-
-            std::cout << "Deserialising script with uuid " << uuid.GetUUIDString()
-                    << std::endl;
-
-            std::size_t scriptPathLength;
-            in.read(reinterpret_cast<char *>(&scriptPathLength),
-                    sizeof(scriptPathLength));
-
-            std::string scriptPathStr(scriptPathLength, '\0');
-            in.read(scriptPathStr.data(), scriptPathLength);
-
-            std::size_t scriptNameLength;
-            in.read(reinterpret_cast<char *>(&scriptNameLength),
-                    sizeof(scriptNameLength));
-
-            std::string scriptNameStr(scriptNameLength, '\0');
-            in.read(scriptNameStr.data(), scriptNameLength);
-
-            std::filesystem::path path(scriptPathStr);
-
-            std::size_t fileNameLength;
-            in.read(reinterpret_cast<char *>(&fileNameLength), sizeof(fileNameLength));
-
-            std::string fileNameStr(fileNameLength, '\0');
-            in.read(fileNameStr.data(), fileNameLength);
-
-            AddScript(uuid, path, fileNameStr, scriptNameStr);
-        }
+        // Scripts come from sidecars now — see LoadProjectScripts. The blob
+        // no longer carries them.
 
         uint32_t animCount;
         if (in.read(reinterpret_cast<char *>(&animCount), sizeof(animCount))) {
