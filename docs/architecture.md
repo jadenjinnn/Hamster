@@ -21,7 +21,7 @@ Hamster is a Windows-targeted 2D game engine with an embedded Python scripting l
 - `Hamster-Core/src/Physics/` — gutted; Box2D 3.x replaces the old custom AABB system. Physics world lifecycle and stepping live in `Scene`.
 - `Hamster-Core/src/Scripting/` — `Scripting` (interpreter lifecycle, default script generation), `HamsterBehaviour` (C++ base class Python scripts inherit from), `HamsterScript` (Python module loader + class scanner)
 - `Hamster-Core/src/Gui/` — `ImGuiLayer` (begin/end frame wrapper), `Panel` + `Modal` base classes
-- `Hamster-Core/src/Utils/` — `AssetManager` (textures, scripts, and animations — UUID-keyed, instance owned by Application; `.hanim` file I/O), `InputManager` (GLFW key polling)
+- `Hamster-Core/src/Utils/` — `AssetManager` (textures, scripts, and animations — UUID-keyed, instance owned by Application; `.hanim` file I/O; reconciles UUIDs against `.meta` sidecars on project open), `InputManager` (GLFW key polling), `MetaFile` (sidecar JSON I/O — `{uuid}` per asset), `ProjectWatcher` (Win32 `ReadDirectoryChangesW` worker thread that posts add/remove/rename events back to AssetManager on the main thread)
 - `Hamster-Py/src/` — pybind11 bindings: `main.cpp` (module entry point), `HamsterBehaviour.h` (trampoline + binding), `EntityHandle.h` (runtime entity handle with `add_component`), `Components.h` (Transform/Sprite/Rigidbody/BodyType/ColliderShape bindings), `Library.h` (vec2/vec3), `Core.h` (Scene/Application/EventDispatcher — opaque), `Input.h` (KeyCodes enum), `UUID.h`, `Log.h`
 - `Hamster-Wheel/src/` — `main.cpp` (entry — borderless WindowProps, ProjectRegistry-driven default project, single `EditorLayer` pushed), `EditorLayer` (custom title bar, layout math, entity picking + drag + context menus, scene viewport blit), `ProjectRegistry` (persistent JSON project list at `%APPDATA%/Hamster/projects.json`), `Theme` + `Panel` (palette / fonts / panel chrome helpers — `DrawHeader`, `DrawTabbedHeader`, `BeginContent`/`EndContent`)
 - `Hamster-Wheel/src/Components/` — reusable UI helpers (`HButton`, `HToolbarButton`, `HCombo`, `HDragFloat`, `HCheckbox`, `SectionHeader`, `SectionSeparator`, `AxisDotInput`) consumed by every panel
@@ -89,6 +89,18 @@ C++ drives Python (not the reverse). Engine calls `on_create` once and `on_updat
 ### Python module deployment
 
 The pybind11 module is compiled as `Hamster.pyd` (Windows) / `Hamster.so` (Linux). On project creation, `ProjectCreator` copies the `.pyd` from `Resources/Packages/` into the project directory. `Scripting::AddPathToPy` adds the project directory to `sys.path` on `ProjectOpened`, so `import Hamster` resolves to the `.pyd` in the project folder.
+
+User scripts in subdirectories use Python's dotted module convention — `enemies/boss.py` is imported as `enemies.boss` via namespace package resolution (no `__init__.py` required, Python 3.3+). `AssetManager::LoadProjectScripts` derives the dotted name from each script's project-relative path and passes it to `HamsterScript`'s ctor as the import target.
+
+### Asset identity (sidecars)
+
+Scripts and textures persist their UUID in a sibling `.meta` file (`player.py` ⇄ `player.py.meta`, JSON: `{"uuid":"..."}`). The sidecar is the authoritative identity record and travels with the asset across renames. The project blob in `.hamproj` stores asset paths + display names but never UUIDs — UUIDs come from sidecars on load.
+
+`.hanim` files do NOT get sidecars (the format is self-identifying — UUID lives inside the file).
+
+On project open, `AssetManager::LoadProjectScripts` recursively walks the project dir for `.py` files (adopting `.meta` UUIDs or minting + writing new ones) and cleans orphan sidecars; `LoadProjectAnimations` walks `<projectDir>/Animations/` for `.hanim`. While the editor is open, `ProjectWatcher` (Win32 `ReadDirectoryChangesW`, `watchSubtree=TRUE`) posts add/remove/rename events back to `AssetManager::HandleFileEvents` on the main thread so external file changes show up live in the asset browser. Editor-initiated renames go through `AssetManager::RenameAsset` which moves both the asset and the `.meta` atomically and refuses same-folder name collisions.
+
+Behaviour components persist a `cachedNames` map (UUID → last-known script name) so the property editor can show "MISSING: `<cachedName>`" in red when a scene references a UUID with no registered script, with a "Reassign to" submenu listing currently loaded scripts. `Scene::RunSceneSimulation` refuses to start if any Behaviour holds a missing-script reference, logging the entity name + cached script name to the client logger.
 
 ### Threading
 
@@ -159,7 +171,7 @@ See `docs/build.md` for the full build recipe (populated in Phase 2). Shape:
 - ~~**Application singleton coupling**~~ Fixed in Phase 5: Scene, Project, Panel, ImGuiLayer, Scripting, AssetManager, EditorLayer, and ProjectHubLayer all receive dependencies (EventDispatcher*, Application*, GLFWwindow*) through constructors instead of calling `Application::GetApplicationInstance()`. Zero singleton calls remain in Hamster-Core; only 2 remain in Hamster-Wheel (ProjectCreator/ProjectSelector passing `&app` to Project methods). `HAMSTER_LOG` macro removed; replaced with direct `m_ClientLogger->Log()` calls.
 - ~~**`AssetManager` is all-static**~~ Fixed: converted to an instance class owned by `Application` as `std::unique_ptr<AssetManager>`. RAII constructor/destructor replaced `Init()`/`Terminate()` (fixing a bug where `Terminate` didn't clear `m_Scripts`). Mutex removed — all writes happen on main thread. All call sites receive `AssetManager*` through constructors.
 - ~~**`Renderer` is all-static**~~ Fixed: converted to an instance class owned by `Application` as `std::unique_ptr<Renderer>`. Constructor replaces `Init()`, empty `Terminate()` removed. All call sites receive `Renderer*` through `Application::GetRenderer()` or constructor injection.
-- **Serialization is raw binary and not portable** (`SceneSerialiser`, `ProjectSerialiser`, `AssetManager::Serialise`) — uses `reinterpret_cast` of structs, `size_t`-prefixed strings. Will break across Windows↔Linux or 32-vs-64-bit. Consider switching to a portable format (JSON, MessagePack, or versioned binary) before scene data accumulates.
+- **Serialization is raw binary and not portable** (`SceneSerialiser`, `ProjectSerialiser`, `AssetManager::Serialise`) — uses `reinterpret_cast` of structs, `size_t`-prefixed strings. Will break across Windows↔Linux or 32-vs-64-bit. Consider switching to a portable format (JSON, MessagePack, or versioned binary) before scene data accumulates. Note: per-asset `.meta` sidecars now use JSON for a single field; they're the entry point if/when this refactor lands.
 - ~~**`HAMSTER_WHEEL_SRC_DIR` bakes the source path**~~ Fixed: all resource paths now use `GetExecutablePath()` relative to the build output. `HAMSTER_WHEEL_SRC_DIR` macro removed.
 - ~~**Build artifacts committed to git**~~ Fixed: untracked and added to `.gitignore`.
 - ~~**`Hamster-Py` STATIC target is dead**~~ Fixed: removed from `Hamster-Py/CMakeLists.txt`.

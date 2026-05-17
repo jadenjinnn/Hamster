@@ -1,8 +1,9 @@
 # Feature spec: asset-sidecars
 
 > Tier: **Full spec**
-> Status: **approved**
+> Status: **shipped**
 > Started: 2026-05-17
+> Shipped: 2026-05-17
 > Spec author: Jaden
 
 ---

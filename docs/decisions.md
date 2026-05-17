@@ -25,3 +25,19 @@ The engine's `ImGuiLayer::Begin/End` does not clear the default framebuffer. Wit
 ## Application accepts WindowProps in its constructor (2026-05-15)
 
 Added `Application::Application(const WindowProps &props)` so the prototype-rooted editor can request a borderless window (`GLFW_DECORATED=GLFW_FALSE`) needed for the custom title bar. The default constructor delegates to it with default props, preserving existing behaviour for callers that don't pass a WindowProps. `WindowProps` gained a `borderless` field; if true, `Window`'s constructor sets the `GLFW_DECORATED` hint to `GLFW_FALSE` before `glfwCreateWindow`.
+
+## Asset identity uses Unity-style per-file `.meta` sidecars; self-describing formats skip them (2026-05-17)
+
+Every script (`.py`) and texture (`.png`, `.jpg`) gets a sibling `.meta` file (e.g. `player.py` ⇄ `player.py.meta`) holding the asset's UUID in tiny hand-rolled JSON. The sidecar is the **authoritative** identity record — it travels next to the file across renames and even across project copies. The project blob keeps a list of asset paths + display names, never UUIDs. Sidecars live wherever the asset file is, not in the project dir (textures imported from `C:/Users/Jaden/Downloads/` get their `.meta` written there).
+
+`.hanim` files are **excluded** from sidecars: the format already stores `{uuid, name, keyframes}` internally, so the file is its own metadata. Sidecars only apply to formats that don't have their own identity carrier. Same pattern Unity uses for `.prefab` (self-identifying) vs `.png` (sidecar).
+
+Rationale for per-file sidecars over a single project-wide manifest: cleaner git diffs (one file changes when one asset changes), no merge conflicts when two contributors add assets on the same branch, survives partial moves and reorganisations. Cost is `.meta` clutter in the file tree, mitigated by hiding them from the asset browser.
+
+## File watcher is Win32-only and watches the project subtree (2026-05-17)
+
+`ProjectWatcher` wraps `ReadDirectoryChangesW` with `watchSubtree=TRUE`. On non-Win32 builds the worker thread is a no-op — consistent with the editor's other Win32-only chrome (Aero Snap subclass, title bar drag). External assets (textures in `Downloads/`) are not watched live; sloppy external renames of those are reconciled on the next project open via the missing-asset UI rather than via the watcher.
+
+## Application destructor finalizes Python LAST, after all pybind-holding members (2026-05-17)
+
+`Scripting::FinaliseInterpreter()` is called as the LAST line of `Application::~Application`'s body, after explicit `m_Scenes.clear()` and `m_AssetManager.reset()`. Anything that holds `pybind11::object` / `pybind11::module_` / `pybind11::handle` must be released before `Py_Finalize` — otherwise the implicit member destruction at the end of the destructor decrefs Python objects on a dead interpreter (UB, crashes in practice). General rule: high-level "shut everything down" calls run LAST, with state-holding members explicitly released just before. See bug 0007.
