@@ -420,5 +420,153 @@ int main() {
     std::cout << "PASS: hierarchy survives serialise round-trip" << std::endl;
   }
 
+  // ─── Asset sidecars: reconciliation + rename + missing detection ───
+  {
+    auto *am = app.GetAssetManager();
+
+    std::filesystem::path tmpProject =
+        std::filesystem::temp_directory_path() / "hamster_sidecar_smoke";
+    std::filesystem::remove_all(tmpProject);
+    std::filesystem::create_directories(tmpProject);
+
+    // Make the tmp project importable for HamsterScript's pybind11 import.
+    pybind11::list sysPath = pybind11::module_::import("sys").attr("path");
+    sysPath.append(tmpProject.string());
+
+    // Fixture: enemy.py + enemy.py.meta with a fixed UUID, plus player.py
+    // with no sidecar.
+    const std::string fixedUuidStr = "11111111-2222-3333-4444-555555555555";
+    {
+      std::ofstream out(tmpProject / "enemy.py");
+      out << "import Hamster\nclass Enemy(Hamster.HamsterBehaviour): pass\n";
+    }
+    {
+      std::ofstream out(tmpProject / "enemy.py.meta");
+      out << "{\"uuid\":\"" << fixedUuidStr << "\"}\n";
+    }
+    {
+      std::ofstream out(tmpProject / "player.py");
+      out << "import Hamster\nclass Player(Hamster.HamsterBehaviour): pass\n";
+    }
+
+    am->LoadProjectScripts(tmpProject);
+
+    // Sidecar reconciliation: enemy keeps its fixed UUID; player gets a fresh
+    // one and a new .py.meta is written next to it.
+    std::string mutableFixed = fixedUuidStr;
+    Hamster::UUID fixedUuid(mutableFixed);
+
+    auto fixedScript = am->GetScript(fixedUuid);
+    if (!fixedScript) {
+      std::cerr << "FAIL: sidecar UUID not adopted on load" << std::endl;
+      return 1;
+    }
+    if (!std::filesystem::exists(tmpProject / "player.py.meta")) {
+      std::cerr << "FAIL: sidecar not minted for unannotated .py" << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: sidecar reconciliation (adopt + mint)" << std::endl;
+
+    // Locate the player script's UUID for the rename test.
+    Hamster::UUID playerUuid = Hamster::UUID::GetNil();
+    for (auto const &[uuid, script] : am->GetScriptMap()) {
+      if (script->GetScriptPath() == (tmpProject / "player.py")) {
+        playerUuid = uuid;
+        break;
+      }
+    }
+    if (Hamster::UUID::IsNil(playerUuid)) {
+      std::cerr << "FAIL: player.py not registered" << std::endl;
+      return 1;
+    }
+
+    // Rename via API. Both the .py and the .meta should follow; the UUID
+    // must be preserved (so attachments would survive in a real scene).
+    if (!am->RenameAsset(playerUuid, "player_renamed.py")) {
+      std::cerr << "FAIL: rename refused unexpectedly" << std::endl;
+      return 1;
+    }
+    if (std::filesystem::exists(tmpProject / "player.py") ||
+        std::filesystem::exists(tmpProject / "player.py.meta")) {
+      std::cerr << "FAIL: old name still on disk after rename" << std::endl;
+      return 1;
+    }
+    if (!std::filesystem::exists(tmpProject / "player_renamed.py") ||
+        !std::filesystem::exists(tmpProject / "player_renamed.py.meta")) {
+      std::cerr << "FAIL: new name files missing after rename" << std::endl;
+      return 1;
+    }
+    if (!am->GetScript(playerUuid)) {
+      std::cerr << "FAIL: rename dropped the UUID from the asset manager"
+                << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: rename via API preserves UUID + moves sidecar"
+              << std::endl;
+
+    // Same-folder collision is refused.
+    if (am->RenameAsset(playerUuid, "enemy.py")) {
+      std::cerr << "FAIL: same-folder name collision was not refused"
+                << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: same-folder collision refused" << std::endl;
+
+    std::filesystem::remove_all(tmpProject);
+  }
+
+  // ─── Missing-script detection on scene load ───
+  {
+    auto *am = app.GetAssetManager();
+
+    auto missScene = std::make_shared<Hamster::Scene>(
+        app.GetEventDispatcher().get(), &app);
+    Hamster::UUID entId = missScene->CreateEntity();
+    missScene->AddEntityComponent<Hamster::Behaviour>(entId);
+
+    auto &beh = missScene->GetEntityComponent<Hamster::Behaviour>(entId);
+    Hamster::UUID phantomUuid; // freshly minted; AM has no script for it.
+    beh.scripts.emplace(phantomUuid, nullptr);
+    beh.cachedNames.emplace(phantomUuid, std::string("phantom_script"));
+
+    // Round-trip via SceneSerialiser to confirm cached names + null script
+    // entries survive serialise → deserialise.
+    std::filesystem::path missFile =
+        std::filesystem::temp_directory_path() / "hamster_miss_smoke.scene";
+    {
+      Hamster::SceneSerialiser sr(missScene, am);
+      std::ofstream out(missFile, std::ios::binary);
+      sr.Serialise(out);
+    }
+
+    auto loaded = std::make_shared<Hamster::Scene>(
+        app.GetEventDispatcher().get(), &app);
+    {
+      Hamster::SceneSerialiser sr(loaded, am);
+      std::ifstream in(missFile, std::ios::binary);
+      sr.Deserialise(in);
+    }
+    std::filesystem::remove(missFile);
+
+    bool ok = false;
+    auto view = loaded->GetRegistry().view<Hamster::Behaviour>();
+    view.each([&](auto &b) {
+      auto it = b.scripts.find(phantomUuid);
+      if (it == b.scripts.end()) return;
+      if (it->second != nullptr) return; // should be null
+      auto nameIt = b.cachedNames.find(phantomUuid);
+      if (nameIt == b.cachedNames.end()) return;
+      if (nameIt->second != "phantom_script") return;
+      ok = true;
+    });
+    if (!ok) {
+      std::cerr << "FAIL: missing script reference + cached name did not "
+                   "survive scene round-trip" << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: missing-script detection survives scene round-trip"
+              << std::endl;
+  }
+
   return 0;
 }

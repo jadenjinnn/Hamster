@@ -118,6 +118,14 @@ namespace Hamster {
         return texture;
     }
 
+    void AssetManager::AddTexture(UUID uuid, const std::string &texturePath,
+                                  const std::string &textureName) {
+        auto texture = std::make_shared<Texture>(texturePath.c_str());
+        texture->SetUUID(uuid);
+        texture->SetName(textureName);
+        m_Textures.emplace(uuid, texture);
+    }
+
     std::shared_ptr<Texture> AssetManager::GetTexture(UUID uuid) {
         return m_Textures.at(uuid);
     }
@@ -387,10 +395,15 @@ namespace Hamster {
 
             // Teach the in-memory script about its new location. Shared
             // pointers held by Behaviour components stay valid. The dotted
-            // module name reflects the new path so future ReloadScript calls
-            // import from the right place.
+            // module name reflects the new path so future ReloadScript
+            // calls import from the right place. Fall back to the file's
+            // parent dir as the "project root" when there is no active
+            // project (smoke-test setup), which makes the dotted module
+            // collapse to a plain stem.
+            auto curProj = Project::GetCurrentProject();
             const std::filesystem::path projectDir =
-                Project::GetCurrentProject()->GetConfig().ProjectDirectory;
+                curProj ? curProj->GetConfig().ProjectDirectory
+                        : newPath.parent_path();
             const std::string moduleName =
                 ModuleNameForScript(newPath, projectDir);
             script->SetScriptPath(newPath, moduleName);

@@ -27,6 +27,13 @@ namespace Hamster {
 
         std::shared_ptr<Texture> AddTextureAsync(const std::string &texturePath);
 
+        // Test-only helper: register a texture under a specific UUID and
+        // name without going through the sidecar reconciliation path. Used
+        // by the smoke test to set up dummy animation frames where the path
+        // is never actually loaded from disk.
+        void AddTexture(UUID uuid, const std::string &texturePath,
+                        const std::string &textureName);
+
         std::shared_ptr<Texture> GetTexture(UUID uuid);
 
         const std::unordered_map<UUID, std::shared_ptr<Texture> > &
