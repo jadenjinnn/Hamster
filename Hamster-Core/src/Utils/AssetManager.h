@@ -26,9 +26,6 @@ namespace Hamster {
 
         std::shared_ptr<Texture> AddTextureAsync(const std::string &texturePath);
 
-        void AddTexture(UUID uuid, const std::string &texturePath,
-                               const std::string &textureName);
-
         std::shared_ptr<Texture> GetTexture(UUID uuid);
 
         const std::unordered_map<UUID, std::shared_ptr<Texture> > &
@@ -58,6 +55,11 @@ namespace Hamster {
         // files (whose paired .py is gone) are removed. Idempotent — safe to
         // call on a fresh or partially-migrated project.
         void LoadProjectScripts(const std::filesystem::path &projectDir);
+
+        // Walks <projectDir>/Animations for .hanim files and loads each via
+        // LoadAnimationFile. .hanim files are self-identifying (UUID is
+        // stored inside the file), so no sidecar is needed for animations.
+        void LoadProjectAnimations(const std::filesystem::path &projectDir);
 
         void RemoveTexture(UUID uuid);
         void RemoveScript(UUID uuid);

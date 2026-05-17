@@ -329,7 +329,14 @@ File-watcher behaviour is **not** smoke-tested in v1: it's Win32-API-bound and a
 
 ## Decisions during implementation
 
-<!-- (filled during /implement) -->
+### 2026-05-17 — Animations don't get sidecars; .hanim is self-identifying
+
+`.hanim` files already contain the animation's UUID + name + keyframes (the format was designed that way before this feature). A sidecar for `.hanim` would duplicate the UUID and add nothing — renaming a `.hanim` doesn't change the internal UUID, so identity already survives renames. v1 therefore treats animations as self-identifying: on project open, `LoadProjectAnimations(projectDir)` walks the project's `Animations/` directory and `LoadAnimationFile`s each `.hanim`. The animations section is dropped from the project blob entirely. This is the same pattern Unity uses for `.prefab` (self-identifying) vs `.png` (sidecar).
+
+### 2026-05-17 — Texture names stay in the project blob, not in the sidecar
+
+The texture sidecar holds UUID only — texture names continue to live in the project blob alongside the path. Putting names in the sidecar would mean (a) extending the JSON schema and parser, and (b) writing names next to every imported texture file even when the file lives outside the project (e.g., a user-imported sprite from Downloads). Keeping names in the blob preserves per-project naming for default sprites ("Square" / "Triangle" / "Circle" — distinct from their `square.png` / `triangle.png` / `circle.png` filenames) without cluttering external folders. Sidecar carries only the persistent identity (UUID); the project carries everything else.
+
 
 ## Spec amendments
 

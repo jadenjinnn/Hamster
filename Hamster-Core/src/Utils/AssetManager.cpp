@@ -72,6 +72,17 @@ namespace Hamster {
 
         std::shared_ptr<Texture> texture = std::make_shared<Texture>();
 
+        // Reconcile UUID against sidecar BEFORE the texture goes in the map.
+        // If a .png.meta exists next to the file (e.g., the user re-imported
+        // a texture they'd added in another project), reuse that UUID so
+        // attachments in scenes survive the trip across projects. Otherwise,
+        // persist the freshly-generated UUID into a new sidecar.
+        if (auto persisted = MetaFile::Read(texturePath)) {
+            texture->SetUUID(*persisted);
+        } else {
+            MetaFile::Write(texturePath, texture->GetUUID());
+        }
+
         // Capture this to access m_Textures on main thread when the async load completes
         m_Enqueue(
             [this, futurePtr, texture]() mutable {
@@ -95,24 +106,16 @@ namespace Hamster {
         std::shared_ptr<Texture> texture =
                 std::make_shared<Texture>(texturePath.c_str());
 
+        // Same sidecar reconciliation as AddTextureAsync — see comment there.
+        if (auto persisted = MetaFile::Read(texturePath)) {
+            texture->SetUUID(*persisted);
+        } else {
+            MetaFile::Write(texturePath, texture->GetUUID());
+        }
+
         m_Textures.emplace(texture->GetUUID(), texture);
 
         return texture;
-    }
-
-    void AssetManager::AddTexture(UUID uuid, const std::string &texturePath,
-                                  const std::string &textureName) {
-        std::shared_ptr<Texture> texture =
-                std::make_shared<Texture>(texturePath.c_str());
-
-        texture->SetUUID(uuid);
-        texture->SetName(textureName);
-
-        m_Textures.emplace(uuid, texture);
-
-        for (const auto &[uuid, texture]: m_Textures) {
-            std::cout << uuid.GetUUID() << " here" << std::endl;
-        }
     }
 
     std::shared_ptr<Texture> AssetManager::GetTexture(UUID uuid) {
@@ -217,6 +220,24 @@ namespace Hamster {
 
             std::error_code ec;
             std::filesystem::remove(path, ec);
+        }
+    }
+
+    void AssetManager::LoadProjectAnimations(
+        const std::filesystem::path &projectDir) {
+        const std::filesystem::path animDir = projectDir / "Animations";
+        if (!std::filesystem::exists(animDir) ||
+            !std::filesystem::is_directory(animDir)) {
+            return;
+        }
+
+        for (auto const &entry : std::filesystem::directory_iterator(animDir)) {
+            if (!entry.is_regular_file()) continue;
+            if (entry.path().extension() != ".hanim") continue;
+
+            // .hanim files carry their own UUID + name + keyframes —
+            // LoadAnimationFile does the parsing and registers the result.
+            LoadAnimationFile(entry.path());
         }
     }
 
@@ -325,17 +346,14 @@ namespace Hamster {
     }
 
     void AssetManager::Serialise(std::ostream &out) {
+        // Per-texture: path + display name. UUID lives in the sidecar next
+        // to the file on disk (see AddTexture / AddTextureAsync).
         uint32_t textureCount = m_Textures.size();
 
         out.write(reinterpret_cast<const char *>(&textureCount),
                   sizeof(textureCount));
 
         for (auto const &[uuid, texture]: m_Textures) {
-            std::cout << "Serialising texture with uuid: " << uuid.GetUUID()
-                    << std::endl;
-
-            UUID::Serialise(out, uuid);
-
             std::string texturePathStr = texture->GetTexturePath();
 
             std::size_t texturePathLength = texturePathStr.size();
@@ -355,24 +373,9 @@ namespace Hamster {
         // written into the project blob — sidecars are the authoritative
         // source of script identity from Phase 1 of the asset-sidecars feature.
 
-        uint32_t animCount = static_cast<uint32_t>(m_Animations.size());
-        out.write(reinterpret_cast<const char *>(&animCount), sizeof(animCount));
-
-        for (auto const &[uuid, anim] : m_Animations) {
-            UUID::Serialise(out, uuid);
-
-            std::size_t nameLen = anim->name.size();
-            out.write(reinterpret_cast<const char *>(&nameLen), sizeof(nameLen));
-            out.write(anim->name.data(), nameLen);
-
-            uint32_t kfCount = static_cast<uint32_t>(anim->keyframes.size());
-            out.write(reinterpret_cast<const char *>(&kfCount), sizeof(kfCount));
-
-            for (auto &kf : anim->keyframes) {
-                out.write(reinterpret_cast<const char *>(&kf.time), sizeof(kf.time));
-                UUID::Serialise(out, kf.textureUUID);
-            }
-        }
+        // Animations are persisted as .hanim files inside <project>/Animations
+        // (the .hanim already carries UUID + name + keyframes, so it is its
+        // own metadata). LoadProjectAnimations walks the directory on open.
     }
 
     void AssetManager::Deserialise(std::istream &in, const ProjectConfig &config) {
@@ -380,8 +383,6 @@ namespace Hamster {
         in.read(reinterpret_cast<char *>(&textureCount), sizeof(textureCount));
 
         for (uint32_t i = 0; i < textureCount; i++) {
-            UUID uuid = UUID::Deserialise(in);
-
             std::size_t texturePathLength;
             in.read(reinterpret_cast<char *>(&texturePathLength),
                     sizeof(texturePathLength));
@@ -396,42 +397,17 @@ namespace Hamster {
             std::string textureNameStr(textureNameLength, '\0');
             in.read(textureNameStr.data(), textureNameLength);
 
-            AddTexture(uuid, texturePathStr, textureNameStr);
-        }
-
-        // Scripts come from sidecars now — see LoadProjectScripts. The blob
-        // no longer carries them.
-
-        uint32_t animCount;
-        if (in.read(reinterpret_cast<char *>(&animCount), sizeof(animCount))) {
-            for (uint32_t i = 0; i < animCount; i++) {
-                UUID uuid = UUID::Deserialise(in);
-
-                std::size_t nameLen;
-                in.read(reinterpret_cast<char *>(&nameLen), sizeof(nameLen));
-                std::string name(nameLen, '\0');
-                in.read(name.data(), nameLen);
-
-                uint32_t kfCount;
-                in.read(reinterpret_cast<char *>(&kfCount), sizeof(kfCount));
-
-                std::vector<AnimationKeyframe> keyframes;
-                keyframes.reserve(kfCount);
-
-                for (uint32_t j = 0; j < kfCount; j++) {
-                    AnimationKeyframe kf;
-                    in.read(reinterpret_cast<char *>(&kf.time), sizeof(kf.time));
-                    kf.textureUUID = UUID::Deserialise(in);
-                    keyframes.push_back(kf);
-                }
-
-                AnimationData data;
-                data.name = name;
-                data.keyframes = keyframes;
-                data.duration = keyframes.empty() ? 0.0f : keyframes.back().time;
-
-                AddAnimation(uuid, data);
+            // Load the texture; AddTexture reads the .png.meta sidecar to
+            // recover the persisted UUID (or mints a fresh one + writes the
+            // sidecar). The user-facing name comes from the blob.
+            auto texture = AddTexture(texturePathStr);
+            if (texture) {
+                texture->SetName(textureNameStr);
             }
         }
+
+        // Scripts and animations are loaded outside this method:
+        //   - LoadProjectScripts walks the project dir for .py + .py.meta
+        //   - LoadProjectAnimations walks <projectDir>/Animations for .hanim
     }
 } // namespace Hamster
