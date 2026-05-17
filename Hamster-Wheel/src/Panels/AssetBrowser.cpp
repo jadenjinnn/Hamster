@@ -12,6 +12,7 @@
 
 #include <imgui.h>
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <sstream>
 
@@ -34,31 +35,26 @@ void AssetBrowser::OnActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e) {
     m_Scene = e.GetActiveScene();
 }
 
-static void DrawAssetCard(const char *id, const char *iconText, const char *label,
-                          Hamster::Texture *tex, float cardW, float cardH) {
-    ImGui::PushID(id);
-    ImGui::BeginGroup();
-
-    ImVec2 pos = ImGui::GetCursorScreenPos();
+// Draws the card background + icon/texture preview area. Shared between the
+// normal and edit-mode card paths so they stay visually identical.
+static void DrawCardChrome(ImVec2 pos, float cardW, float cardH,
+                           const char *iconText, Hamster::Texture *tex,
+                           bool hovered) {
     ImDrawList *dl = ImGui::GetWindowDrawList();
+    const float labelH = 30.0f;
+    const float cardR  = 6.0f;
 
-    const float labelH  = 30.0f;
-    const float cardR   = 6.0f;
-
-    bool hovered = ImGui::IsMouseHoveringRect(pos, {pos.x + cardW, pos.y + cardH});
     dl->AddRectFilled(pos, {pos.x + cardW, pos.y + cardH},
                       ImGui::ColorConvertFloat4ToU32(hovered ? kSurfaceHov : kSurface),
                       cardR);
 
     if (tex && tex->GetTextureId() != 0) {
-        // Preview area: edge-to-edge horizontally, top of card to start of label area.
         ImVec2 r0 = pos;
         ImVec2 r1 = {pos.x + cardW, pos.y + cardH - labelH};
         float rectW = r1.x - r0.x;
         float rectH = r1.y - r0.y;
 
-        // Checkerboard background. Cells at the top corners use matching rounding
-        // so the pattern follows the card's curve and doesn't poke past it.
+        // Checkerboard background; top-corner cells round to match the card.
         const float cellSz = 8.0f;
         int cols = (int)std::ceil(rectW / cellSz);
         int rows = (int)std::ceil(rectH / cellSz);
@@ -78,7 +74,6 @@ static void DrawAssetCard(const char *id, const char *iconText, const char *labe
             }
         }
 
-        // Fit image into the preview area preserving aspect ratio, centered.
         float texW = (float)tex->GetWidth();
         float texH = (float)tex->GetHeight();
         float scale = std::min(rectW / texW, rectH / texH);
@@ -95,7 +90,19 @@ static void DrawAssetCard(const char *id, const char *iconText, const char *labe
         dl->AddText(g_IconLarge, 36.0f, {iconX, iconY},
                     IM_COL32(120, 128, 145, 255), iconText);
     }
+}
 
+static void DrawAssetCard(const char *id, const char *iconText, const char *label,
+                          Hamster::Texture *tex, float cardW, float cardH) {
+    ImGui::PushID(id);
+
+    ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("##card", {cardW, cardH});
+    bool hovered = ImGui::IsItemHovered();
+
+    DrawCardChrome(pos, cardW, cardH, iconText, tex, hovered);
+
+    ImDrawList *dl = ImGui::GetWindowDrawList();
     ImVec2 nSz = ImGui::CalcTextSize(label);
     float maxW = cardW - 8;
     if (nSz.x > maxW) {
@@ -112,9 +119,43 @@ static void DrawAssetCard(const char *id, const char *iconText, const char *labe
                     ImGui::ColorConvertFloat4ToU32(kText), label);
     }
 
+    ImGui::PopID();
+}
+
+// Edit-mode card: same chrome as DrawAssetCard, but the label area becomes
+// an auto-focused InputText. Returns true once the edit is finished (commit
+// or cancel); *outCommitted is set true for commit, false for cancel.
+static bool DrawEditingCard(const char *id, const char *iconText,
+                            Hamster::Texture *tex, float cardW, float cardH,
+                            char *buf, size_t bufSize, bool *focus,
+                            bool *outCommitted) {
+    ImGui::PushID(id);
+    ImGui::BeginGroup();
+    ImVec2 pos = ImGui::GetCursorScreenPos();
     ImGui::Dummy({cardW, cardH});
+
+    DrawCardChrome(pos, cardW, cardH, iconText, tex, /*hovered=*/true);
+
+    ImGui::SetCursorScreenPos({pos.x + 4, pos.y + cardH - 26});
+    ImGui::SetNextItemWidth(cardW - 8);
+    if (*focus) {
+        ImGui::SetKeyboardFocusHere();
+        *focus = false;
+    }
+    ImGuiInputTextFlags flags = ImGuiInputTextFlags_EnterReturnsTrue
+                              | ImGuiInputTextFlags_AutoSelectAll;
+    bool enterCommit = ImGui::InputText("##inrn", buf, bufSize, flags);
+    bool escaped = ImGui::IsItemActive() &&
+                   ImGui::IsKeyPressed(ImGuiKey_Escape);
+    bool deactivated = ImGui::IsItemDeactivated();
     ImGui::EndGroup();
     ImGui::PopID();
+
+    if (enterCommit || deactivated) {
+        *outCommitted = !escaped;
+        return true;
+    }
+    return false;
 }
 
 static bool DrawAddCard(float cardW, float cardH) {
@@ -184,36 +225,75 @@ void AssetBrowser::Render() {
             }
         }
         if (HComboItem(ICON_FA_PLUS "  New Script", false)) {
-            m_AssetManager->AddDefaultScript();
+            Hamster::UUID newId = m_AssetManager->AddDefaultScript();
+            auto newScript = m_AssetManager->GetScript(newId);
+            if (newScript) {
+                std::filesystem::path p(newScript->GetScriptPath());
+                std::string stem = p.stem().string();
+                std::strncpy(m_InlineRenameBuf, stem.c_str(),
+                             sizeof(m_InlineRenameBuf) - 1);
+                m_InlineRenameBuf[sizeof(m_InlineRenameBuf) - 1] = '\0';
+                m_InlineRenameExt = p.extension().string();
+                m_InlineRenameUUID = newId;
+                m_InlineRenameFocus = true;
+            }
         }
         HEndStyledPopup();
     }
     nextRow();
 
-    auto contextMenu = [&](Hamster::UUID uuid, const std::string &currentName) {
-        if (ImGui::BeginPopupContextItem()) {
-            if (ImGui::MenuItem(ICON_FA_PEN "  Rename")) {
-                m_RenameUUID = uuid;
-                std::strncpy(m_RenameBuffer, currentName.c_str(),
-                             sizeof(m_RenameBuffer) - 1);
-                m_RenameBuffer[sizeof(m_RenameBuffer) - 1] = '\0';
-                m_OpenRenamePopup = true;
-                m_RenameCollision = false;
+    // Right-click context menu. Triggers inline rename instead of a modal —
+    // the card's label flips to an InputText next frame.
+    auto contextMenu = [&](Hamster::UUID uuid,
+                            const std::filesystem::path &assetPath) {
+        std::string popupId = "##ctx_" + uuid.GetUUIDString();
+        if (HBeginStyledContextItem(popupId.c_str())) {
+            if (HComboItem(ICON_FA_PEN "  Rename", false)) {
+                std::string stem = assetPath.stem().string();
+                std::strncpy(m_InlineRenameBuf, stem.c_str(),
+                             sizeof(m_InlineRenameBuf) - 1);
+                m_InlineRenameBuf[sizeof(m_InlineRenameBuf) - 1] = '\0';
+                m_InlineRenameExt = assetPath.extension().string();
+                m_InlineRenameUUID = uuid;
+                m_InlineRenameFocus = true;
             }
-            ImGui::EndPopup();
+            HEndStyledContextItem();
         }
+    };
+
+    // Commit handler shared by the texture + script edit-card paths.
+    auto commitInlineRename = [&](Hamster::UUID uuid, bool committed) {
+        if (committed) {
+            std::string newStem = m_InlineRenameBuf;
+            if (!newStem.empty()) {
+                m_AssetManager->RenameAsset(uuid, newStem + m_InlineRenameExt);
+            }
+        }
+        m_InlineRenameUUID = Hamster::UUID::GetNil();
+        m_InlineRenameExt.clear();
     };
 
     // Texture assets
     for (const auto &[uuid, texture] : m_AssetManager->GetTextureMap()) {
         Hamster::UUID mUUID = uuid;
         std::string id = "tex_" + mUUID.GetUUIDString();
+        std::filesystem::path texPath(texture->GetTexturePath());
+
+        if (mUUID == m_InlineRenameUUID) {
+            bool committed = false;
+            if (DrawEditingCard(id.c_str(), ICON_FA_IMAGE, texture.get(),
+                                cardW, cardH, m_InlineRenameBuf,
+                                sizeof(m_InlineRenameBuf),
+                                &m_InlineRenameFocus, &committed)) {
+                commitInlineRename(mUUID, committed);
+            }
+            nextRow();
+            continue;
+        }
+
         DrawAssetCard(id.c_str(), ICON_FA_IMAGE,
                       texture->GetName().c_str(), texture.get(), cardW, cardH);
-        // Use the filename (path stem + ext) as the rename default so the
-        // user can adjust the on-disk name, not the display name.
-        std::filesystem::path p(texture->GetTexturePath());
-        contextMenu(mUUID, p.filename().string());
+        contextMenu(mUUID, texPath);
         nextRow();
     }
 
@@ -292,58 +372,41 @@ void AssetBrowser::Render() {
     }
 
     // ── Script assets (filtered to the current folder) ──
+    // projectDir may carry a trailing separator (registry stores it as the
+    // user typed it), and lexically_normal() preserves the trailing slash.
+    // Strip both sides to a canonical form before comparing.
+    auto stripSep = [](std::filesystem::path p) {
+        std::string s = p.lexically_normal().string();
+        while (s.size() > 1 && (s.back() == '\\' || s.back() == '/'))
+            s.pop_back();
+        return std::filesystem::path(s);
+    };
+    std::filesystem::path normActive = stripSep(activeFolder);
     for (const auto &[uuid, script] : m_AssetManager->GetScriptMap()) {
         std::filesystem::path scriptPath(script->GetScriptPath());
-        std::filesystem::path scriptParent = scriptPath.parent_path();
-        if (!activeFolder.empty() && scriptParent != activeFolder) {
+        std::filesystem::path scriptParent = stripSep(scriptPath.parent_path());
+        if (!normActive.empty() && scriptParent != normActive) {
             continue; // script is in a different folder than the current view
         }
 
         Hamster::UUID mUUID = uuid;
         std::string id = "scr_" + mUUID.GetUUIDString();
+
+        if (mUUID == m_InlineRenameUUID) {
+            bool committed = false;
+            if (DrawEditingCard(id.c_str(), ICON_FA_FILE_CODE, nullptr,
+                                cardW, cardH, m_InlineRenameBuf,
+                                sizeof(m_InlineRenameBuf),
+                                &m_InlineRenameFocus, &committed)) {
+                commitInlineRename(mUUID, committed);
+            }
+            nextRow();
+            continue;
+        }
+
         DrawAssetCard(id.c_str(), ICON_FA_FILE_CODE,
                       script->GetName().c_str(), nullptr, cardW, cardH);
-        contextMenu(mUUID, scriptPath.filename().string());
+        contextMenu(mUUID, scriptPath);
         nextRow();
-    }
-
-    // Rename modal — opened from the per-card context menu above.
-    if (m_OpenRenamePopup) {
-        ImGui::OpenPopup("Rename Asset");
-        m_OpenRenamePopup = false;
-    }
-    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
-                            ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal("Rename Asset", nullptr,
-                                ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::SetNextItemWidth(300);
-        ImGui::InputText("##rename_input", m_RenameBuffer,
-                          sizeof(m_RenameBuffer));
-
-        if (m_RenameCollision) {
-            ImGui::TextColored(ImVec4(0.95f, 0.4f, 0.4f, 1.0f),
-                                "A file with that name already exists.");
-        }
-
-        if (ImGui::Button("Rename", ImVec2(120, 0))) {
-            std::string newName = m_RenameBuffer;
-            if (!newName.empty()) {
-                if (m_AssetManager->RenameAsset(m_RenameUUID, newName)) {
-                    m_RenameUUID = Hamster::UUID::GetNil();
-                    m_RenameCollision = false;
-                    ImGui::CloseCurrentPopup();
-                } else {
-                    m_RenameCollision = true;
-                }
-            }
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
-            m_RenameUUID = Hamster::UUID::GetNil();
-            m_RenameCollision = false;
-            ImGui::CloseCurrentPopup();
-        }
-
-        ImGui::EndPopup();
     }
 }

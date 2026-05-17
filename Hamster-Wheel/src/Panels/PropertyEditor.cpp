@@ -266,8 +266,8 @@ void PropertyEditor::Render() {
         if (HButton("Add Script", avail)) {
             ImGui::OpenPopup("Add Script");
         }
-        if (ImGui::BeginPopup("Add Script")) {
-            if (ImGui::Selectable(ICON_FA_PLUS "  New Script")) {
+        if (HBeginStyledPopup("Add Script")) {
+            if (HComboItem(ICON_FA_PLUS "  New Script", false)) {
                 Hamster::UUID newId = m_AssetManager->AddDefaultScript();
                 auto newScript = m_AssetManager->GetScript(newId);
                 m_Behaviour->scripts.emplace(newId, newScript);
@@ -275,17 +275,16 @@ void PropertyEditor::Render() {
                     m_Behaviour->cachedNames[newId] = newScript->GetName();
                 }
             }
-            if (m_AssetManager->GetScriptCount() > 0) ImGui::Separator();
             for (const auto &[uuid, script] : m_AssetManager->GetScriptMap()) {
                 if (m_Behaviour->scripts.count(uuid) == 0) {
-                    if (ImGui::Selectable(script->GetName().c_str())) {
+                    if (HComboItem(script->GetName().c_str(), false)) {
                         m_Behaviour->scripts.emplace(script->GetUUID(), script);
                         m_Behaviour->cachedNames[script->GetUUID()] =
                             script->GetName();
                     }
                 }
             }
-            ImGui::EndPopup();
+            HEndStyledPopup();
         }
 
         SectionSeparator();

@@ -17,6 +17,8 @@ void HEndCombo();
 bool HComboItem(const char *label, bool selected);
 bool HBeginStyledPopup(const char *id);
 void HEndStyledPopup();
+bool HBeginStyledContextItem(const char *id);
+void HEndStyledContextItem();
 bool HBeginMenu(const char *label);
 void HEndMenu();
 bool HMenuItem(const char *label, const char *shortcut = nullptr, bool enabled = true);

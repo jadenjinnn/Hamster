@@ -81,6 +81,26 @@ void HEndStyledPopup() {
     ImGui::PopStyleColor();
 }
 
+// Same styling as HBeginStyledPopup but trigger is right-click on the last
+// item. Pair with HEndStyledContextItem only when this returns true.
+bool HBeginStyledContextItem(const char *id) {
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, kSurface);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4, 4));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 2));
+    bool open = ImGui::BeginPopupContextItem(id);
+    if (!open) {
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor();
+    }
+    return open;
+}
+
+void HEndStyledContextItem() {
+    ImGui::EndPopup();
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor();
+}
+
 bool HBeginMenu(const char *label) {
     // Style pushes here affect both the menu-bar trigger AND the popup.
     // Pushing ItemSpacing(0, ...) before BeginMenu collapsed the gap

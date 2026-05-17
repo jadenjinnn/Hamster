@@ -5,6 +5,7 @@
 #include <Core/UUID.h>
 #include <filesystem>
 #include <memory>
+#include <string>
 
 namespace Hamster {
 class AssetManager;
@@ -27,11 +28,14 @@ private:
     std::shared_ptr<Hamster::Scene> m_Scene;
     Hamster::AssetManager *m_AssetManager;
 
-    // Rename state — m_RenameUUID == nil means no rename in progress.
-    Hamster::UUID m_RenameUUID = Hamster::UUID::GetNil();
-    char          m_RenameBuffer[128] = {0};
-    bool          m_OpenRenamePopup = false; // request the popup on next frame
-    bool          m_RenameCollision = false; // shown inline in the modal
+    // Inline rename — set on new-script create and on right-click "Rename".
+    // The card's label becomes an auto-focused InputText; commit on Enter /
+    // click-away, Escape cancels. Extension is preserved verbatim (we only
+    // edit the stem) so .py vs .png is recovered on commit.
+    Hamster::UUID m_InlineRenameUUID = Hamster::UUID::GetNil();
+    char          m_InlineRenameBuf[128] = {0};
+    std::string   m_InlineRenameExt;
+    bool          m_InlineRenameFocus = false;
 
     // Current folder for the script section, relative to the project root.
     // Empty string = project root. Single-level breadcrumb in v1; deeper
