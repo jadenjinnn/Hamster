@@ -1,6 +1,8 @@
 #pragma once
 
+#include <array>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -10,15 +12,16 @@
 #include <Utils/AssetManager.h>
 #include <Utils/SheetSidecar.h>
 
-// Floating ImGui window for slicing a texture into sub-sprites.
-// Lifecycle mirrors ColliderEditor — single shared instance owned by
-// EditorLayer; Open() loads working state, Render() draws each frame
-// when m_Open is true.
+// Floating ImGui window for slicing a texture into sub-sprites. Single
+// shared instance owned by EditorLayer; Open() seeds working state from
+// the parent texture's currently registered sub-sprites; Render() runs
+// each frame while m_Open.
 //
-// Stage 3 (this file): zoom-pan image preview, draw ONE pending rect by
-// drag, Save commits it via AssetManager::AddSubSprite + writes the
-// sidecar. Stage 4 extends to multi-rect, resize handles, list view,
-// rename, delete, and diff-aware Save.
+// v2 (this file) supports multi-rect editing: click-select, drag body
+// to move, 8 handles to resize, Del to delete, list view with editable
+// names. Save diffs the working list against AssetManager (add / remove /
+// modify-in-place) with collision-checked renaming against the unified
+// Texture + SubSprite namespace.
 class SpritesheetEditor {
 public:
     void Open(Hamster::UUID textureUUID, Hamster::AssetManager *am);
@@ -28,22 +31,33 @@ public:
     bool IsOpen() const { return m_Open; }
 
 private:
+    enum class DragMode {
+        None,
+        DrawNew,
+        MoveBody,
+        ResizeHandle,  // m_DragHandle = 0..7 (TL, T, TR, R, BR, B, BL, L)
+    };
+
     bool m_Open = false;
     Hamster::UUID m_TextureUUID = Hamster::UUID::GetNil();
     Hamster::AssetManager *m_AssetManager = nullptr;
 
-    // Working list of regions — loaded from AssetManager + sidecar on Open,
-    // mutated during the session, committed on Save. Stage 3 only ever
-    // produces at most one new entry per session (the pending draw); stage 4
-    // grows this to full multi-rect editing.
+    // Working copy of the slice list — mutated freely until Save commits.
     std::vector<Hamster::SubSpriteEntry> m_Working;
 
-    // True while the user is dragging a new rectangle.
-    bool m_Drawing = false;
-    glm::ivec2 m_DrawStartPixel = {0, 0};
-    glm::ivec2 m_DrawCurrentPixel = {0, 0};
+    int m_SelectedIndex = -1;  // index into m_Working, -1 = none
+    // Per-row editable name buffers (one per working entry).
+    std::vector<std::array<char, 64>> m_NameBuffers;
 
-    // Zoom factor (1 source pixel = m_Zoom screen pixels). Pan offset in
-    // screen pixels relative to the image's top-left.
+    // Drag state.
+    DragMode m_DragMode = DragMode::None;
+    int m_DragHandle = -1;
+    glm::ivec2 m_DragStartPixel = {0, 0};
+    glm::ivec4 m_DragStartRect = {0, 0, 0, 0};
+
+    // Inline error from last Save attempt (collision detection).
+    std::string m_LastError;
+
+    // Display.
     float m_Zoom = 4.0f;
 };
