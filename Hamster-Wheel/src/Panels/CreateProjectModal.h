@@ -25,6 +25,13 @@ private:
   char m_ProjectName[128] = "Untitled";
   std::filesystem::path m_ProjectDirectory;
   int m_SelectedTemplate = 0;
+  // Index into the resolution preset table in CreateProjectModal.cpp.
+  // The last entry is "Custom" — when selected, m_CustomWidth /
+  // m_CustomHeight are written to the ProjectConfig instead of preset
+  // dimensions.
+  int m_SelectedResolutionPreset = 0;
+  int m_CustomWidth = 1280;
+  int m_CustomHeight = 720;
   bool m_NoDirectorySelected = false;
   bool m_DirectoryExists = false;
 };

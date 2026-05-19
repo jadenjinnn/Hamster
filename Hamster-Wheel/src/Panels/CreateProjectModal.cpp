@@ -23,7 +23,7 @@ void CreateProjectModal::Render(ProjectRegistry *registry) {
 
   ImVec2 center = ImGui::GetMainViewport()->GetCenter();
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-  ImGui::SetNextWindowSize(ImVec2(520, 520));
+  ImGui::SetNextWindowSize(ImVec2(520, 640));
 
   ImGuiWindowFlags modalFlags =
       ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
@@ -111,6 +111,58 @@ void CreateProjectModal::Render(ProjectRegistry *registry) {
 
     ImGui::Dummy(ImVec2(0, 16));
 
+    // ─── Resolution ───
+    if (g_BoldFont) ImGui::PushFont(g_BoldFont);
+    ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.65f, 1.0f), "RESOLUTION");
+    if (g_BoldFont) ImGui::PopFont();
+
+    ImGui::Spacing();
+
+    struct ResolutionPreset {
+      const char *label;
+      int width;  // 0 sentinels the "Custom" entry — see input fields below
+      int height;
+    };
+    static const ResolutionPreset kPresets[] = {
+        {"1280 x 720 (HD)", 1280, 720},
+        {"1920 x 1080 (Full HD)", 1920, 1080},
+        {"800 x 600", 800, 600},
+        {"Custom...", 0, 0},
+    };
+    constexpr int kPresetCount =
+        static_cast<int>(sizeof(kPresets) / sizeof(kPresets[0]));
+    constexpr int kCustomIndex = kPresetCount - 1;
+
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::BeginCombo("##Resolution",
+                          kPresets[m_SelectedResolutionPreset].label)) {
+      for (int i = 0; i < kPresetCount; i++) {
+        bool sel = (m_SelectedResolutionPreset == i);
+        if (ImGui::Selectable(kPresets[i].label, sel)) {
+          m_SelectedResolutionPreset = i;
+        }
+        if (sel) ImGui::SetItemDefaultFocus();
+      }
+      ImGui::EndCombo();
+    }
+
+    if (m_SelectedResolutionPreset == kCustomIndex) {
+      ImGui::Spacing();
+      float halfW = (ImGui::GetContentRegionAvail().x - 8.0f) * 0.5f;
+      ImGui::SetNextItemWidth(halfW);
+      ImGui::InputInt("##CustomWidth", &m_CustomWidth);
+      ImGui::SameLine(0, 8.0f);
+      ImGui::SetNextItemWidth(halfW);
+      ImGui::InputInt("##CustomHeight", &m_CustomHeight);
+      // Clamp to sane range so 0 / negative / 8K+ are rejected at input.
+      if (m_CustomWidth < 100) m_CustomWidth = 100;
+      if (m_CustomWidth > 7680) m_CustomWidth = 7680;
+      if (m_CustomHeight < 100) m_CustomHeight = 100;
+      if (m_CustomHeight > 4320) m_CustomHeight = 4320;
+    }
+
+    ImGui::Dummy(ImVec2(0, 16));
+
     if (g_BoldFont) ImGui::PushFont(g_BoldFont);
     ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.65f, 1.0f), "LOCATION");
     if (g_BoldFont) ImGui::PopFont();
@@ -173,6 +225,21 @@ void CreateProjectModal::Render(ProjectRegistry *registry) {
         Hamster::ProjectConfig config;
         config.Name = m_ProjectName;
         config.ProjectDirectory = m_ProjectDirectory / config.Name;
+
+        // Resolve resolution from the picker — preset table is mirrored
+        // from the UI above; Custom (sentinel width=0) uses the
+        // m_CustomWidth/Height inputs.
+        static const struct { int w; int h; } kPickerResolutions[] = {
+            {1280, 720}, {1920, 1080}, {800, 600}, {0, 0},
+        };
+        const auto &picked = kPickerResolutions[m_SelectedResolutionPreset];
+        if (picked.w == 0) {
+          config.TargetWidth = m_CustomWidth;
+          config.TargetHeight = m_CustomHeight;
+        } else {
+          config.TargetWidth = picked.w;
+          config.TargetHeight = picked.h;
+        }
 
         if (std::filesystem::is_directory(config.ProjectDirectory)) {
           m_DirectoryExists = true;
