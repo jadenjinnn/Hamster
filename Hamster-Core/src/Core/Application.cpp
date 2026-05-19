@@ -171,6 +171,20 @@ namespace Hamster {
 
             ExecuteMainThread();
 
+            // Popout-close check at frame top. GLFW sets the should-close
+            // flag on the popout when the user clicks its X; treating that
+            // identically to Stop here keeps simulation state in lockstep
+            // with window state. Must run BEFORE any render path that would
+            // try to draw into the popout this frame (mitigates Risk #2 of
+            // the project-resolution-and-play-window spec — never destroy
+            // a window mid-frame).
+            if (m_PlayWindow && glfwWindowShouldClose(m_PlayWindow)) {
+                if (m_ActiveScene && !m_ActiveScene->IsSceneSimulationPaused()) {
+                    m_ActiveScene->PauseSceneSimulation();
+                }
+                ClosePlayWindow();
+            }
+
             // Run any deferred scene-state restore from the previous frame
             // (simulation-snapshot feature). Must happen between frames so
             // the registry clear+deserialise doesn't trip iterators that
