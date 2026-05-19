@@ -13,6 +13,7 @@
 
 #include "Application.h"
 #include "Project.h"
+#include "Renderer/FontAtlas.h"
 #include "Renderer/Renderer.h"
 #include "SceneSerialiser.h"
 #include "Utils/AssetManager.h"
@@ -34,6 +35,10 @@ Scene::Scene(EventDispatcher *dispatcher, Application *app)
       SceneCreated,
       FORWARD_CALLBACK_FUNCTION(Scene::OnSceneCreated, SceneCreatedEvent));
 
+  m_ButtonClickedHandle = m_Dispatcher->Subscribe(
+      ButtonClicked,
+      FORWARD_CALLBACK_FUNCTION(Scene::OnButtonClicked, ButtonClickedEvent));
+
   std::string sceneName = m_Name;
   std::replace(sceneName.begin(), sceneName.end(), ' ', '_');
 
@@ -42,6 +47,12 @@ Scene::Scene(EventDispatcher *dispatcher, Application *app)
                                  ".scene");
 
   m_RenderGroup = m_Registry.group<Sprite, Transform>();
+}
+
+Scene::~Scene() {
+  if (m_Dispatcher && m_ButtonClickedHandle != 0) {
+    m_Dispatcher->Unsubscribe(ButtonClicked, m_ButtonClickedHandle);
+  }
 }
 
 UUID Scene::CreateEntity() {
@@ -204,6 +215,21 @@ void Scene::ReorderSibling(UUID uuid, uint32_t newIndex) {
   for (uint32_t i = 0; i < siblings.size(); i++) {
     GetEntityComponent<Hierarchy>(siblings[i]).siblingIndex = i;
   }
+}
+
+void Scene::OnButtonClicked(ButtonClickedEvent &e) {
+  m_ClickedButtonsThisFrame.push_back(e.GetEntityId());
+}
+
+UUID Scene::FindEntityByName(const std::string &name) {
+  auto view = m_Registry.view<Name, ID>();
+  for (auto entity : view) {
+    auto &n = view.get<Name>(entity);
+    if (n.name == name) {
+      return view.get<ID>(entity).uuid;
+    }
+  }
+  return UUID::GetNil();
 }
 
 UUID Scene::CreateEntityRuntime(const std::string &name, const Transform &transform) {
@@ -553,6 +579,14 @@ void Scene::OnScriptUpdate() {
             }
           }
         }
+
+        // Dispatch UI button clicks. Every behaviour with on_button_clicked
+        // sees every click this frame; the script filters by uuid.
+        if (pybind11::hasattr(obj, "on_button_clicked")) {
+          for (auto &btnUUID : m_ClickedButtonsThisFrame) {
+            obj.attr("on_button_clicked")(btnUUID);
+          }
+        }
       } catch (pybind11::error_already_set &e) {
         pythonError = true;
 
@@ -568,6 +602,10 @@ void Scene::OnScriptUpdate() {
   animClearView.each([](auto &anim) {
     anim.completedAnimations.clear();
   });
+
+  // Drain the per-frame click queue regardless of script errors so a
+  // stale click doesn't carry into the next simulation tick.
+  m_ClickedButtonsThisFrame.clear();
 
   if (pythonError) {
     PauseSceneSimulation();
@@ -591,6 +629,23 @@ void Scene::OnRender(bool renderFlat) {
   // demands it (see spec future-work).
   RebuildSpatialIndex();
 
+  auto *assetManager = m_App->GetAssetManager();
+
+  // Resolve a sprite to (texture, uvRect) via AssetManager when possible —
+  // sub-sprite UUID → parent texture + UV region; texture UUID → whole
+  // texture. Pre-spritesheet scenes whose Sprite.assetUUID is nil fall
+  // back to the cached `sprite.texture` pointer with full UV (the scene
+  // deserialiser sets assetUUID from texture on load to keep this branch
+  // rare).
+  auto resolve = [&](const Sprite &sprite)
+      -> std::pair<Texture *, glm::vec4> {
+    if (!UUID::IsNil(sprite.assetUUID) && assetManager) {
+      SpriteSource src = assetManager->ResolveSpriteSource(sprite.assetUUID);
+      return {src.texture, src.uvRect};
+    }
+    return {sprite.texture.get(), glm::vec4(0.0f, 0.0f, 1.0f, 1.0f)};
+  };
+
   if (!renderFlat) {
     // Viewport-rect cull: submit only sprites whose AABB intersects the
     // camera rect. At zoom=1 with the camera covering N sprites of 5000,
@@ -606,10 +661,11 @@ void Scene::OnRender(bool renderFlat) {
       if (!m_Registry.all_of<Sprite, Transform>(e)) continue;
       const auto &sprite = m_Registry.get<Sprite>(e);
       const auto &transform = m_Registry.get<Transform>(e);
-      if (sprite.texture != nullptr) {
-        renderer->SubmitSprite(*sprite.texture, transform.position,
-                               transform.size, transform.rotation,
-                               sprite.colour, transform.position.z);
+      auto [tex, uvRect] = resolve(sprite);
+      if (tex != nullptr) {
+        renderer->SubmitSprite(*tex, transform.position, transform.size,
+                               transform.rotation, sprite.colour,
+                               transform.position.z, uvRect);
       }
     }
     renderer->EndSpriteBatch();
@@ -622,6 +678,58 @@ void Scene::OnRender(bool renderFlat) {
       }
     });
   }
+}
+
+void Scene::OnRenderUI(float panelW, float panelH) {
+  if (panelW <= 0.0f || panelH <= 0.0f) return;
+
+  auto *renderer = m_App->GetRenderer();
+  const FontAtlas *atlas = renderer->GetFontAtlas();
+
+  renderer->BeginUIPass(panelW, panelH);
+
+  // Buttons — background rect + label text inside (horizontal alignment
+  // honoured, vertically centred).
+  auto buttonView = m_Registry.view<UIButton>();
+  buttonView.each([renderer, atlas, panelW, panelH](auto &btn) {
+    UIRect r = renderer->ResolveUIButton(btn, panelW, panelH);
+    renderer->SubmitUIRect(r, btn.bgColour);
+
+    if (!btn.label.empty() && atlas && atlas->IsValid()) {
+      float labelW = atlas->MeasureWidth(btn.label, btn.fontSize);
+      float labelX = 0.0f;
+      switch (btn.textAlign) {
+        case UITextAlign::Left:
+          labelX = r.x + btn.padding;
+          break;
+        case UITextAlign::Centre:
+          labelX = r.x + (r.w - labelW) * 0.5f;
+          break;
+        case UITextAlign::Right:
+          labelX = r.x + r.w - labelW - btn.padding;
+          break;
+      }
+      float labelY = r.y + (r.h - btn.fontSize) * 0.5f;
+      renderer->SubmitUIText(btn.label, {labelX, labelY},
+                             btn.fontSize, btn.textColour, 0.0f);
+    }
+  });
+
+  // UIText — anchored, optional wrap.
+  auto textView = m_Registry.view<UIText>();
+  textView.each([renderer, atlas, panelW, panelH](auto &txt) {
+    if (txt.text.empty() || !atlas || !atlas->IsValid()) return;
+    // Pivot the bounding box by the text's measured width × fontSize so the
+    // chosen anchor lines up with the matching corner of the rendered text.
+    glm::vec2 size = {atlas->MeasureWidth(txt.text, txt.fontSize),
+                      txt.fontSize};
+    glm::vec2 tl = ResolveAnchoredTopLeft(txt.anchor, txt.offset, size,
+                                          panelW, panelH);
+    renderer->SubmitUIText(txt.text, tl, txt.fontSize, txt.textColour,
+                           txt.wrapWidth);
+  });
+
+  renderer->EndUIPass();
 }
 
 void Scene::RebuildSpatialIndex() {

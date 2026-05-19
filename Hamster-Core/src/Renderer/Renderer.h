@@ -30,16 +30,23 @@ namespace Hamster {
 
         void SetClearColour(float r, float g, float b, float a);
 
+        // uvRect = (x, y, w, h) in normalised [0,1] over the texture.
+        // Default (0,0,1,1) = whole texture (backward-compat with the
+        // pre-spritesheet API). Sub-sprites pass a sub-region.
         void DrawSprite(Texture &texture, glm::vec2 position, glm::vec2 size,
-                        float rotation, glm::vec3 colour);
+                        float rotation, glm::vec3 colour,
+                        glm::vec4 uvRect = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
 
         // Sprite batching API (v1 — same-texture batching). Accumulates sprite
         // quads in a pre-allocated VBO, flushes one draw call per texture or
         // z-boundary change. Pick path (Scene::OnRender(true)) intentionally
         // keeps using DrawSprite — see sprite-batching feature spec.
+        // Sub-sprite UV is baked into the per-vertex UVs at submission time —
+        // no shader change needed for the batch path.
         void BeginSpriteBatch();
         void SubmitSprite(Texture &texture, glm::vec2 position, glm::vec2 size,
-                          float rotation, glm::vec3 colour, float z);
+                          float rotation, glm::vec3 colour, float z,
+                          glm::vec4 uvRect = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
         void EndSpriteBatch();
         uint32_t GetLastFrameDrawCallCount() const { return m_DrawCallsLastFrame; }
 

@@ -89,6 +89,36 @@ glm::vec3 DeserialiseVec3(std::istream &in) {
   return v;
 }
 
+void SerialiseVec4(std::ostream &out, const glm::vec4 &v) {
+  out.write(reinterpret_cast<const char *>(&v.x), sizeof(v.x));
+  out.write(reinterpret_cast<const char *>(&v.y), sizeof(v.y));
+  out.write(reinterpret_cast<const char *>(&v.z), sizeof(v.z));
+  out.write(reinterpret_cast<const char *>(&v.w), sizeof(v.w));
+}
+
+glm::vec4 DeserialiseVec4(std::istream &in) {
+  glm::vec4 v;
+  in.read(reinterpret_cast<char *>(&v.x), sizeof(v.x));
+  in.read(reinterpret_cast<char *>(&v.y), sizeof(v.y));
+  in.read(reinterpret_cast<char *>(&v.z), sizeof(v.z));
+  in.read(reinterpret_cast<char *>(&v.w), sizeof(v.w));
+  return v;
+}
+
+void SerialiseString(std::ostream &out, const std::string &s) {
+  std::size_t len = s.size();
+  out.write(reinterpret_cast<const char *>(&len), sizeof(len));
+  out.write(s.data(), len);
+}
+
+std::string DeserialiseString(std::istream &in) {
+  std::size_t len;
+  in.read(reinterpret_cast<char *>(&len), sizeof(len));
+  std::string s(len, '\0');
+  in.read(s.data(), len);
+  return s;
+}
+
 void SceneSerialiser::SerialiseEntity(std::ostream &out,
                                       entt::entity const &entity,
                                       UUID const &entity_uuid) {
@@ -119,11 +149,18 @@ void SceneSerialiser::SerialiseEntity(std::ostream &out,
 
     Sprite &sprite = m_Scene->GetEntityComponent<Sprite>(entity_uuid);
 
-    if (sprite.texture != nullptr) {
-      UUID::Serialise(out, sprite.texture->GetUUID());
-    } else {
-      UUID::Serialise(out, UUID::GetNil());
+    // Prefer the explicit assetUUID (set by the editor + sub-sprite drag
+    // path), falling back to the parent texture's own UUID for sprites
+    // assigned the pre-spritesheet way. The deserialiser routes either
+    // kind of UUID through AssetManager::ResolveSpriteSource so the
+    // resulting (texture, uvRect) is correct for both.
+    UUID toWrite = UUID::GetNil();
+    if (!UUID::IsNil(sprite.assetUUID)) {
+      toWrite = sprite.assetUUID;
+    } else if (sprite.texture != nullptr) {
+      toWrite = sprite.texture->GetUUID();
     }
+    UUID::Serialise(out, toWrite);
 
     SerialiseVec3(out, sprite.colour);
   }
@@ -194,6 +231,42 @@ void SceneSerialiser::SerialiseEntity(std::ostream &out,
               sizeof(h.siblingIndex));
   }
 
+  if (m_Scene->EntityHasComponent<UIButton>(entity_uuid)) {
+    int id = static_cast<int>(UIButton_ID);
+    out.write(reinterpret_cast<const char *>(&id), sizeof(id));
+
+    UIButton &btn = m_Scene->GetEntityComponent<UIButton>(entity_uuid);
+
+    uint8_t anchor = static_cast<uint8_t>(btn.anchor);
+    uint8_t align = static_cast<uint8_t>(btn.textAlign);
+    uint8_t autoSize = btn.autoSize ? 1 : 0;
+    out.write(reinterpret_cast<const char *>(&anchor), sizeof(anchor));
+    SerialiseVec2(out, btn.offset);
+    SerialiseVec2(out, btn.size);
+    out.write(reinterpret_cast<const char *>(&autoSize), sizeof(autoSize));
+    out.write(reinterpret_cast<const char *>(&btn.padding), sizeof(btn.padding));
+    SerialiseVec4(out, btn.bgColour);
+    SerialiseString(out, btn.label);
+    SerialiseVec4(out, btn.textColour);
+    out.write(reinterpret_cast<const char *>(&btn.fontSize), sizeof(btn.fontSize));
+    out.write(reinterpret_cast<const char *>(&align), sizeof(align));
+  }
+
+  if (m_Scene->EntityHasComponent<UIText>(entity_uuid)) {
+    int id = static_cast<int>(UIText_ID);
+    out.write(reinterpret_cast<const char *>(&id), sizeof(id));
+
+    UIText &txt = m_Scene->GetEntityComponent<UIText>(entity_uuid);
+
+    uint8_t anchor = static_cast<uint8_t>(txt.anchor);
+    out.write(reinterpret_cast<const char *>(&anchor), sizeof(anchor));
+    SerialiseVec2(out, txt.offset);
+    SerialiseString(out, txt.text);
+    SerialiseVec4(out, txt.textColour);
+    out.write(reinterpret_cast<const char *>(&txt.fontSize), sizeof(txt.fontSize));
+    out.write(reinterpret_cast<const char *>(&txt.wrapWidth), sizeof(txt.wrapWidth));
+  }
+
   if (m_Scene->EntityHasComponent<Behaviour>(entity_uuid)) {
     int id = static_cast<int>(Behaviour_ID);
 
@@ -257,15 +330,31 @@ UUID SceneSerialiser::DeserialiseEntity(std::istream &in) {
       break;
     }
     case Sprite_ID: {
-      UUID textureUUID = UUID::Deserialise(in);
+      UUID assetUUID = UUID::Deserialise(in);
 
-      std::cout << textureUUID.GetUUIDString() << std::endl;
+      std::cout << assetUUID.GetUUIDString() << std::endl;
 
       glm::vec3 colour = DeserialiseVec3(in);
 
-      if (!UUID::IsNil(textureUUID)) {
-        m_Scene->AddEntityComponent<Sprite>(
-            uuid, m_AssetManager->GetTexture(textureUUID), colour);
+      if (!UUID::IsNil(assetUUID)) {
+        // Route through ResolveSpriteSource so the UUID can be either a
+        // Texture OR a SubSprite — sub-sprite resolution returns the
+        // parent texture pointer, which is what Sprite caches. The UV
+        // rect is recomputed at render time from assetUUID.
+        SpriteSource src = m_AssetManager->ResolveSpriteSource(assetUUID);
+        std::shared_ptr<Texture> texPtr;
+        if (src.texture != nullptr && !src.missing) {
+          // Find the shared_ptr that owns src.texture so Sprite's
+          // texture member shares ownership with AssetManager.
+          for (auto const &[texUUID, tex] : m_AssetManager->GetTextureMap()) {
+            if (tex.get() == src.texture) {
+              texPtr = tex;
+              break;
+            }
+          }
+        }
+        m_Scene->AddEntityComponent<Sprite>(uuid, texPtr, colour);
+        m_Scene->GetEntityComponent<Sprite>(uuid).assetUUID = assetUUID;
       } else {
         m_Scene->AddEntityComponent<Sprite>(uuid, colour);
       }
@@ -387,6 +476,42 @@ UUID SceneSerialiser::DeserialiseEntity(std::istream &in) {
         h.siblingIndex = siblingIndex;
       }
 
+      break;
+    }
+    case UIButton_ID: {
+      UIButton btn;
+      uint8_t anchor;
+      in.read(reinterpret_cast<char *>(&anchor), sizeof(anchor));
+      btn.anchor = static_cast<UIAnchor>(anchor);
+      btn.offset = DeserialiseVec2(in);
+      btn.size = DeserialiseVec2(in);
+      uint8_t autoSize;
+      in.read(reinterpret_cast<char *>(&autoSize), sizeof(autoSize));
+      btn.autoSize = (autoSize != 0);
+      in.read(reinterpret_cast<char *>(&btn.padding), sizeof(btn.padding));
+      btn.bgColour = DeserialiseVec4(in);
+      btn.label = DeserialiseString(in);
+      btn.textColour = DeserialiseVec4(in);
+      in.read(reinterpret_cast<char *>(&btn.fontSize), sizeof(btn.fontSize));
+      uint8_t align;
+      in.read(reinterpret_cast<char *>(&align), sizeof(align));
+      btn.textAlign = static_cast<UITextAlign>(align);
+
+      m_Scene->AddEntityComponent<UIButton>(uuid, btn);
+      break;
+    }
+    case UIText_ID: {
+      UIText txt;
+      uint8_t anchor;
+      in.read(reinterpret_cast<char *>(&anchor), sizeof(anchor));
+      txt.anchor = static_cast<UIAnchor>(anchor);
+      txt.offset = DeserialiseVec2(in);
+      txt.text = DeserialiseString(in);
+      txt.textColour = DeserialiseVec4(in);
+      in.read(reinterpret_cast<char *>(&txt.fontSize), sizeof(txt.fontSize));
+      in.read(reinterpret_cast<char *>(&txt.wrapWidth), sizeof(txt.wrapWidth));
+
+      m_Scene->AddEntityComponent<UIText>(uuid, txt);
       break;
     }
     case -1: {

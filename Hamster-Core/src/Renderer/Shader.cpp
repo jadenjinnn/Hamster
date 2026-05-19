@@ -112,4 +112,8 @@ void Shader::setUniformMat4(const char *name, const glm::mat4 &value) {
 void Shader::setUniformVec3(const char *name, const glm::vec3 &value) {
   glUniform3fv(glGetUniformLocation(m_shaderID, name), 1, &value[0]);
 }
+
+void Shader::setUniformVec4(const char *name, const glm::vec4 &value) {
+  glUniform4fv(glGetUniformLocation(m_shaderID, name), 1, &value[0]);
+}
 } // namespace Hamster

@@ -5,13 +5,12 @@ out vec4 FragColour;
 
 uniform sampler2D image;
 uniform vec3 spriteColour;
+// Sub-sprite UV window into the bound texture. (x,y) = top-left in [0,1],
+// (z,w) = width/height in [0,1]. Default (0,0,1,1) = whole texture.
+uniform vec4 uvRect;
 
 void main()
-{    
-    FragColour = vec4(spriteColour, 1.0f) * texture(image, TexCoords);
-
-    // FragColour = vec4(spriteColour, 1.0);
-
-    //FragColour = vec4(1.0f, 0.5f, 0.2f, 1.0f);
+{
+    vec2 uv = uvRect.xy + TexCoords * uvRect.zw;
+    FragColour = vec4(spriteColour, 1.0f) * texture(image, uv);
 }
-

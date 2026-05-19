@@ -229,7 +229,8 @@ namespace Hamster {
     }
 
     void Renderer::DrawSprite(Texture &texture, glm::vec2 position, glm::vec2 size,
-                              float rotation, glm::vec3 colour) {
+                              float rotation, glm::vec3 colour,
+                              glm::vec4 uvRect) {
         m_SpriteShader->use();
 
         glm::mat4 model = glm::mat4(1.0f);
@@ -244,6 +245,7 @@ namespace Hamster {
 
         m_SpriteShader->setUniformMat4("model", model);
         m_SpriteShader->setUniformVec3("spriteColour", colour);
+        m_SpriteShader->setUniformVec4("uvRect", uvRect);
 
         glActiveTexture(GL_TEXTURE0);
         texture.BindTexture();
@@ -528,7 +530,8 @@ namespace Hamster {
 
     void Renderer::SubmitSprite(Texture &texture, glm::vec2 position,
                                 glm::vec2 size, float rotation,
-                                glm::vec3 colour, float z) {
+                                glm::vec3 colour, float z,
+                                glm::vec4 uvRect) {
         // Flush on key change. Identity-by-pointer is safe — Texture is owned
         // by AssetManager and stable for the frame.
         const bool textureChanged = m_BatchTexture != &texture;
@@ -569,7 +572,14 @@ namespace Hamster {
         const glm::vec2 br = worldXY( hw,  hh);
 
         // 6 verts: (BL, BR, TR), (BL, TR, TL) — matches original unit-quad
-        // winding in InitRendererData.
+        // winding in InitRendererData. Sub-sprite UVs are baked here: the
+        // unit-quad's (u,v) corners map onto uvRect.xy + corner * uvRect.zw,
+        // so the batch shader sees regular [uMin..uMax]×[vMin..vMax] coords
+        // and needs no spritesheet-aware change of its own.
+        const float u0 = uvRect.x;
+        const float v0 = uvRect.y;
+        const float u1 = uvRect.x + uvRect.z;
+        const float v1 = uvRect.y + uvRect.w;
         auto push = [&](const glm::vec2 &p, float u, float v) {
             m_BatchVerts.push_back(p.x);
             m_BatchVerts.push_back(p.y);
@@ -579,12 +589,12 @@ namespace Hamster {
             m_BatchVerts.push_back(colour.g);
             m_BatchVerts.push_back(colour.b);
         };
-        push(bl, 0.0f, 1.0f);
-        push(br, 1.0f, 1.0f);
-        push(tr, 1.0f, 0.0f);
-        push(bl, 0.0f, 1.0f);
-        push(tr, 1.0f, 0.0f);
-        push(tl, 0.0f, 0.0f);
+        push(bl, u0, v1);
+        push(br, u1, v1);
+        push(tr, u1, v0);
+        push(bl, u0, v1);
+        push(tr, u1, v0);
+        push(tl, u0, v0);
     }
 
     void Renderer::FlushSpriteBatch() {

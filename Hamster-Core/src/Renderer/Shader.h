@@ -21,6 +21,8 @@ public:
 
   void setUniformVec3(const char *name, const glm::vec3 &value);
 
+  void setUniformVec4(const char *name, const glm::vec4 &value);
+
 private:
   unsigned int m_shaderID = 0;
 };
