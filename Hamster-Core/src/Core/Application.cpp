@@ -9,6 +9,7 @@
 
 #include "Base.h"
 #include "Events/ApplicationEvents.h"
+#include "Events/UIEvents.h"
 #include "Layer.h"
 #include "Project.h"
 #include "Renderer/FramebufferTexture.h"
@@ -16,6 +17,7 @@
 #include "Renderer/Shader.h"
 #include "Scripting/Scripting.h"
 #include "Utils/AssetManager.h"
+#include "Utils/InputManager.h"
 
 namespace Hamster {
     // Singleton was chosen due to need for all systems to access the Application
@@ -285,6 +287,46 @@ namespace Hamster {
         // pointer in their GLFW user-pointer.
         glfwSetWindowUserPointer(m_PlayWindow, m_Dispatcher.get());
         InputManager::AttachCallbacks(m_PlayWindow);
+
+        // Override the mouse-button callback with a popout-specific one that
+        // hit-tests UI buttons in popout coordinates and posts
+        // ButtonClickedEvent on hit. Editor's UI hit-test runs through
+        // ImGui::IsMouseClicked + panel-relative coords (EditorLayer); the
+        // popout has no ImGui surface so it needs its own path. Uses the
+        // Application singleton to reach Scene + Renderer because the
+        // window's user-pointer is already taken by the EventDispatcher
+        // (for the parent AttachCallbacks key callback).
+        glfwSetMouseButtonCallback(m_PlayWindow, [](GLFWwindow *w, int button,
+                                                     int action, int /*mods*/) {
+            if (button != GLFW_MOUSE_BUTTON_LEFT || action != GLFW_PRESS) return;
+
+            Application &app = Application::GetApplicationInstance();
+            auto scene = app.GetActiveScene();
+            Renderer *renderer = app.GetRenderer();
+            if (!scene || !renderer) return;
+
+            double mx, my;
+            glfwGetCursorPos(w, &mx, &my);
+            int winW = 0, winH = 0;
+            glfwGetWindowSize(w, &winW, &winH);
+            if (winW <= 0 || winH <= 0) return;
+
+            auto uiView =
+                scene->GetRegistry().view<Hamster::UIButton, Hamster::ID>();
+            for (auto e : uiView) {
+                auto &btn = uiView.get<Hamster::UIButton>(e);
+                auto &id = uiView.get<Hamster::ID>(e);
+                Hamster::UIRect r = renderer->ResolveUIButton(
+                    btn, static_cast<float>(winW), static_cast<float>(winH));
+                if (r.ContainsPoint(static_cast<float>(mx),
+                                    static_cast<float>(my))) {
+                    Hamster::ButtonClickedEvent be(id.uuid);
+                    app.GetEventDispatcher()
+                        ->Post<Hamster::ButtonClickedEvent>(be);
+                    break;
+                }
+            }
+        });
 
         // After creating the new window, GLFW makes its context current as a
         // side effect. Restore the editor's context so subsequent rendering
