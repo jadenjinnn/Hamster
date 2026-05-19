@@ -1,5 +1,68 @@
 # Session handoff
 
+## 2026-05-19 — spritesheet support stages 1–6 shipped; 7–9 pending
+
+- **Shipped today (committed, smoke 33/33)**: project-resolution-and-play-window feature (Full spec, 8 stages, closed out — moved to `shipped/2026-05-19-...`), then spritesheet-support stages 1–6:
+  - **Stage 1**: SubSprite data + `.png.sheet` sidecar + `AssetManager::AddSubSprite/Remove/Rename` + `ResolveSpriteSource` + `FindAssetByName` + MISSING placeholder (8×8 pink-black checker). Smoke +4.
+  - **Stage 2**: Renderer UV plumbing — `DrawSprite`/`SubmitSprite` take `uvRect`; SpriteShader.fs gains `uvRect` uniform; batch path bakes per-vertex UV. Sprite component gains `assetUUID = UUID::GetNil()` default. Scene::OnRender resolves UUIDs via `AssetManager::ResolveSpriteSource`. SceneSerialiser routes either Texture or SubSprite UUIDs through the resolver. (Bug caught mid-stage: default UUID() generates random not nil — all sprites went through MISSING. Fixed.)
+  - **Stage 3**: Floating SpritesheetEditor window — draw one rect, save.
+  - **Stage 4**: Full slicing UX — multi-rect, click-select, 8 resize handles, drag-move, Del key, side list with editable name + X delete, diff-aware Save with collision check against the unified Texture+SubSprite namespace.
+  - **Stage 5**: Asset Browser sheet card chevron caret → inline sub-sprite mini-card grid; mini-cards show clipped texture (uv0/uv1) + name; Ctrl-click multi-select (orange border); drag bundles `HAMSTER_SUBSPRITE_UUIDS` payload (uint32 count + N × `boost::uuids::uuid`).
+  - **Stage 6**: "Import Spritesheet" item in the Add-Asset popup + right-click texture card → "Edit Slices..." both open SpritesheetEditor.
+  - Post-stage-6 fix: clicks on the slice canvas were moving the editor window (ImGui::Image doesn't consume input) → added InvisibleButton over the canvas. Wheel zoom (cursor-centered, ~12%/notch) added — pinch-equivalent on desktop.
+- **Pending — spritesheet stages 7–9**:
+  - **Stage 7**: AnimationPanel accepts the `HAMSTER_SUBSPRITE_UUIDS` payload — drop adds N evenly-spaced keyframes in selection order using `defaultStepSeconds`.
+  - **Stage 8**: PropertyEditor — sub-sprite drag onto the Sprite field (UUID payload already wires up via stage-2 resolver), plus the MISSING red label when `ResolveSpriteSource` returns missing. Pink-checker placeholder renders in-world via the existing renderer path.
+  - **Stage 9**: `AssetManager::RenameAsset` extension — `.sheet` sidecar moves alongside `.png` + `.meta`. ProjectWatcher external-rename path also covers `.sheet`.
+- **Other open threads**:
+  - FlappyBird sample feature is parked at `docs/features/parked/flappy-bird-sample.md` — to resume after spritesheet ships. Engine prereqs (EntityHandle.transform/set_velocity/apply_impulse) already merged. The author will hand-import sprites + build the `bird_flap` animation in the editor.
+  - Bug 0008 (editor segfault on exit) still open — pre-existing, low-priority. Reproduces consistently on every exit (exit code 139 in the background-launch task output).
+  - Bug 0010 (zoom-out FPS drop, suspect dot grid) still open. No work done.
+  - `docs/features/active/game-ui.md` still in active/ — close-out (architecture.md, decisions.md, README, spec move) was deferred when this session started and never picked back up. Should land before next round of feature work.
+- **Active feature folder state**: only `game-ui.md` + `spritesheet-support.md` in `active/`. FB and the two other big features properly parked / shipped.
+
+## 2026-05-18 — game-ui Phases A + B implemented; close-out pending
+
+- **Shipped (functionally complete, smoke green 27/27)**: game-ui Phase A (anchored UIButton + UIText, screen-space hit-test, edit-mode drag, ButtonClickedEvent dispatch, Hierarchy "Add" dropdown, PropertyEditor sections, Python `find_entity_by_name` + `on_button_clicked` virtual). Phase B (FontAtlas via stb_truetype, UITextShader, button labels with textAlign, UIText with wrap, auto-size buttons, runtime label/text mutation from Python).
+- **Spec status**: still in `docs/features/active/game-ui.md`. Status flipped to "approved" but the close-out checklist hasn't been run yet.
+- **Close-out NOT done** — pick these up when you return:
+  1. Update `docs/architecture.md` — add `Renderer::FontAtlas`, `UIButton`/`UIText` to module list, mention `Renderer::ResolveUIButton`.
+  2. Add entry to `docs/decisions.md` for the `on_button_clicked` virtual dispatch choice (spec sketch used `self.subscribe(...)` but the body said "existing EventDispatcher pattern" — followed `on_animation_complete` precedent instead).
+  3. Move spec: `docs/features/active/game-ui.md` → `docs/features/shipped/2026-05-18-game-ui.md`.
+  4. README "What's new" entry.
+  5. `/log` to update session log (already done in CLAUDE.local.md but the convention is to run `/log` at close-out).
+- **Decisions during implementation** to log in the spec's section before moving it:
+  - `on_button_clicked(uuid)` virtual override (not `self.subscribe(EventType.ButtonClicked, fn)`). Mirrors `on_animation_complete`.
+  - `find_entity_by_name` exists on **both** `Scene` (`scene.find_entity_by_name`) AND `HamsterBehaviour` (`self.find_entity_by_name`). Scripts use the latter since they don't have a Scene handle in Python.
+  - `EntityHandle.set_label(text)` / `set_text(text)` for runtime mutation of UIButton.label and UIText.text respectively. Spec sketch implied direct attribute access but EntityHandle has no live UIButton accessor; setters were the minimal viable surface.
+  - Single bake size (32px) — text blurs at extreme zoom. Multi-bake / SDF deferred to Future Work.
+  - `Renderer.h` includes `FontAtlas.h` which transitively pulls `stb_truetype.h` into every Renderer.h consumer. Compile-time bloat; cleanup is a forward-decl + pImpl pass, left for future cleanup.
+- **Build gotchas hit during implementation (worth remembering)**:
+  - `cmake --build --target Hamster-Wheel` does NOT relink `SmokeTest` even when `Hamster-Core.lib` changed — must explicitly add `SmokeTest` to the target list. ABI mismatch from stale SmokeTest.exe caused a segv inside `CreateEntity` (Scene class layout changed when I added m_ClickedButtonsThisFrame + m_ButtonClickedHandle).
+  - Editor must be killed before relink — file lock on `Hamster-Wheel.exe`.
+- **Known Phase B limits** (already documented in spec's Future Work):
+  - UIText is selectable from Hierarchy only — screen-space hit-test still only covers UIButton.
+  - ASCII 32–126 only. Non-ASCII renders as `?`. No localisation support.
+  - Drag works only for UIButton (UIText would need a measured rect for hit).
+- **Test artefact**: `C:\Users\Jaden\Downloads\scenetest\ui_test.py` is a manual test script the user has been using. Will be left in place — not part of the smoke fixtures (those live under `test/fixtures/`).
+- **Untracked dirs**: `build-asan/`, `build-release/` still present (long-standing). Bug 0008 still open (low severity exit segv, pre-existing).
+- **Next session step**: run the 5 game-ui close-out items above (architecture.md update, decisions.md entry, spec move, README, /log), then `git add -A` + commit + push. After that, the spec status flips from "approved" → "shipped" and the feature is officially closed.
+
+## 2026-05-17 (session 3) — sprite-batching v1 + spatial-index shipped + pushed
+
+- **Shipped + pushed**: sprite-batching v1 (same-texture batching) + simulation-snapshot critical fix (deferred restore) + spatial-index (quadtree culling + fast picking). 3 commits on `origin/master` (4ce42190, 7a4669eb, 54bf6d0d, 959445c1). Smoke 21/21.
+- **Resume bullets unlocked**:
+  - "Multi-texture sprite batching: ~N → 1 draw call for same-texture scenes (v1 measured: 5000 sprites in 1 batch)"
+  - "Quadtree spatial index with viewport-rect culling + O(log N + k) picking, replaces per-frame full-scene FBO + glReadPixels"
+  - Numbers should be measured cleanly on a **release build** (`build-release/`) — debug build is 5-10× slower due to MSVC iterator debug level 2; the resume number lives in release.
+- **Bug 0008** (`docs/bugs/active/0008-editor-segfault-on-exit.md`) — logged, not investigated. Editor exits with SIGSEGV after `Application::~Application`. Cosmetic (process is exiting anyway) but noisy. Suspected related to bug 0007's class of issue (a latent pybind11 holder finalising on a dead interpreter). **Severity Low** — don't drop higher-leverage work for it.
+- **Pre-existing perf gaps surfaced but not fixed** (user explicitly didn't want bug logs for these):
+  - **Dot grid in level editor** (`EditorLayer.cpp:291-296`) issues 1 unbatched `DrawFlat` per grid dot — ~5000 calls/frame at default viewport. Pre-existing. Fix would be a flat-shader batch path mirroring sprite-batch v1, or a single-quad procedural-pattern shader.
+  - **Hierarchy panel** renders every entity row every frame — at 5000+ entities this dominates ImGui frame time in debug. Fix would be ImGui virtual scrolling / clipper.
+- **Renderer's projection-vs-FBO mismatch**: documented in `docs/decisions.md` under "Editor pick coords differ from `Renderer::ScreenToWorldPos`". Worked around in `EditorLayer::PanelMouseToWorld`; the deeper fix is to either teach the renderer about the panel size or to clip the projection rather than the framebuffer. Future work — current workaround is fine.
+- **Untracked dirs**: `build-asan/` (long-standing) and `build-release/` (new this session — release build used to confirm perf). Safe to delete `build-asan`; keep `build-release` if you want to re-run the benchmark.
+- **Next session step**: Open `scenetest` in `build-release/Hamster-Wheel/Hamster-Wheel.exe`, attach `benchmark_batching.py` with `NUM_SPRITES = 10000`, hit play, **read the draw-call count and FPS from the HUD top-right**, write those numbers into the resume bullet. Then decide what's next — frustum-culling-by-zoom, particle system, tilemap, fix bug 0008, etc.
+
 ## 2026-05-17 (session 2) — asset-sidecars shipped (locally); manual UI tests pending; 10 commits unpushed
 
 - **Feature done**: asset-sidecars closed out across 7 phases + bug 0007 fix + close-out docs. Spec at `docs/features/shipped/2026-05-17-asset-sidecars.md`. Smoke test 15/15.
