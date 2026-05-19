@@ -67,3 +67,29 @@ Chose unconditional rebuild over incremental updates because the rebuild is sub-
 Picking is hybrid: entity hit-test uses the spatial index; transform-grabber hit-test still goes through the existing FBO-color-readback path (8 quads, trivial cost). Lets the editor reuse `DrawGuizmo`'s grabber color encoding without porting the whole hit-test scheme to a precise rect-vs-point check.
 
 `ProcessPendingRestore` (simulation-snapshot's deferred restore) must clear the spatial index immediately after wiping `m_Registry`/`m_Entities` — otherwise stale UUIDs in the tree feed back into the next frame's hover-pick, whose zMap callback calls `GetEntityComponent<Transform>(stale_uuid)`, which inserts a phantom `entt::null` into `m_Entities` via `operator[]`, and then `registry.get<Transform>(null)` segfaults.
+
+## Project resolution + popout play window — 2026-05-19
+
+### Two render passes per frame during play, not render-once-blit-twice
+
+The editor's scene viewport keeps its existing FBO render; when the popout is open, `EditorLayer::OnUpdate` issues a *second* `Scene::OnRender` + `Scene::OnRenderUI` into the popout's default framebuffer with the renderer's viewport / zoom / camera-offset swapped to a fixed `(0,0)→(targetW, targetH)` view and restored afterward. The render-once-blit-twice optimisation (render into a shared offscreen FBO, `glBlitFramebuffer` to both outputs) is logged as future work — the 2× draw-call cost is acceptable at v1 entity counts and the blit path is a meaningful step up in renderer complexity that v1 doesn't warrant.
+
+### Renderer gains `SetCameraOffset(absolute)` separate from `ChangeCameraOffset(delta)`
+
+`ChangeCameraOffset` is delta semantics (subtracts from m_CameraOffset, used by the editor's right-click pan). The popout-render save/restore dance needs an absolute setter — `SetCameraOffset` writes m_CameraOffset directly. Two methods rather than overloading because the delta call site outnumbers the absolute one and a single delta-only API kept reads of "set camera to (X, Y)" unsafe.
+
+### Popout window-close is deferred to next frame top via `glfwWindowShouldClose`
+
+When the user clicks the popout's X, GLFW sets its should-close flag. `Application::Run` polls the flag at the top of each iteration and treats it identically to Stop (pause simulation + `ClosePlayWindow`). The original temptation was to register a `glfwSetWindowCloseCallback` that destroys the window inline — but destroying a window mid-frame is the classic crash class (Risk #2 in the spec). Polling at frame top keeps the destroy at a known-quiet point before any render or input pass touches the popout.
+
+### Popout mouse callback hand-rolled, not via `InputManager::AttachCallbacks`
+
+`AttachCallbacks` is the editor's shared key + mouse callback registration — its mouse callback posts a generic `MouseButtonClickedEvent` that nothing currently subscribes to. The editor's UI hit-test runs through ImGui (`IsMouseClicked` + panel-relative coords), which the popout doesn't have. So the popout's mouse callback is overridden after `AttachCallbacks` with a popout-specific hit-test that resolves `UIButton` rects in popout-window coordinates and posts `ButtonClickedEvent` directly. Editor entity picking stays gated by `m_ViewportHovered` (ImGui state) — popout clicks never trigger entity picks because the popout has no ImGui surface, so this falls out naturally rather than needing an explicit flag.
+
+### `.hamproj` legacy migration is silent + write-on-next-save
+
+`ProjectConfig` gained `TargetWidth` / `TargetHeight` int32s appended at the end of the binary blob. The deserialiser uses `in.peek() != EOF` + `gcount` guards on each read; when the new fields are missing (legacy `.hamproj` from before this feature), the defaults (1280×720) apply and the next `Serialise` writes them forward. No upgrade dialog, no version field — the format is positional binary and the appended-fields approach is the cheapest forward-compat path. Eventually this serialiser should move to a versioned / portable format (logged in the architecture's "Known smells" section).
+
+### Project::GetCurrentProject() over DI threading for the popout-mouse-callback Scene + Renderer access
+
+The popout's mouse-button callback (registered in `Application::OpenPlayWindow`) needs to reach the current Scene and Renderer to hit-test UI buttons. The window's GLFW user-pointer is already taken by the EventDispatcher (so the parent key callback can post events). Rather than wrap a struct into the user-pointer or thread Application through the callback, the popout-specific path uses `Application::GetApplicationInstance()` — matches existing Hamster-Wheel singleton usage; cleanup is a separate DI refactor task.

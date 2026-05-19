@@ -4,7 +4,7 @@
 
 ## One-paragraph overview
 
-Hamster is a Windows-targeted 2D game engine with an embedded Python scripting layer, designed so that game authors write gameplay logic in Python against a C++ runtime. Three CMake subprojects make up the whole system: **Hamster-Core** (static C++ library — application loop, ECS via EnTT, OpenGL renderer, Box2D 3.x physics, ImGui GUI integration, pybind11 interpreter lifecycle); **Hamster-Py** (a pybind11 extension module that exposes C++ types to Python under the `Hamster` namespace); and **Hamster-Wheel** (the editor executable — ImGui-based scene editor with hierarchy, property editor, asset browser, file browser, console, and project hub). Entities carry Transform, Sprite, Name, Rigidbody, ID, Animation, and Behaviour components; the Behaviour component stores instantiated Python objects (subclasses of `HamsterBehaviour`) that receive per-frame callbacks and engine events. A separate runtime-only player (no editor) is planned but not yet implemented.
+Hamster is a Windows-targeted 2D game engine with an embedded Python scripting layer, designed so that game authors write gameplay logic in Python against a C++ runtime. Three CMake subprojects make up the whole system: **Hamster-Core** (static C++ library — application loop, ECS via EnTT, OpenGL renderer, Box2D 3.x physics, ImGui GUI integration, pybind11 interpreter lifecycle); **Hamster-Py** (a pybind11 extension module that exposes C++ types to Python under the `Hamster` namespace); and **Hamster-Wheel** (the editor executable — ImGui-based scene editor with hierarchy, property editor, asset browser, file browser, console, and project hub). Entities carry Transform, Sprite, Name, Rigidbody, ID, Animation, and Behaviour components; the Behaviour component stores instantiated Python objects (subclasses of `HamsterBehaviour`) that receive per-frame callbacks and engine events. Pressing the editor's Play button spawns a separate **popout play window** sized to the project's target resolution; rendering and input both fork along the editor's existing path with the popout's GLFW handle as the second target. A separate runtime-only player (no editor) is planned but not yet implemented.
 
 ## Entry points
 
@@ -15,7 +15,7 @@ Hamster is a Windows-targeted 2D game engine with an embedded Python scripting l
 
 ## Module map
 
-- `Hamster-Core/src/Core/` — `Application` singleton + main loop, `Window` (GLFW wrapper), `LayerStack`, `Scene` + ECS façade, `Project` + `ProjectSerialiser`, `SceneSerialiser`, `UUID`, `Log`/`Logger`, `Components.h` (all component structs including `AnimationKeyframe`, `AnimationData`, `Animation`)
+- `Hamster-Core/src/Core/` — `Application` singleton + main loop (owns the editor `Window` and the optional popout play window via `OpenPlayWindow` / `ClosePlayWindow` / `IsPlayWindowOpen` / `GetPlayWindow`), `Window` (GLFW wrapper), `LayerStack`, `Scene` + ECS façade, `Project` + `ProjectSerialiser` (the `.hamproj` blob carries `TargetWidth` / `TargetHeight` for the popout play window — legacy projects without these fields default to 1280×720), `SceneSerialiser`, `UUID`, `Log`/`Logger`, `Components.h` (all component structs including `AnimationKeyframe`, `AnimationData`, `Animation`)
 - `Hamster-Core/src/Events/` — `EventType` enum, `Event` base class, `EventDispatcher` (subscribe-only observer), all concrete event types (`WindowEvents`, `ApplicationEvents`, `InputEvents`, `SceneEvents`, `GuiEvents`)
 - `Hamster-Core/src/Renderer/` — `Renderer` (instance owned by Application, OpenGL draw calls, camera/zoom), `Shader`, `Texture`, `FramebufferTexture`, two built-in GLSL shaders (`SpriteShader`, `FlatShader`)
 - `Hamster-Core/src/Physics/` — gutted; Box2D 3.x replaces the old custom AABB system. Physics world lifecycle and stepping live in `Scene`.
@@ -34,8 +34,10 @@ Hamster is a Windows-targeted 2D game engine with an embedded Python scripting l
 `Application::Run()` each frame, in order:
 
 1. **Flush pending layer changes** (push/pop queue from the previous frame's `OnUpdate` pass)
+1a. **Popout-close check** — if the popout play window is open and its GLFW should-close flag is set (user clicked the X), pause the active scene's simulation and destroy the popout cleanly. Always runs *before* any per-frame rendering so the popout is never destroyed mid-frame.
 2. **`Layer::OnUpdate()`** on every layer in the stack
    - `EditorLayer::OnUpdate` renders to a framebuffer using flat entity colours, reads the pixel under the cursor, and resolves entity selection / guizmo drags
+   - If `Application::IsPlayWindowOpen()`, also issues a second `Scene::OnRender` + `Scene::OnRenderUI` into the popout's default framebuffer (with the renderer's viewport / zoom / camera-offset swapped to `(0,0)→(targetW,H)` at zoom=1 and restored afterward)
 3. **Flush pending layer changes again** — commits any layer transitions triggered during step 2, so ImGui sees the new stack in the same frame
 4. **`ImGuiLayer::Begin()`**
 5. **`Layer::OnImGuiUpdate()`** on every layer — all panels and the scene viewport image are drawn here
