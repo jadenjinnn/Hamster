@@ -160,10 +160,45 @@ void SpritesheetEditor::Render() {
     const float imgW = static_cast<float>(tex->GetWidth())  * m_Zoom;
     const float imgH = static_cast<float>(tex->GetHeight()) * m_Zoom;
     ImVec2 imgPos = ImGui::GetCursorScreenPos();
-    ImGui::Image(reinterpret_cast<ImTextureID>(
-                     static_cast<intptr_t>(tex->GetTextureId())),
-                 {imgW, imgH});
+    // InvisibleButton FIRST — owns the active-item state so clicks here
+    // don't fall through to the window-background drag handler. The image
+    // is then drawn at the same rect via the draw list, purely visual.
+    ImGui::InvisibleButton("##sheet_canvas", {imgW, imgH});
     const bool imgHovered = ImGui::IsItemHovered();
+
+    // Cursor-centered wheel zoom — pinch-equivalent on desktop. Reads
+    // mouse-wheel delta only when the canvas is hovered so plain
+    // vertical scroll inside the child still works elsewhere. Pre-zoom
+    // pixel under the cursor is preserved across the zoom by
+    // adjusting child-scroll relative to the new image size.
+    if (imgHovered) {
+        const float wheel = ImGui::GetIO().MouseWheel;
+        if (wheel != 0.0f) {
+            const ImVec2 mp = ImGui::GetMousePos();
+            const float oldZoom = m_Zoom;
+            float pxUnderCursorX = (mp.x - imgPos.x) / oldZoom;
+            float pxUnderCursorY = (mp.y - imgPos.y) / oldZoom;
+            // ~+/-12% per notch; clamped to slider range so the rest of
+            // the UI stays consistent.
+            float newZoom = oldZoom * (wheel > 0 ? 1.12f : 1.0f / 1.12f);
+            newZoom = std::max(1.0f, std::min(16.0f, newZoom));
+            if (newZoom != oldZoom) {
+                m_Zoom = newZoom;
+                // After the next frame's layout, the image will be at
+                // imgPos + scroll. To keep pxUnderCursor under the mouse,
+                // shift child-scroll by the delta of (px * (new - old)).
+                float dx = pxUnderCursorX * (newZoom - oldZoom);
+                float dy = pxUnderCursorY * (newZoom - oldZoom);
+                ImGui::SetScrollX(ImGui::GetScrollX() + dx);
+                ImGui::SetScrollY(ImGui::GetScrollY() + dy);
+            }
+        }
+    }
+
+    ImGui::GetWindowDrawList()->AddImage(
+        reinterpret_cast<ImTextureID>(
+            static_cast<intptr_t>(tex->GetTextureId())),
+        imgPos, {imgPos.x + imgW, imgPos.y + imgH});
 
     ImDrawList *dl = ImGui::GetWindowDrawList();
 
