@@ -16,6 +16,7 @@
 #include "Panels/CreateProjectModal.h"
 #include "Panels/OpenProjectModal.h"
 #include "Panels/ColliderEditor.h"
+#include "Panels/SpritesheetEditor.h"
 #include "ProjectRegistry.h"
 
 class EditorLayer : public Hamster::Layer {
@@ -63,6 +64,10 @@ private:
     std::unique_ptr<CreateProjectModal> m_CreateModal;
     std::unique_ptr<OpenProjectModal> m_OpenModal;
     std::unique_ptr<ColliderEditor> m_ColliderEditor;
+    std::unique_ptr<SpritesheetEditor> m_SpritesheetEditor;
+
+public:
+    SpritesheetEditor *GetSpritesheetEditor() { return m_SpritesheetEditor.get(); }
     ProjectRegistry m_Registry;
 
     // Picking / drag state
@@ -89,6 +94,14 @@ private:
 
     bool m_ViewportHovered = false;
     entt::entity m_HoveredEntity = entt::null;
+
+    // UI drag (edit mode). On click into a UIButton, capture the initial
+    // offset so subsequent mouse-drag deltas mutate it; the sign-flip is
+    // re-applied per frame so +x mouse always moves the rect rightward
+    // regardless of anchor side.
+    bool m_UIHeld = false;
+    entt::entity m_UIHeldEntity = entt::null;
+    glm::vec2 m_UIHeldStartOffset = {0.0f, 0.0f};
 
     // Custom title bar state
     std::unique_ptr<Hamster::Texture> m_LogoTex;

@@ -37,6 +37,7 @@ EditorLayer::EditorLayer(Hamster::Application *app)
     m_LevelEditor = std::make_unique<LevelEditor>();
     m_Hierarchy = std::make_unique<Hierarchy>(m_Dispatcher, m_Scene);
     m_ColliderEditor = std::make_unique<ColliderEditor>();
+    m_SpritesheetEditor = std::make_unique<SpritesheetEditor>();
     m_PropertyEditor = std::make_unique<PropertyEditor>(
         m_Dispatcher, m_Scene, app->GetAssetManager(), m_ColliderEditor.get());
     m_BottomPanel = std::make_unique<BottomPanel>(
@@ -767,6 +768,7 @@ void EditorLayer::OnImGuiUpdate() {
     m_CreateModal->Render(&m_Registry);
     m_OpenModal->Render(&m_Registry);
     if (m_ColliderEditor->IsOpen())       m_ColliderEditor->Render();
+    if (m_SpritesheetEditor->IsOpen())    m_SpritesheetEditor->Render();
 }
 
 void EditorLayer::ActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e) {

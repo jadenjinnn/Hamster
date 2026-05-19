@@ -28,6 +28,7 @@ add_executable(Hamster-Wheel
     src/Panels/OpenProjectModal.cpp
     src/Panels/ColliderEditor.cpp
     src/Panels/RenameModal.cpp
+    src/Panels/SpritesheetEditor.cpp
 )
 
 target_include_directories(Hamster-Wheel PRIVATE
