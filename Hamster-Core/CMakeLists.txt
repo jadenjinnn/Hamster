@@ -59,6 +59,8 @@ set(Renderer
         src/Renderer/Shader.cpp src/Renderer/Shader.h
 
         src/Renderer/Texture.cpp src/Renderer/Texture.h
+
+        src/Renderer/FontAtlas.cpp src/Renderer/FontAtlas.h
 )
 
 
@@ -70,6 +72,8 @@ set(Utils
         src/Utils/MetaFile.cpp src/Utils/MetaFile.h
 
         src/Utils/ProjectWatcher.cpp src/Utils/ProjectWatcher.h
+
+        src/Utils/SheetSidecar.cpp src/Utils/SheetSidecar.h
 
         src/Utils/SpatialIndex.cpp src/Utils/SpatialIndex.h
 )

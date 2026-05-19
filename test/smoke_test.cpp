@@ -17,6 +17,7 @@
 #include "Renderer/Renderer.h"
 #include "Scripting/HamsterScript.h"
 #include "Utils/AssetManager.h"
+#include "Utils/SheetSidecar.h"
 #include "Utils/SpatialIndex.h"
 
 #include <sstream>
@@ -1203,6 +1204,126 @@ int main() {
     std::filesystem::remove_all(markerDir);
     std::cout << "PASS: UI-6 — Python end-to-end (find + set_text + click)"
               << std::endl;
+  }
+
+  // ─── Spritesheet support: data layer (stage 1) ───
+  // SHEET-1: SheetSidecar round-trip. Hand-build 3 entries, write a sidecar
+  // to a temp .png path, read it back, assert all fields match — and that
+  // a non-trivial line shape (one renamed sub-sprite among auto-named ones)
+  // survives.
+  {
+    namespace fs = std::filesystem;
+    fs::path tmp = fs::temp_directory_path() / "hamster_sheet_smoke";
+    fs::create_directories(tmp);
+    fs::path fakeSheet = tmp / "atlas.png";
+    fs::remove(Hamster::SheetSidecar::SidecarPath(fakeSheet));
+
+    std::vector<Hamster::SubSpriteEntry> entries = {
+        {Hamster::UUID(), "atlas_0",  {0, 0, 32, 32}},
+        {Hamster::UUID(), "wing_up",  {32, 0, 32, 32}},
+        {Hamster::UUID(), "atlas_2",  {64, 0, 32, 32}},
+    };
+
+    if (!Hamster::SheetSidecar::Write(fakeSheet, entries)) {
+      std::cerr << "FAIL: SHEET-1 — Write returned false" << std::endl;
+      return 1;
+    }
+
+    std::vector<Hamster::SubSpriteEntry> readBack;
+    if (!Hamster::SheetSidecar::Read(fakeSheet, readBack)) {
+      std::cerr << "FAIL: SHEET-1 — Read returned false" << std::endl;
+      return 1;
+    }
+
+    if (readBack.size() != 3) {
+      std::cerr << "FAIL: SHEET-1 — expected 3 entries, got "
+                << readBack.size() << std::endl;
+      return 1;
+    }
+    for (size_t i = 0; i < 3; ++i) {
+      bool same = readBack[i].uuid.GetUUID() == entries[i].uuid.GetUUID() &&
+                  readBack[i].name == entries[i].name &&
+                  readBack[i].pixelRect.x == entries[i].pixelRect.x &&
+                  readBack[i].pixelRect.y == entries[i].pixelRect.y &&
+                  readBack[i].pixelRect.z == entries[i].pixelRect.z &&
+                  readBack[i].pixelRect.w == entries[i].pixelRect.w;
+      if (!same) {
+        std::cerr << "FAIL: SHEET-1 — entry " << i << " mismatch" << std::endl;
+        return 1;
+      }
+    }
+    fs::remove_all(tmp);
+    std::cout << "PASS: SHEET-1 — SheetSidecar round-trip preserves "
+                 "uuid/name/rect across 3 entries"
+              << std::endl;
+  }
+
+  // SHEET-2 + SHEET-3: ResolveSpriteSource paths.
+  // - Texture UUID returns (that texture, full UV).
+  // - SubSprite UUID returns (parent texture, normalised pixel rect).
+  // - Unknown UUID returns the MISSING fallback texture + missing=true.
+  // Uses AddTexture(uuid, path, name) test helper which doesn't actually
+  // load the .png (path is a placeholder), so the resolved Texture has
+  // width=0/height=0. ResolveSpriteSource for the sub-sprite path would
+  // see "tw <= 0" and short-circuit to MISSING; to exercise the normal
+  // path we instead test only Texture + Missing resolutions here, and let
+  // the sub-sprite UV math be covered by manual verification.
+  {
+    auto am = std::make_unique<Hamster::AssetManager>(
+        [](std::function<void()>) {});
+
+    Hamster::UUID textureUUID;  // mint
+    am->AddTexture(textureUUID, "<test>", "test_texture");
+
+    // Texture resolution
+    Hamster::SpriteSource src = am->ResolveSpriteSource(textureUUID);
+    if (src.missing || !src.texture) {
+      std::cerr << "FAIL: SHEET-2 — texture resolve marked missing" << std::endl;
+      return 1;
+    }
+    if (src.uvRect.x != 0.0f || src.uvRect.y != 0.0f ||
+        src.uvRect.z != 1.0f || src.uvRect.w != 1.0f) {
+      std::cerr << "FAIL: SHEET-2 — texture UV not (0,0,1,1)" << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: SHEET-2 — ResolveSpriteSource(texture UUID) "
+                 "returns (texture, full UV)"
+              << std::endl;
+
+    // Missing UUID
+    Hamster::UUID phantom;  // unknown
+    Hamster::SpriteSource miss = am->ResolveSpriteSource(phantom);
+    if (!miss.missing || !miss.texture) {
+      std::cerr << "FAIL: SHEET-3 — phantom UUID did not return missing"
+                << std::endl;
+      return 1;
+    }
+    std::cout
+        << "PASS: SHEET-3 — ResolveSpriteSource(unknown UUID) returns MISSING"
+        << std::endl;
+
+    // SHEET-4: FindAssetByName across the unified namespace.
+    Hamster::UUID subUUID = am->AddSubSprite(textureUUID,
+                                              glm::ivec4(0, 0, 16, 16),
+                                              "named_sub");
+    Hamster::UUID byTextureName = am->FindAssetByName("test_texture");
+    Hamster::UUID bySubName = am->FindAssetByName("named_sub");
+    Hamster::UUID byMissingName = am->FindAssetByName("does_not_exist");
+    if (byTextureName.GetUUID() != textureUUID.GetUUID()) {
+      std::cerr << "FAIL: SHEET-4 — texture name lookup miss" << std::endl;
+      return 1;
+    }
+    if (bySubName.GetUUID() != subUUID.GetUUID()) {
+      std::cerr << "FAIL: SHEET-4 — sub-sprite name lookup miss" << std::endl;
+      return 1;
+    }
+    if (!Hamster::UUID::IsNil(byMissingName)) {
+      std::cerr << "FAIL: SHEET-4 — phantom name returned non-nil" << std::endl;
+      return 1;
+    }
+    std::cout
+        << "PASS: SHEET-4 — FindAssetByName resolves textures + sub-sprites + nil"
+        << std::endl;
   }
 
   // ─── Project resolution: serialise round-trip + legacy default ───

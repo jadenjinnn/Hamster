@@ -12,6 +12,26 @@
 #include "Utils/ProjectWatcher.h"
 
 namespace Hamster {
+    // Region cut from a parent texture (spritesheet support). Owns nothing
+    // GL-side — the parent texture's handle is shared. pixelRect uses the
+    // source texture's pixel coords (origin top-left, +y down).
+    struct SubSprite {
+        UUID uuid;
+        UUID parentTextureUUID;
+        glm::ivec4 pixelRect;  // x, y, w, h
+        std::string name;
+    };
+
+    // Resolution result returned by AssetManager::ResolveSpriteSource — the
+    // single hot-path lookup that hides whether a Sprite UUID points at a
+    // Texture, a SubSprite, or nothing. Renderer + Scene::OnRender forward
+    // (texture, uvRect) onto the existing DrawSprite path.
+    struct SpriteSource {
+        Texture *texture = nullptr;
+        glm::vec4 uvRect = {0.0f, 0.0f, 1.0f, 1.0f};  // normalised
+        bool missing = false;
+    };
+
     class AssetManager {
     public:
         using MainThreadEnqueue = std::function<void(std::function<void()>)>;
@@ -112,6 +132,41 @@ namespace Hamster {
         void SaveAnimationFile(UUID uuid, const std::filesystem::path &path);
         UUID LoadAnimationFile(const std::filesystem::path &path);
 
+        // --- Spritesheet sub-sprites ---
+        // Authoring path: mints a fresh UUID and registers a SubSprite under
+        // the given parent texture. Used by the SpritesheetEditor on Save.
+        UUID AddSubSprite(UUID parentTextureUUID, glm::ivec4 pixelRect,
+                          const std::string &name);
+
+        // Loading path: registers a SubSprite under a UUID already chosen
+        // (read from a .png.sheet sidecar). Skips + logs on UUID collision.
+        void AddSubSprite(UUID uuid, UUID parentTextureUUID,
+                          glm::ivec4 pixelRect, const std::string &name);
+
+        void RemoveSubSprite(UUID subSpriteUUID);
+
+        // Rename — collision-checked against the combined Texture +
+        // SubSprite name namespace. Returns false on collision; the editor
+        // surfaces this as an inline error.
+        bool RenameSubSprite(UUID subSpriteUUID, const std::string &newName);
+
+        std::shared_ptr<SubSprite> GetSubSprite(UUID uuid);
+
+        const std::unordered_map<UUID, std::shared_ptr<SubSprite>> &
+        GetSubSpriteMap() {
+            return m_SubSprites;
+        }
+
+        // The single hot-path resolver. Sprite UUID could be a Texture, a
+        // SubSprite, or unresolvable (parent deleted). Returns a pink-black
+        // MISSING fallback texture in the unresolvable case.
+        SpriteSource ResolveSpriteSource(UUID uuid) const;
+
+        // Flat-name lookup across the unified Texture + SubSprite namespace.
+        // Returns UUID::GetNil() if no match. EntityHandle::set_texture and
+        // the Spritesheet Editor's rename-collision check both consume this.
+        UUID FindAssetByName(const std::string &name) const;
+
         void Serialise(std::ostream &out);
 
         void Deserialise(std::istream &in, const ProjectConfig &config);
@@ -124,10 +179,17 @@ namespace Hamster {
         void Clear();
 
     private:
+        // Lazy-built pink-black 8x8 checker texture returned by
+        // ResolveSpriteSource when a UUID can't be resolved. Generated
+        // programmatically — no PNG dep — so the binary stays self-contained.
+        const Texture &GetMissingTexture() const;
+        mutable std::unique_ptr<Texture> m_MissingTexture;
+
         std::unordered_map<std::string, std::shared_ptr<Shader> > m_Shaders;
         std::unordered_map<UUID, std::shared_ptr<Texture> > m_Textures;
         std::unordered_map<UUID, std::shared_ptr<HamsterScript> > m_Scripts;
         std::unordered_map<UUID, std::shared_ptr<AnimationData>> m_Animations;
+        std::unordered_map<UUID, std::shared_ptr<SubSprite>> m_SubSprites;
         MainThreadEnqueue m_Enqueue;
     };
 } // namespace Hamster

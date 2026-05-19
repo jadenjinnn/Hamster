@@ -9,6 +9,7 @@
 #include "Core/Project.h"
 #include "Scripting/Scripting.h"
 #include "Utils/MetaFile.h"
+#include "Utils/SheetSidecar.h"
 
 namespace Hamster {
     AssetManager::AssetManager(MainThreadEnqueue enqueue)
@@ -20,12 +21,15 @@ namespace Hamster {
         m_Shaders.clear();
         m_Scripts.clear();
         m_Animations.clear();
+        m_SubSprites.clear();
+        m_MissingTexture.reset();
     }
 
     void AssetManager::Clear() {
         m_Textures.clear();
         m_Scripts.clear();
         m_Animations.clear();
+        m_SubSprites.clear();
     }
 
     std::shared_ptr<Shader>
@@ -85,7 +89,7 @@ namespace Hamster {
 
         // Capture this to access m_Textures on main thread when the async load completes
         m_Enqueue(
-            [this, futurePtr, texture]() mutable {
+            [this, futurePtr, texture, texturePath]() mutable {
                 TextureData textData = futurePtr->get();
 
                 texture->Init(textData, FilterMode::Nearest);
@@ -95,6 +99,17 @@ namespace Hamster {
                 std::cout << "adding texture" << std::endl;
 
                 stbi_image_free(textData.data);
+
+                // .png.sheet sidecar load — same step the sync AddTexture
+                // path runs, deferred to here because the parent texture
+                // isn't in m_Textures until this main-thread callback fires.
+                std::vector<SubSpriteEntry> sheetEntries;
+                if (SheetSidecar::Read(texturePath, sheetEntries)) {
+                    for (const auto &e : sheetEntries) {
+                        AddSubSprite(e.uuid, texture->GetUUID(),
+                                     e.pixelRect, e.name);
+                    }
+                }
             });
 
         return texture;
@@ -114,6 +129,16 @@ namespace Hamster {
         }
 
         m_Textures.emplace(texture->GetUUID(), texture);
+
+        // If a .png.sheet sidecar exists next to this texture, load the
+        // sub-sprite regions and register them under this texture as their
+        // parent. Missing sidecar is the common case for plain textures.
+        std::vector<SubSpriteEntry> sheetEntries;
+        if (SheetSidecar::Read(texturePath, sheetEntries)) {
+            for (const auto &e : sheetEntries) {
+                AddSubSprite(e.uuid, texture->GetUUID(), e.pixelRect, e.name);
+            }
+        }
 
         return texture;
     }
@@ -647,5 +672,162 @@ namespace Hamster {
         // Scripts and animations are loaded outside this method:
         //   - LoadProjectScripts walks the project dir for .py + .py.meta
         //   - LoadProjectAnimations walks <projectDir>/Animations for .hanim
+    }
+
+    // --- Spritesheet sub-sprites ---------------------------------------------
+
+    UUID AssetManager::AddSubSprite(UUID parentTextureUUID,
+                                    glm::ivec4 pixelRect,
+                                    const std::string &name) {
+        auto ss = std::make_shared<SubSprite>();
+        ss->uuid = UUID();  // fresh
+        ss->parentTextureUUID = parentTextureUUID;
+        ss->pixelRect = pixelRect;
+        ss->name = name;
+        m_SubSprites.emplace(ss->uuid, ss);
+        return ss->uuid;
+    }
+
+    void AssetManager::AddSubSprite(UUID uuid, UUID parentTextureUUID,
+                                    glm::ivec4 pixelRect,
+                                    const std::string &name) {
+        if (m_SubSprites.find(uuid) != m_SubSprites.end()) {
+            std::cerr << "AssetManager: SubSprite UUID collision on load, "
+                         "skipping: "
+                      << name << std::endl;
+            return;
+        }
+        auto ss = std::make_shared<SubSprite>();
+        ss->uuid = uuid;
+        ss->parentTextureUUID = parentTextureUUID;
+        ss->pixelRect = pixelRect;
+        ss->name = name;
+        m_SubSprites.emplace(uuid, ss);
+    }
+
+    void AssetManager::RemoveSubSprite(UUID subSpriteUUID) {
+        m_SubSprites.erase(subSpriteUUID);
+    }
+
+    bool AssetManager::RenameSubSprite(UUID subSpriteUUID,
+                                       const std::string &newName) {
+        auto it = m_SubSprites.find(subSpriteUUID);
+        if (it == m_SubSprites.end()) return false;
+        if (newName.empty()) return false;
+
+        // Reject collision against the combined Texture + SubSprite namespace,
+        // but allow renaming a sub-sprite to its own current name (no-op).
+        UUID existing = FindAssetByName(newName);
+        if (!UUID::IsNil(existing) && existing.GetUUID() != subSpriteUUID.GetUUID()) {
+            return false;
+        }
+        it->second->name = newName;
+        return true;
+    }
+
+    std::shared_ptr<SubSprite> AssetManager::GetSubSprite(UUID uuid) {
+        auto it = m_SubSprites.find(uuid);
+        if (it == m_SubSprites.end()) return nullptr;
+        return it->second;
+    }
+
+    SpriteSource AssetManager::ResolveSpriteSource(UUID uuid) const {
+        SpriteSource src;
+
+        // Sub-sprites first — the wider/named container. If a UUID names
+        // both a Texture and a SubSprite (should never happen post-collision-
+        // check), prefer the SubSprite as the more-specific reference.
+        auto sit = m_SubSprites.find(uuid);
+        if (sit != m_SubSprites.end()) {
+            const auto &sub = *sit->second;
+            auto tit = m_Textures.find(sub.parentTextureUUID);
+            if (tit == m_Textures.end()) {
+                src.texture = const_cast<Texture *>(&GetMissingTexture());
+                src.missing = true;
+                return src;
+            }
+            const Texture *tex = tit->second.get();
+            const float tw = static_cast<float>(tex->GetWidth());
+            const float th = static_cast<float>(tex->GetHeight());
+            if (tw <= 0.0f || th <= 0.0f) {
+                src.texture = const_cast<Texture *>(&GetMissingTexture());
+                src.missing = true;
+                return src;
+            }
+            // Clamp the pixel rect to texture bounds. A rect that no longer
+            // fits at all (zero area after clamp) → MISSING.
+            int x0 = std::max(0, sub.pixelRect.x);
+            int y0 = std::max(0, sub.pixelRect.y);
+            int x1 = std::min(static_cast<int>(tw),
+                              sub.pixelRect.x + sub.pixelRect.z);
+            int y1 = std::min(static_cast<int>(th),
+                              sub.pixelRect.y + sub.pixelRect.w);
+            if (x1 <= x0 || y1 <= y0) {
+                src.texture = const_cast<Texture *>(&GetMissingTexture());
+                src.missing = true;
+                return src;
+            }
+            src.texture = const_cast<Texture *>(tex);
+            src.uvRect = {
+                static_cast<float>(x0) / tw,
+                static_cast<float>(y0) / th,
+                static_cast<float>(x1 - x0) / tw,
+                static_cast<float>(y1 - y0) / th,
+            };
+            return src;
+        }
+
+        auto tit = m_Textures.find(uuid);
+        if (tit != m_Textures.end()) {
+            src.texture = tit->second.get();
+            src.uvRect = {0.0f, 0.0f, 1.0f, 1.0f};
+            return src;
+        }
+
+        src.texture = const_cast<Texture *>(&GetMissingTexture());
+        src.missing = true;
+        return src;
+    }
+
+    UUID AssetManager::FindAssetByName(const std::string &name) const {
+        // Sub-sprites first, mirroring ResolveSpriteSource priority.
+        for (const auto &[uuid, ss] : m_SubSprites) {
+            if (ss && ss->name == name) return uuid;
+        }
+        for (const auto &[uuid, tex] : m_Textures) {
+            if (tex && tex->GetName() == name) return uuid;
+        }
+        return UUID::GetNil();
+    }
+
+    const Texture &AssetManager::GetMissingTexture() const {
+        if (m_MissingTexture) return *m_MissingTexture;
+
+        // 8x8 RGBA pink/black checker. Industry-convention "your asset is
+        // missing" stamp; visible enough that you can't miss it in-scene.
+        constexpr int W = 8;
+        constexpr int H = 8;
+        std::vector<unsigned char> pixels(W * H * 4);
+        for (int y = 0; y < H; ++y) {
+            for (int x = 0; x < W; ++x) {
+                bool pink = ((x / 2) + (y / 2)) % 2 == 0;
+                int i = (y * W + x) * 4;
+                pixels[i + 0] = pink ? 255 : 0;
+                pixels[i + 1] = 0;
+                pixels[i + 2] = pink ? 217 : 0;
+                pixels[i + 3] = 255;
+            }
+        }
+        TextureData td{};
+        td.data = pixels.data();
+        td.width = W;
+        td.height = H;
+        td.nrChannels = 4;
+        td.path = "<missing>";
+
+        m_MissingTexture = std::make_unique<Texture>();
+        m_MissingTexture->Init(td, FilterMode::Nearest);
+        m_MissingTexture->SetName("<missing>");
+        return *m_MissingTexture;
     }
 } // namespace Hamster

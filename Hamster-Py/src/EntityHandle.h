@@ -113,6 +113,9 @@ struct EntityHandle {
   // add_component(Sprite(...)) first). Added so the batching benchmark
   // script can spawn textured sprites at runtime without going through
   // the editor.
+  // TODO(spritesheet stage 2): switch this to AssetManager::FindAssetByName
+  // so sub-sprite names resolve too, and stash the asset UUID on Sprite for
+  // ResolveSpriteSource to apply the UV rect at render time.
   void SetTexture(const std::string &name) {
     if (Hamster::UUID::IsNil(uuid)) return;
     if (!scene->EntityHasComponent<Hamster::Sprite>(uuid)) {
