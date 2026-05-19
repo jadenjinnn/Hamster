@@ -47,6 +47,67 @@ struct EntityHandle {
     }
   }
 
+  // Transform get/set — mirrors `self.transform` on HamsterBehaviour but
+  // reaches into any entity by UUID rather than the script's own entity.
+  // Returns by value (pybind owns its own Transform); writing back persists
+  // via the scene's registry.
+  Hamster::Transform GetTransform() const {
+    if (Hamster::UUID::IsNil(uuid)) {
+      throw py::value_error("transform: nil entity handle");
+    }
+    return scene->GetEntityComponent<Hamster::Transform>(uuid);
+  }
+
+  void SetTransform(const Hamster::Transform &t) {
+    if (Hamster::UUID::IsNil(uuid)) return;
+    auto &dst = scene->GetEntityComponent<Hamster::Transform>(uuid);
+    dst.position = t.position;
+    dst.rotation = t.rotation;
+    dst.size = t.size;
+  }
+
+  // Rigidbody pending-velocity write — same deferred-write pattern Scene
+  // uses (Box2D mutations are queued and flushed inside Scene::OnUpdate).
+  void SetVelocity(float vx, float vy) {
+    if (Hamster::UUID::IsNil(uuid)) return;
+    if (!scene->EntityHasComponent<Hamster::Rigidbody>(uuid)) {
+      throw py::value_error("set_velocity: entity has no Rigidbody");
+    }
+    auto &rb = scene->GetEntityComponent<Hamster::Rigidbody>(uuid);
+    rb.pendingVelocity = glm::vec2(vx, vy);
+    rb.hasPendingVelocity = true;
+  }
+
+  void ApplyImpulse(float ix, float iy) {
+    if (Hamster::UUID::IsNil(uuid)) return;
+    if (!scene->EntityHasComponent<Hamster::Rigidbody>(uuid)) {
+      throw py::value_error("apply_impulse: entity has no Rigidbody");
+    }
+    auto &rb = scene->GetEntityComponent<Hamster::Rigidbody>(uuid);
+    rb.pendingImpulse += glm::vec2(ix, iy);
+  }
+
+  // Live mutation of a UIButton's label text. Refuses (ValueError) if the
+  // entity doesn't have a UIButton component — game scripts will want a
+  // descriptive failure rather than a silent no-op.
+  void SetLabel(const std::string &text) {
+    if (Hamster::UUID::IsNil(uuid)) return;
+    if (!scene->EntityHasComponent<Hamster::UIButton>(uuid)) {
+      throw py::value_error("set_label: entity has no UIButton component");
+    }
+    scene->GetEntityComponent<Hamster::UIButton>(uuid).label = text;
+  }
+
+  // Live mutation of a UIText's text content. Same semantics as set_label
+  // but for the UIText component.
+  void SetText(const std::string &text) {
+    if (Hamster::UUID::IsNil(uuid)) return;
+    if (!scene->EntityHasComponent<Hamster::UIText>(uuid)) {
+      throw py::value_error("set_text: entity has no UIText component");
+    }
+    scene->GetEntityComponent<Hamster::UIText>(uuid).text = text;
+  }
+
   // Look the texture up by name in AssetManager and assign it to this
   // entity's Sprite. Entity must already have a Sprite component (call
   // add_component(Sprite(...)) first). Added so the batching benchmark
@@ -77,6 +138,12 @@ void EntityHandleBinding(py::module_ &m) {
       .def_readonly("uuid", &EntityHandle::uuid)
       .def("add_component", &EntityHandle::AddComponent)
       .def("set_texture", &EntityHandle::SetTexture)
+      .def("set_label", &EntityHandle::SetLabel)
+      .def("set_text", &EntityHandle::SetText)
+      .def_property("transform", &EntityHandle::GetTransform,
+                    &EntityHandle::SetTransform)
+      .def("set_velocity", &EntityHandle::SetVelocity)
+      .def("apply_impulse", &EntityHandle::ApplyImpulse)
       .def_property_readonly("parent", &EntityHandle::GetParent)
       .def_property_readonly("children", &EntityHandle::GetChildren)
       .def("set_parent", &EntityHandle::SetParent);
