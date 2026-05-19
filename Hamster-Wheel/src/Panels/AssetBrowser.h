@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <unordered_set>
 
 namespace Hamster {
 class AssetManager;
@@ -41,6 +42,13 @@ private:
     // Empty string = project root. Single-level breadcrumb in v1; deeper
     // tree view is future work per the spec.
     std::filesystem::path m_CurrentFolder;
+
+    // Spritesheet UI state.
+    // Texture UUIDs whose sub-sprite mini-card grid is currently expanded.
+    std::unordered_set<Hamster::UUID> m_ExpandedSheets;
+    // Multi-select state — sub-sprite UUIDs currently selected for drag.
+    // Cleared on background click, mutated by Ctrl-click.
+    std::unordered_set<Hamster::UUID> m_SelectedSubSprites;
 };
 
 #endif // UIPROTO_ASSET_BROWSER_H

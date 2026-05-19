@@ -3,6 +3,8 @@
 #include "../Components/Components.h"
 #include "IconsFontAwesome6.h"
 
+#include <cstring>
+
 #include <Core/Application.h>
 #include <Core/Components.h>
 #include <Core/Project.h>
@@ -273,7 +275,10 @@ void AssetBrowser::Render() {
         m_InlineRenameExt.clear();
     };
 
-    // Texture assets
+    // Texture assets. Textures with sub-sprite children (i.e. a .png.sheet
+    // sidecar registered N sub-sprites under the same UUID) get a small
+    // expand caret on the card. Clicking the caret flips the texture's
+    // entry in m_ExpandedSheets and a mini-card grid renders inline below.
     for (const auto &[uuid, texture] : m_AssetManager->GetTextureMap()) {
         Hamster::UUID mUUID = uuid;
         std::string id = "tex_" + mUUID.GetUUIDString();
@@ -291,10 +296,183 @@ void AssetBrowser::Render() {
             continue;
         }
 
+        // Gather this texture's sub-sprites — by parent UUID, stable order.
+        std::vector<std::shared_ptr<Hamster::SubSprite>> children;
+        for (auto &kv : m_AssetManager->GetSubSpriteMap()) {
+            auto &ss = kv.second;
+            if (ss &&
+                ss->parentTextureUUID.GetUUID() == mUUID.GetUUID()) {
+                children.push_back(ss);
+            }
+        }
+        const bool isSheet = !children.empty();
+
+        ImVec2 cardPos = ImGui::GetCursorScreenPos();
         DrawAssetCard(id.c_str(), ICON_FA_IMAGE,
                       texture->GetName().c_str(), texture.get(), cardW, cardH);
         contextMenu(mUUID, texPath);
+
+        // Caret overlay (top-right corner) for sheet cards. ImGui's
+        // InvisibleButton would steal hover from the underlying card; use a
+        // small SmallButton positioned via SetCursorScreenPos within a
+        // BeginGroup() so it sits on top of the card chrome.
+        if (isSheet) {
+            ImDrawList *dl = ImGui::GetWindowDrawList();
+            const float caretW = 18.0f;
+            const float caretH = 18.0f;
+            ImVec2 ca{cardPos.x + cardW - caretW - 4.0f,
+                      cardPos.y + 4.0f};
+            ImVec2 cb{ca.x + caretW, ca.y + caretH};
+            // Background pill for hit-feedback.
+            dl->AddRectFilled(ca, cb,
+                              ImGui::ColorConvertFloat4ToU32(kSurfaceHov),
+                              4.0f);
+            bool expanded = m_ExpandedSheets.count(mUUID) > 0;
+            const char *glyph = expanded ? ICON_FA_CHEVRON_UP
+                                         : ICON_FA_CHEVRON_DOWN;
+            ImVec2 gSz = ImGui::CalcTextSize(glyph);
+            dl->AddText({ca.x + (caretW - gSz.x) * 0.5f,
+                          ca.y + (caretH - gSz.y) * 0.5f},
+                         ImGui::ColorConvertFloat4ToU32(kText), glyph);
+
+            // Hit-test the caret area. Use ImGui::IsMouseHoveringRect +
+            // IsMouseClicked rather than InvisibleButton so we don't push
+            // an ID that conflicts with the underlying card.
+            const ImVec2 mp = ImGui::GetMousePos();
+            if (mp.x >= ca.x && mp.x <= cb.x && mp.y >= ca.y && mp.y <= cb.y &&
+                ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                ImGui::IsWindowHovered()) {
+                if (expanded) m_ExpandedSheets.erase(mUUID);
+                else m_ExpandedSheets.insert(mUUID);
+            }
+        }
+
         nextRow();
+
+        // Mini-cards for the expanded sheet — rendered inline in the same
+        // grid as a stop-gap. Future work: a flushed-row block with
+        // dedicated sub-grid sizing per the spec's "card grows downward".
+        if (isSheet && m_ExpandedSheets.count(mUUID) > 0) {
+            const float miniW = std::max(60.0f, cardW * 0.55f);
+            const float miniH = miniW;
+            float texW = static_cast<float>(texture->GetWidth());
+            float texH = static_cast<float>(texture->GetHeight());
+
+            for (size_t i = 0; i < children.size(); ++i) {
+                const auto &ss = children[i];
+                std::string mid =
+                    "sub_" + ss->uuid.GetUUIDString();
+
+                ImGui::PushID(mid.c_str());
+                ImVec2 pos = ImGui::GetCursorScreenPos();
+                ImGui::InvisibleButton("##mini", {miniW, miniH});
+                bool hovered = ImGui::IsItemHovered();
+                bool clicked = ImGui::IsItemClicked();
+
+                bool selected = m_SelectedSubSprites.count(ss->uuid) > 0;
+
+                ImDrawList *dl = ImGui::GetWindowDrawList();
+                dl->AddRectFilled(pos, {pos.x + miniW, pos.y + miniH},
+                                  ImGui::ColorConvertFloat4ToU32(
+                                      hovered ? kSurfaceHov : kSurface),
+                                  4.0f);
+                if (selected) {
+                    dl->AddRect(pos, {pos.x + miniW, pos.y + miniH},
+                                IM_COL32(255, 200, 80, 255), 4.0f, 0, 2.0f);
+                }
+
+                // Clipped texture region — show only this sub-sprite.
+                if (texW > 0 && texH > 0) {
+                    ImVec2 uv0{ss->pixelRect.x / texW,
+                                ss->pixelRect.y / texH};
+                    ImVec2 uv1{(ss->pixelRect.x + ss->pixelRect.z) / texW,
+                                (ss->pixelRect.y + ss->pixelRect.w) / texH};
+                    // Fit the sub-region into the mini-card preserving aspect.
+                    float rw = static_cast<float>(ss->pixelRect.z);
+                    float rh = static_cast<float>(ss->pixelRect.w);
+                    float labelH = 18.0f;
+                    float drawAreaW = miniW - 8.0f;
+                    float drawAreaH = miniH - labelH - 4.0f;
+                    float scale = std::min(drawAreaW / rw, drawAreaH / rh);
+                    if (scale <= 0.0f) scale = 1.0f;
+                    float dw = rw * scale;
+                    float dh = rh * scale;
+                    ImVec2 i0{pos.x + (miniW - dw) * 0.5f,
+                              pos.y + (drawAreaH - dh) * 0.5f + 2.0f};
+                    ImVec2 i1{i0.x + dw, i0.y + dh};
+                    dl->AddImage(reinterpret_cast<ImTextureID>(
+                                     static_cast<intptr_t>(
+                                         texture->GetTextureId())),
+                                 i0, i1, uv0, uv1);
+                }
+                // Name label (truncate if too wide).
+                ImVec2 lSz = ImGui::CalcTextSize(ss->name.c_str());
+                float maxLW = miniW - 8.0f;
+                if (lSz.x > maxLW) {
+                    std::string trimmed = ss->name;
+                    while (trimmed.size() > 1 &&
+                           ImGui::CalcTextSize((trimmed + "...").c_str()).x >
+                               maxLW) {
+                        trimmed.pop_back();
+                    }
+                    trimmed += "...";
+                    ImVec2 tSz = ImGui::CalcTextSize(trimmed.c_str());
+                    dl->AddText({pos.x + (miniW - tSz.x) * 0.5f,
+                                  pos.y + miniH - 16.0f},
+                                 ImGui::ColorConvertFloat4ToU32(kText),
+                                 trimmed.c_str());
+                } else {
+                    dl->AddText({pos.x + (miniW - lSz.x) * 0.5f,
+                                  pos.y + miniH - 16.0f},
+                                 ImGui::ColorConvertFloat4ToU32(kText),
+                                 ss->name.c_str());
+                }
+
+                // Multi-select: Ctrl-click toggles; plain click sets to
+                // exactly this one.
+                if (clicked) {
+                    const bool ctrl = ImGui::GetIO().KeyCtrl;
+                    if (ctrl) {
+                        if (selected) m_SelectedSubSprites.erase(ss->uuid);
+                        else m_SelectedSubSprites.insert(ss->uuid);
+                    } else {
+                        m_SelectedSubSprites.clear();
+                        m_SelectedSubSprites.insert(ss->uuid);
+                    }
+                }
+
+                // Drag source — bundle either this UUID alone (if not in
+                // the selection set) or the whole selection. Payload format:
+                //   uint32 count + count * 16 bytes (boost::uuids::uuid).
+                if (ImGui::BeginDragDropSource()) {
+                    std::vector<Hamster::UUID> packed;
+                    if (m_SelectedSubSprites.count(ss->uuid) > 0) {
+                        packed.assign(m_SelectedSubSprites.begin(),
+                                       m_SelectedSubSprites.end());
+                    } else {
+                        packed.push_back(ss->uuid);
+                    }
+                    std::vector<unsigned char> buf;
+                    uint32_t n = static_cast<uint32_t>(packed.size());
+                    buf.resize(sizeof(n) + n * sizeof(boost::uuids::uuid));
+                    std::memcpy(buf.data(), &n, sizeof(n));
+                    for (uint32_t k = 0; k < n; ++k) {
+                        auto raw = packed[k].GetUUID();
+                        std::memcpy(buf.data() + sizeof(n) +
+                                        k * sizeof(boost::uuids::uuid),
+                                    &raw, sizeof(boost::uuids::uuid));
+                    }
+                    ImGui::SetDragDropPayload("HAMSTER_SUBSPRITE_UUIDS",
+                                               buf.data(),
+                                               buf.size());
+                    ImGui::Text("%u sub-sprite%s", n, n == 1 ? "" : "s");
+                    ImGui::EndDragDropSource();
+                }
+
+                ImGui::PopID();
+                nextRow();
+            }
+        }
     }
 
     // ── Breadcrumb (only when navigating below the project root) ──
