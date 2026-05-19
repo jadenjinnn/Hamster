@@ -9,12 +9,17 @@
 
 #include "Core/Application.h"
 #include "Core/Components.h"
+#include "Core/Project.h"
+#include "Core/ProjectSerialiser.h"
 #include "Core/Scene.h"
 #include "Core/SceneSerialiser.h"
+#include "Events/UIEvents.h"
 #include "Renderer/Renderer.h"
 #include "Scripting/HamsterScript.h"
 #include "Utils/AssetManager.h"
 #include "Utils/SpatialIndex.h"
+
+#include <sstream>
 
 int main() {
   std::filesystem::path fixtureDir = SMOKE_TEST_FIXTURE_DIR;
@@ -897,6 +902,374 @@ int main() {
     std::cout << "PASS: viewport culling — " << drawCalls
               << " draw call(s) for 2 visible of 4 total sprites"
               << std::endl;
+  }
+
+
+  // ─── game-ui UI-1: UIButton + UIText serialise round-trip ───
+  {
+    auto src = std::make_shared<Hamster::Scene>(
+        app.GetEventDispatcher().get(), &app);
+    Hamster::UUID btnId = src->CreateEntity();
+    Hamster::UIButton btn;
+    btn.anchor = Hamster::UIAnchor::BottomRight;
+    btn.offset = {20.0f, 20.0f};
+    btn.size = {180.0f, 48.0f};
+    btn.autoSize = true;
+    btn.padding = 12.0f;
+    btn.bgColour = {0.3f, 0.5f, 0.7f, 0.9f};
+    btn.label = "Start";
+    btn.textColour = {1.0f, 0.95f, 0.9f, 1.0f};
+    btn.fontSize = 22.0f;
+    btn.textAlign = Hamster::UITextAlign::Right;
+    src->AddEntityComponent<Hamster::UIButton>(btnId, btn);
+
+    Hamster::UUID txtId = src->CreateEntity();
+    Hamster::UIText txt;
+    txt.anchor = Hamster::UIAnchor::TopLeft;
+    txt.offset = {15.0f, 25.0f};
+    txt.text = "Score: 42";
+    txt.textColour = {1.0f, 1.0f, 1.0f, 1.0f};
+    txt.fontSize = 18.0f;
+    txt.wrapWidth = 240.0f;
+    src->AddEntityComponent<Hamster::UIText>(txtId, txt);
+
+    std::filesystem::path tmpFile =
+        std::filesystem::temp_directory_path() / "hamster_smoke_ui.scene";
+    {
+      std::ofstream out(tmpFile, std::ios::binary);
+      Hamster::SceneSerialiser writer(src, app.GetAssetManager());
+      writer.Serialise(out);
+    }
+
+    auto dst = std::make_shared<Hamster::Scene>(
+        app.GetEventDispatcher().get(), &app);
+    {
+      std::ifstream in(tmpFile, std::ios::binary);
+      Hamster::SceneSerialiser reader(dst, app.GetAssetManager());
+      reader.Deserialise(in);
+    }
+    std::filesystem::remove(tmpFile);
+
+    if (!dst->EntityHasComponent<Hamster::UIButton>(btnId) ||
+        !dst->EntityHasComponent<Hamster::UIText>(txtId)) {
+      std::cerr << "FAIL: UI components missing after round-trip" << std::endl;
+      return 1;
+    }
+    const auto &b2 = dst->GetEntityComponent<Hamster::UIButton>(btnId);
+    if (b2.anchor != Hamster::UIAnchor::BottomRight ||
+        b2.offset.x != 20.0f || b2.offset.y != 20.0f ||
+        b2.size.x != 180.0f || b2.size.y != 48.0f ||
+        b2.autoSize != true || b2.padding != 12.0f ||
+        b2.bgColour.r != 0.3f || b2.bgColour.a != 0.9f ||
+        b2.label != "Start" ||
+        b2.fontSize != 22.0f ||
+        b2.textAlign != Hamster::UITextAlign::Right) {
+      std::cerr << "FAIL: UIButton round-trip lost fields" << std::endl;
+      return 1;
+    }
+    const auto &t2 = dst->GetEntityComponent<Hamster::UIText>(txtId);
+    if (t2.anchor != Hamster::UIAnchor::TopLeft ||
+        t2.offset.x != 15.0f || t2.offset.y != 25.0f ||
+        t2.text != "Score: 42" ||
+        t2.fontSize != 18.0f ||
+        t2.wrapWidth != 240.0f) {
+      std::cerr << "FAIL: UIText round-trip lost fields" << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: UI-1 — UIButton + UIText serialise round-trip"
+              << std::endl;
+  }
+
+  // ─── game-ui UI-2: find_entity_by_name ───
+  {
+    auto s = std::make_shared<Hamster::Scene>(
+        app.GetEventDispatcher().get(), &app);
+    Hamster::UUID a = s->CreateEntity();
+    Hamster::UUID b = s->CreateEntity();
+    s->GetEntityComponent<Hamster::Name>(a).name = "StartButton";
+    s->GetEntityComponent<Hamster::Name>(b).name = "Score";
+
+    Hamster::UUID hitA = s->FindEntityByName("StartButton");
+    Hamster::UUID hitB = s->FindEntityByName("Score");
+    Hamster::UUID miss = s->FindEntityByName("Nonexistent");
+
+    if (hitA != a || hitB != b) {
+      std::cerr << "FAIL: find_entity_by_name returned wrong UUID"
+                << std::endl;
+      return 1;
+    }
+    if (!Hamster::UUID::IsNil(miss)) {
+      std::cerr << "FAIL: find_entity_by_name didn't return nil on miss"
+                << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: UI-2 — find_entity_by_name hit/hit/miss" << std::endl;
+  }
+
+  // ─── game-ui UI-3: anchor resolution ───
+  // 9 anchors × known viewport (vw=1000, vh=600) × known size/offset (10,10).
+  // For corner anchors, +offset always points inward (toward centre).
+  {
+    const float vw = 1000.0f, vh = 600.0f;
+    auto check = [&](Hamster::UIAnchor anchor, float expX, float expY) {
+      Hamster::UIButton b;
+      b.anchor = anchor;
+      b.offset = {10.0f, 10.0f};
+      b.size = {100.0f, 50.0f};
+      Hamster::UIRect r = Hamster::ResolveUIButtonRect(b, vw, vh);
+      if (std::abs(r.x - expX) > 1.0f || std::abs(r.y - expY) > 1.0f) {
+        std::cerr << "FAIL: UI-3 anchor=" << static_cast<int>(anchor)
+                  << " expected (" << expX << "," << expY << ") got ("
+                  << r.x << "," << r.y << ")" << std::endl;
+        return false;
+      }
+      return true;
+    };
+    // Top-left: pivot at TL of rect; +x right, +y down → (10, 10).
+    if (!check(Hamster::UIAnchor::TopLeft, 10.0f, 10.0f)) return 1;
+    // Top-centre: pivot at top-centre (rect-x = anchor.x - size.x/2 + 10).
+    //   anchor.x = 500; rect-x = 500 - 50 + 10 = 460; rect-y = 0 + 10 = 10.
+    if (!check(Hamster::UIAnchor::TopCentre, 460.0f, 10.0f)) return 1;
+    // Top-right: pivot at TR; +x flipped (moves left), +y down.
+    //   anchor.x = 1000; rect-x = 1000 - 100 + (-10) = 890; rect-y = 10.
+    if (!check(Hamster::UIAnchor::TopRight, 890.0f, 10.0f)) return 1;
+    // Middle-left: pivot at ML; +x right, +y down.
+    //   anchor = (0, 300); rect-x = 0 - 0 + 10 = 10; rect-y = 300 - 25 + 10 = 285.
+    if (!check(Hamster::UIAnchor::MiddleLeft, 10.0f, 285.0f)) return 1;
+    // Centre: pivot at centre.
+    //   anchor = (500, 300); rect-x = 500 - 50 + 10 = 460; rect-y = 300 - 25 + 10 = 285.
+    if (!check(Hamster::UIAnchor::Centre, 460.0f, 285.0f)) return 1;
+    // Middle-right: pivot at MR; +x flipped.
+    //   anchor = (1000, 300); rect-x = 1000 - 100 + (-10) = 890; rect-y = 285.
+    if (!check(Hamster::UIAnchor::MiddleRight, 890.0f, 285.0f)) return 1;
+    // Bottom-left: pivot at BL; +x right, +y flipped (moves up).
+    //   anchor = (0, 600); rect-x = 0 - 0 + 10 = 10; rect-y = 600 - 50 + (-10) = 540.
+    if (!check(Hamster::UIAnchor::BottomLeft, 10.0f, 540.0f)) return 1;
+    // Bottom-centre: pivot at BC; +y flipped.
+    //   anchor = (500, 600); rect-x = 460; rect-y = 540.
+    if (!check(Hamster::UIAnchor::BottomCentre, 460.0f, 540.0f)) return 1;
+    // Bottom-right: pivot at BR; both flipped (inset from corner).
+    //   anchor = (1000, 600); rect-x = 890; rect-y = 540.
+    if (!check(Hamster::UIAnchor::BottomRight, 890.0f, 540.0f)) return 1;
+    std::cout << "PASS: UI-3 — anchor resolution (9 anchors × 1000×600 viewport)"
+              << std::endl;
+  }
+
+  // ─── game-ui UI-4: synthesised click → ButtonClickedEvent ───
+  // Posts a ButtonClickedEvent via the dispatcher (same path used by
+  // EditorLayer when its hit-test fires in play mode) and verifies the
+  // observer fires exactly once with the matching UUID.
+  {
+    auto s = std::make_shared<Hamster::Scene>(
+        app.GetEventDispatcher().get(), &app);
+    Hamster::UUID btnId = s->CreateEntity();
+    Hamster::UIButton b;
+    b.anchor = Hamster::UIAnchor::Centre;
+    b.offset = {0.0f, 0.0f};
+    b.size = {200.0f, 80.0f};
+    s->AddEntityComponent<Hamster::UIButton>(btnId, b);
+
+    int hits = 0;
+    Hamster::UUID lastUUID;
+    auto handle = app.GetEventDispatcher()->Subscribe(
+        Hamster::ButtonClicked,
+        [&hits, &lastUUID](Hamster::Event &raw) {
+          auto &e = static_cast<Hamster::ButtonClickedEvent &>(raw);
+          ++hits;
+          lastUUID = e.GetEntityId();
+        });
+
+    // Resolve the button against a 1000×600 viewport; pick a point inside
+    // the resolved rect and confirm the rect contains it.
+    Hamster::UIRect r = Hamster::ResolveUIButtonRect(b, 1000.0f, 600.0f);
+    const float clickX = r.x + r.w * 0.5f;
+    const float clickY = r.y + r.h * 0.5f;
+    if (!r.ContainsPoint(clickX, clickY)) {
+      std::cerr << "FAIL: UI-4 setup: rect doesn't contain its own centre"
+                << std::endl;
+      return 1;
+    }
+
+    // Post the click — same call EditorLayer uses on hit in play mode.
+    Hamster::ButtonClickedEvent be(btnId);
+    app.GetEventDispatcher()->Post<Hamster::ButtonClickedEvent>(be);
+
+    if (hits != 1 || lastUUID != btnId) {
+      std::cerr << "FAIL: UI-4 expected 1 click on btnId, got " << hits
+                << " hits" << std::endl;
+      return 1;
+    }
+
+    app.GetEventDispatcher()->Unsubscribe(Hamster::ButtonClicked, handle);
+    std::cout << "PASS: UI-4 — ButtonClickedEvent dispatch" << std::endl;
+  }
+
+  // ─── game-ui UI-5: auto-size measurement ───
+  // Only meaningful when the font atlas loaded — Phase B test exes don't
+  // always land next to the editor's Resources dir, so a missing atlas is
+  // a SKIP rather than a FAIL.
+  {
+    const Hamster::FontAtlas *atlas = app.GetRenderer()->GetFontAtlas();
+    if (!atlas || !atlas->IsValid()) {
+      std::cout << "SKIP: UI-5 — font atlas not available in this build" << std::endl;
+    } else {
+      Hamster::UIButton b;
+      b.label = "Auto";
+      b.fontSize = 18.0f;
+      b.padding = 8.0f;
+      b.autoSize = true;
+      b.anchor = Hamster::UIAnchor::TopLeft;
+      b.offset = {0.0f, 0.0f};
+
+      Hamster::UIRect r =
+          app.GetRenderer()->ResolveUIButton(b, 1000.0f, 600.0f);
+
+      float measured = atlas->MeasureWidth(b.label, b.fontSize);
+      float expectedW = measured + 2.0f * b.padding;
+      float expectedH = b.fontSize + 2.0f * b.padding;
+      if (std::abs(r.w - expectedW) > 1.0f ||
+          std::abs(r.h - expectedH) > 1.0f) {
+        std::cerr << "FAIL: UI-5 auto-size expected (" << expectedW << ","
+                  << expectedH << ") got (" << r.w << "," << r.h << ")"
+                  << std::endl;
+        return 1;
+      }
+      std::cout << "PASS: UI-5 — auto-size button rect matches "
+                   "MeasureWidth + 2·padding" << std::endl;
+    }
+  }
+
+  // ─── game-ui UI-6: Python end-to-end (find + label + click) ───
+  // Exercises the full Python surface: find_entity_by_name on two named
+  // entities, EntityHandle.set_text for runtime mutation, and the
+  // on_button_clicked virtual reception of a synthesised ButtonClickedEvent.
+  {
+    auto s = std::make_shared<Hamster::Scene>(
+        app.GetEventDispatcher().get(), &app);
+
+    // The "TestBtn" entity is a UIButton; "Counter" is a UIText; the third
+    // entity owns the script.
+    Hamster::UUID btnId = s->CreateEntity();
+    s->GetEntityComponent<Hamster::Name>(btnId).name = "TestBtn";
+    s->AddEntityComponent<Hamster::UIButton>(btnId);
+
+    Hamster::UUID counterId = s->CreateEntity();
+    s->GetEntityComponent<Hamster::Name>(counterId).name = "Counter";
+    s->AddEntityComponent<Hamster::UIText>(counterId);
+
+    Hamster::UUID mgrId = s->CreateEntity();
+    s->AddEntityComponent<Hamster::Behaviour>(mgrId);
+    auto script = std::make_shared<Hamster::HamsterScript>(
+        fixtureDir / "ui_script.py", "ui_script");
+    auto &beh = s->GetEntityComponent<Hamster::Behaviour>(mgrId);
+    beh.scripts[script->GetUUID()] = script;
+
+    app.AddScene(s);
+    app.SetSceneActive(s->GetUUID());
+    s->RunScene();
+
+    std::filesystem::create_directories(markerDir);
+    std::filesystem::remove(markerDir / "ui_create.ok");
+    std::filesystem::remove(markerDir / "ui_clicked.ok");
+
+    s->RunSceneSimulation();
+
+    if (!std::filesystem::exists(markerDir / "ui_create.ok")) {
+      std::cerr << "FAIL: UI-6 — on_create did not mark (find_entity_by_name "
+                   "or set_text broken)" << std::endl;
+      return 1;
+    }
+    // Verify set_text wrote through to the UIText component.
+    const auto &txt = s->GetEntityComponent<Hamster::UIText>(counterId);
+    if (txt.text != "Score: 1") {
+      std::cerr << "FAIL: UI-6 — set_text didn't update UIText.text (got '"
+                << txt.text << "')" << std::endl;
+      return 1;
+    }
+
+    // Synthesise a click on TestBtn.
+    Hamster::ButtonClickedEvent be(btnId);
+    app.GetEventDispatcher()->Post<Hamster::ButtonClickedEvent>(be);
+
+    // Drain via one OnUpdate tick — OnScriptUpdate dispatches the queue.
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    s->OnUpdate();
+
+    if (!std::filesystem::exists(markerDir / "ui_clicked.ok")) {
+      std::cerr << "FAIL: UI-6 — on_button_clicked did not fire" << std::endl;
+      return 1;
+    }
+
+    std::filesystem::remove_all(markerDir);
+    std::cout << "PASS: UI-6 — Python end-to-end (find + set_text + click)"
+              << std::endl;
+  }
+
+  // ─── Project resolution: serialise round-trip + legacy default ───
+  // PRJ-1: writes the new on-disk format manually (so we test Deserialise
+  // against the exact byte layout we ship) and verifies all five fields
+  // come back, including the appended targetWidth / targetHeight ints.
+  {
+    std::stringstream ss;
+    const std::string name = "round_trip_proj";
+    const std::string projDir = "C:/tmp/round_trip";
+    const std::string scenePath = "scene_a.bin";
+    const int32_t w = 1920;
+    const int32_t h = 1080;
+
+    auto writeStr = [&](const std::string &s) {
+      std::size_t len = s.size();
+      ss.write(reinterpret_cast<const char *>(&len), sizeof(len));
+      ss.write(s.data(), len);
+    };
+    writeStr(name);
+    writeStr(projDir);
+    writeStr(scenePath);
+    ss.write(reinterpret_cast<const char *>(&w), sizeof(w));
+    ss.write(reinterpret_cast<const char *>(&h), sizeof(h));
+
+    Hamster::ProjectConfig out = Hamster::ProjectSerialiser::Deserialise(ss);
+    if (out.Name != name || out.TargetWidth != 1920 ||
+        out.TargetHeight != 1080) {
+      std::cerr << "FAIL: PRJ-1 — resolution round-trip "
+                << "(name=" << out.Name << " w=" << out.TargetWidth
+                << " h=" << out.TargetHeight << ")" << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: PRJ-1 — Project deserialise round-trip 1920x1080"
+              << std::endl;
+  }
+
+  // PRJ-2: hand-crafted legacy buffer (only the original 3 string fields,
+  // no resolution ints appended). Deserialise must return the
+  // ProjectConfig defaults (1280x720) and not corrupt the parsed fields.
+  {
+    std::stringstream ss;
+    const std::string name = "legacy_proj";
+    const std::string projDir = "C:/tmp/legacy";
+    const std::string scenePath = "old_scene.bin";
+
+    auto writeStr = [&](const std::string &s) {
+      std::size_t len = s.size();
+      ss.write(reinterpret_cast<const char *>(&len), sizeof(len));
+      ss.write(s.data(), len);
+    };
+    writeStr(name);
+    writeStr(projDir);
+    writeStr(scenePath);
+    // No resolution bytes appended — emulates a pre-feature .hamproj.
+
+    Hamster::ProjectConfig out = Hamster::ProjectSerialiser::Deserialise(ss);
+    if (out.Name != name || out.TargetWidth != 1280 ||
+        out.TargetHeight != 720) {
+      std::cerr << "FAIL: PRJ-2 — legacy default "
+                << "(name=" << out.Name << " w=" << out.TargetWidth
+                << " h=" << out.TargetHeight << ")" << std::endl;
+      return 1;
+    }
+    std::cout
+        << "PASS: PRJ-2 — legacy .hamproj falls back to default 1280x720"
+        << std::endl;
   }
 
   return 0;

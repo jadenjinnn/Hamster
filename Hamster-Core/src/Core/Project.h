@@ -19,6 +19,10 @@ struct ProjectConfig {
   std::string Name;
   std::filesystem::path ProjectDirectory;
   std::filesystem::path StartScenePath;
+  // Target play-window resolution. Legacy projects without these fields in
+  // their .hamproj fall back to 1280x720 on deserialise (see ProjectSerialiser).
+  int32_t TargetWidth = 1280;
+  int32_t TargetHeight = 720;
 };
 
 class Project {

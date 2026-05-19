@@ -29,6 +29,14 @@ void ProjectSerialiser::Serialise(std::ostream &out) {
   out.write(reinterpret_cast<const char *>(&startScenePathLength),
             sizeof(startScenePathLength));
   out.write(startScenePathStr.data(), startScenePathLength);
+
+  // Appended at end so legacy .hamproj files (without these bytes) still
+  // deserialise — see Deserialise below for the EOF-tolerant read path.
+  int32_t targetWidth = projectConfig.TargetWidth;
+  int32_t targetHeight = projectConfig.TargetHeight;
+  out.write(reinterpret_cast<const char *>(&targetWidth), sizeof(targetWidth));
+  out.write(reinterpret_cast<const char *>(&targetHeight),
+            sizeof(targetHeight));
 }
 
 ProjectConfig ProjectSerialiser::Deserialise(std::istream &in) {
@@ -59,7 +67,29 @@ ProjectConfig ProjectSerialiser::Deserialise(std::istream &in) {
   in.read(startScenePathStr.data(), startScenePathLength);
 
   projectConfig.StartScenePath = startScenePathStr;
-  //
+
+  // Resolution fields appended in this feature. Legacy .hamproj files end
+  // here, so peek for EOF before each int32 read; on partial / missing
+  // bytes, clear stream state and fall back to the ProjectConfig defaults.
+  int32_t targetWidth = projectConfig.TargetWidth;
+  int32_t targetHeight = projectConfig.TargetHeight;
+  if (in.peek() != EOF) {
+    in.read(reinterpret_cast<char *>(&targetWidth), sizeof(targetWidth));
+    if (in.gcount() != sizeof(targetWidth)) {
+      targetWidth = projectConfig.TargetWidth;
+      in.clear();
+    }
+  }
+  if (in.peek() != EOF) {
+    in.read(reinterpret_cast<char *>(&targetHeight), sizeof(targetHeight));
+    if (in.gcount() != sizeof(targetHeight)) {
+      targetHeight = projectConfig.TargetHeight;
+      in.clear();
+    }
+  }
+  projectConfig.TargetWidth = targetWidth;
+  projectConfig.TargetHeight = targetHeight;
+
   return projectConfig;
 }
 } // namespace Hamster
