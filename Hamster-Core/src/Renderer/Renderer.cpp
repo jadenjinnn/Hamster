@@ -514,6 +514,11 @@ namespace Hamster {
         UpdateViewMatrix();
     }
 
+    void Renderer::SetCameraOffset(const glm::vec2 &absolute) {
+        m_CameraOffset = absolute;
+        UpdateViewMatrix();
+    }
+
     void Renderer::BeginSpriteBatch() {
         m_DrawCallsThisFrame = 0;
         m_BatchVerts.clear();

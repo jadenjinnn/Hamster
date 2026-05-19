@@ -396,6 +396,50 @@ void EditorLayer::OnUpdate() {
     m_FramebufferTexture.Unbind();
     glDisable(GL_SCISSOR_TEST);
 
+    // ── Popout play-window render pass ──
+    // Second scene render — into the popout's default framebuffer when the
+    // popout is open. The Renderer is shared with the editor, so we save
+    // viewport / zoom / camera, install a fixed (0,0)→(W,H) at zoom=1 view
+    // for the popout, render, swap its buffers, then restore. After this
+    // block the editor's GL context is current again so ImGui draws into
+    // the editor window as normal.
+    if (m_App->IsPlayWindowOpen()) {
+        GLFWwindow *popout = m_App->GetPlayWindow();
+        GLFWwindow *editor = m_App->GetWindow();
+        if (popout && editor) {
+            int savedVpW = m_Renderer->GetViewportWidth();
+            int savedVpH = m_Renderer->GetViewportHeight();
+            float savedZoom = m_Renderer->GetZoom();
+            glm::vec2 savedOffset = m_Renderer->GetCameraOffset();
+
+            int popoutW = savedVpW;
+            int popoutH = savedVpH;
+            glfwGetFramebufferSize(popout, &popoutW, &popoutH);
+
+            glfwMakeContextCurrent(popout);
+            glViewport(0, 0, popoutW, popoutH);
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            m_Renderer->SetViewport(popoutH, popoutW);
+            m_Renderer->SetZoom(1.0f);
+            m_Renderer->SetCameraOffset(glm::vec2(0.0f, 0.0f));
+
+            m_Scene->OnRender(false);
+            m_Scene->OnRenderUI(static_cast<float>(popoutW),
+                                static_cast<float>(popoutH));
+
+            glfwSwapBuffers(popout);
+
+            // Restore editor context + renderer state. The editor's existing
+            // viewport-clear below runs against the editor's default FB.
+            glfwMakeContextCurrent(editor);
+            m_Renderer->SetViewport(savedVpH, savedVpW);
+            m_Renderer->SetZoom(savedZoom);
+            m_Renderer->SetCameraOffset(savedOffset);
+        }
+    }
+
     // Clear default framebuffer to the gap color — fills the regions outside
     // panels (the engine's main loop doesn't clear, the old prototype did this
     // in main.cpp before drawing ImGui).

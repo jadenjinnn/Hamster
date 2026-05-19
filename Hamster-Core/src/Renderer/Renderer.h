@@ -89,6 +89,10 @@ namespace Hamster {
         void UpdateViewMatrix();
 
         void ChangeCameraOffset(const glm::vec2 &offset);
+        // Absolute setter — bypasses the delta semantics of ChangeCameraOffset.
+        // Used by the popout-window render path to swap camera state in and
+        // out around the second render pass.
+        void SetCameraOffset(const glm::vec2 &absolute);
 
         glm::vec2 ScreenToWorldPos(const glm::vec2 &mousePos);
 
