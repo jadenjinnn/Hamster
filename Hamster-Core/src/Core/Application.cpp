@@ -105,6 +105,10 @@ namespace Hamster {
     }
 
     Application::~Application() {
+        // Close popout first — its handle becomes a dangling pointer once
+        // glfwTerminate (in ~Window) runs.
+        ClosePlayWindow();
+
         Project::SaveCurrentProject(m_AssetManager.get());
 
         for (auto const &[uuid, scene]: m_Scenes) {
@@ -223,6 +227,59 @@ namespace Hamster {
     void Application::Close(WindowCloseEvent &e) {
         m_Running = false;
         m_Window.reset();
+    }
+
+    void Application::OpenPlayWindow(int width, int height,
+                                     const std::string &title) {
+        if (m_PlayWindow) {
+            // Idempotent — caller can hammer this without checking.
+            return;
+        }
+
+        // The editor window's hints (borderless, 4.0 core) persist on the
+        // shared context but the popout should use OS chrome and not be
+        // resizable. Reset hints to a known baseline before create.
+        glfwDefaultWindowHints();
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+        glfwWindowHint(GLFW_MAXIMIZED, GLFW_FALSE);
+        glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
+        glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_TRUE);
+
+        // Share the editor's GL context so textures/shaders/FBOs created in
+        // the editor are visible from the popout — no re-upload on Play.
+        GLFWwindow *editor = m_Window ? m_Window->GetGLFWWindowPointer() : nullptr;
+        m_PlayWindow =
+            glfwCreateWindow(width, height, title.c_str(), nullptr, editor);
+
+        // Restore defaults so any future glfwCreateWindow elsewhere isn't
+        // surprised by our hints leaking out.
+        glfwDefaultWindowHints();
+
+        if (!m_PlayWindow) {
+            std::cout << "Application: failed to create popout play window ("
+                      << width << "x" << height << ")" << std::endl;
+            return;
+        }
+
+        // After creating the new window, GLFW makes its context current as a
+        // side effect. Restore the editor's context so subsequent rendering
+        // still targets it. Stage 5 will switch deliberately each frame.
+        if (editor) glfwMakeContextCurrent(editor);
+    }
+
+    void Application::ClosePlayWindow() {
+        if (!m_PlayWindow) return;
+        glfwDestroyWindow(m_PlayWindow);
+        m_PlayWindow = nullptr;
+
+        // Defensive: re-current the editor context in case the destroyed
+        // popout was the current one when this was called.
+        if (m_Window) {
+            glfwMakeContextCurrent(m_Window->GetGLFWWindowPointer());
+        }
     }
 
     void Application::ResizeWindow(WindowResizeEvent &e) {

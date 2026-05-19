@@ -52,6 +52,16 @@ namespace Hamster {
 
         GLFWwindow *GetWindow() { return m_Window->GetGLFWWindowPointer(); }
 
+        // Popout play-window lifecycle. Stage 4 of the
+        // project-resolution-and-play-window feature. OpenPlayWindow creates
+        // a non-resizable GLFW window that shares the editor's GL context;
+        // ClosePlayWindow destroys it. Both are idempotent. Stages 5–7 layer
+        // rendering, input routing, and deferred-destroy on top of this.
+        void OpenPlayWindow(int width, int height, const std::string &title);
+        void ClosePlayWindow();
+        GLFWwindow *GetPlayWindow() const { return m_PlayWindow; }
+        bool IsPlayWindowOpen() const { return m_PlayWindow != nullptr; }
+
         void PushLayer(Layer *layer);
 
         void PopLayer(Layer *layer);
@@ -107,6 +117,10 @@ namespace Hamster {
         ImGuiLayer *m_ImGuiLayer = nullptr;
 
         std::unique_ptr<Window> m_Window;
+
+        // Popout play window — null when not open. Owns its own GLFW handle
+        // (shares the editor's GL context). Destroyed via ClosePlayWindow.
+        GLFWwindow *m_PlayWindow = nullptr;
 
         std::unique_ptr<InputManager> m_InputManager;
         std::unique_ptr<AssetManager> m_AssetManager;

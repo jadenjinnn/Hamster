@@ -4,6 +4,8 @@
 #include "IconsFontAwesome6.h"
 
 #include <Renderer/Renderer.h>
+#include <Core/Application.h>
+#include <Core/Project.h>
 #include <Core/Scene.h>
 
 #include <imgui.h>
@@ -71,10 +73,21 @@ void LevelEditor::Render(unsigned int fbTexId,
         if (paused) {
             if (ImGui::Button(ICON_FA_PLAY "##play", {btnSz, btnSz})) {
                 scene->RunSceneSimulation();
+                // Open the popout play window sized to the active project's
+                // target resolution. Singleton lookup here matches the rest
+                // of Hamster-Wheel; DI cleanup is a separate refactor.
+                if (auto proj = Hamster::Project::GetCurrentProject()) {
+                    const auto &cfg = proj->GetConfig();
+                    Hamster::Application::GetApplicationInstance()
+                        .OpenPlayWindow(cfg.TargetWidth, cfg.TargetHeight,
+                                        cfg.Name + " - Play");
+                }
             }
         } else {
             if (ImGui::Button(ICON_FA_PAUSE "##pause", {btnSz, btnSz})) {
                 scene->PauseSceneSimulation();
+                Hamster::Application::GetApplicationInstance()
+                    .ClosePlayWindow();
             }
         }
         ImGui::PopStyleColor(3);
@@ -85,6 +98,7 @@ void LevelEditor::Render(unsigned int fbTexId,
         ImGui::PushStyleColor(ImGuiCol_ButtonActive,  redAct);
         if (ImGui::Button(ICON_FA_STOP "##stop", {btnSz, btnSz})) {
             scene->PauseSceneSimulation();
+            Hamster::Application::GetApplicationInstance().ClosePlayWindow();
         }
         ImGui::PopStyleColor(3);
 
