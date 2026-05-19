@@ -172,6 +172,12 @@ private:
 
 public:
   InputManager(GLFWwindow *window);
+
+  // Attach the same key + mouse callbacks to a secondary window (e.g. the
+  // popout play window) so its input dispatches into the shared event bus.
+  // The window's GLFW user-pointer must already be the EventDispatcher
+  // (set by the caller before calling).
+  static void AttachCallbacks(GLFWwindow *window);
 };
 } // namespace Hamster
 

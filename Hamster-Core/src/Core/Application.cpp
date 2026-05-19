@@ -264,6 +264,14 @@ namespace Hamster {
             return;
         }
 
+        // Wire input — same key + mouse callbacks the editor window uses,
+        // sharing the engine event dispatcher so popout key/mouse events
+        // reach scripts via the existing KeyPressed / MouseButtonClicked
+        // dispatch path. Editor and popout each carry the same dispatcher
+        // pointer in their GLFW user-pointer.
+        glfwSetWindowUserPointer(m_PlayWindow, m_Dispatcher.get());
+        InputManager::AttachCallbacks(m_PlayWindow);
+
         // After creating the new window, GLFW makes its context current as a
         // side effect. Restore the editor's context so subsequent rendering
         // still targets it. Stage 5 will switch deliberately each frame.
