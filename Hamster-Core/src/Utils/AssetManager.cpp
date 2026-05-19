@@ -88,7 +88,7 @@ namespace Hamster {
             [this, futurePtr, texture]() mutable {
                 TextureData textData = futurePtr->get();
 
-                texture->Init(textData);
+                texture->Init(textData, FilterMode::Nearest);
 
                 m_Textures.emplace(texture->GetUUID(), texture);
 
@@ -104,7 +104,7 @@ namespace Hamster {
         std::cout << "Add texture with path " << texturePath << std::endl;
 
         std::shared_ptr<Texture> texture =
-                std::make_shared<Texture>(texturePath.c_str());
+                std::make_shared<Texture>(texturePath.c_str(), FilterMode::Nearest);
 
         // Same sidecar reconciliation as AddTextureAsync — see comment there.
         if (auto persisted = MetaFile::Read(texturePath)) {
@@ -120,7 +120,7 @@ namespace Hamster {
 
     void AssetManager::AddTexture(UUID uuid, const std::string &texturePath,
                                   const std::string &textureName) {
-        auto texture = std::make_shared<Texture>(texturePath.c_str());
+        auto texture = std::make_shared<Texture>(texturePath.c_str(), FilterMode::Nearest);
         texture->SetUUID(uuid);
         texture->SetName(textureName);
         m_Textures.emplace(uuid, texture);

@@ -10,7 +10,8 @@
 #include "Utils/AssetManager.h"
 
 namespace Hamster {
-Texture::Texture(const std::string &texturePath) : m_TexturePath(texturePath) {
+Texture::Texture(const std::string &texturePath, FilterMode filter)
+    : m_TexturePath(texturePath) {
   int width, height, nrChannels;
 
   std::cout << texturePath << std::endl;
@@ -38,10 +39,11 @@ Texture::Texture(const std::string &texturePath) : m_TexturePath(texturePath) {
                GL_UNSIGNED_BYTE, data);
   glGenerateMipmap(GL_TEXTURE_2D);
 
+  const GLint glFilter = (filter == FilterMode::Nearest) ? GL_NEAREST : GL_LINEAR;
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, glFilter);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, glFilter);
 
   glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -51,7 +53,7 @@ Texture::Texture(const std::string &texturePath) : m_TexturePath(texturePath) {
   stbi_image_free(data);
 }
 
-void Texture::Init(const TextureData &textData) {
+void Texture::Init(const TextureData &textData, FilterMode filter) {
   if (!textData.data) {
     std::cout << "Texture could not be loaded" << std::endl;
   }
@@ -74,10 +76,11 @@ void Texture::Init(const TextureData &textData) {
                0, imageFormat, GL_UNSIGNED_BYTE, textData.data);
   glGenerateMipmap(GL_TEXTURE_2D);
 
+  const GLint glFilter = (filter == FilterMode::Nearest) ? GL_NEAREST : GL_LINEAR;
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, glFilter);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, glFilter);
 
   glBindTexture(GL_TEXTURE_2D, 0);
 

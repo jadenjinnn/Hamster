@@ -13,16 +13,20 @@ struct TextureData {
   std::string path;
 };
 
+enum class FilterMode { Linear, Nearest };
+
 class Texture {
 public:
-  Texture(const std::string &texturePath);
+  Texture(const std::string &texturePath,
+          FilterMode filter = FilterMode::Linear);
   Texture() {};
   ~Texture();
 
   Texture(const Texture &) = delete;
   Texture &operator=(const Texture &) = delete;
 
-  void Init(const TextureData &textData);
+  void Init(const TextureData &textData,
+            FilterMode filter = FilterMode::Linear);
 
   void BindTexture();
 
