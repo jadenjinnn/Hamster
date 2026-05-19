@@ -8,8 +8,10 @@ static Panel g_BottomPanel = {"", "...##bp", false, true};
 
 BottomPanel::BottomPanel(Hamster::EventDispatcher *dispatcher,
                          std::shared_ptr<Hamster::Scene> scene,
-                         Hamster::AssetManager *assetManager) {
-    m_AssetBrowser   = std::make_unique<AssetBrowser>(dispatcher, scene, assetManager);
+                         Hamster::AssetManager *assetManager,
+                         SpritesheetEditor *spritesheetEditor) {
+    m_AssetBrowser   = std::make_unique<AssetBrowser>(
+        dispatcher, scene, assetManager, spritesheetEditor);
     m_AnimationPanel = std::make_unique<AnimationPanel>(dispatcher, scene, assetManager);
     m_Console        = std::make_unique<Console>(dispatcher, scene);
 }

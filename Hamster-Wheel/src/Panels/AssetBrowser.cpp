@@ -2,6 +2,7 @@
 #include "../Theme.h"
 #include "../Components/Components.h"
 #include "IconsFontAwesome6.h"
+#include "SpritesheetEditor.h"
 
 #include <cstring>
 
@@ -20,9 +21,11 @@
 
 AssetBrowser::AssetBrowser(Hamster::EventDispatcher *dispatcher,
                            std::shared_ptr<Hamster::Scene> scene,
-                           Hamster::AssetManager *assetManager)
+                           Hamster::AssetManager *assetManager,
+                           SpritesheetEditor *spritesheetEditor)
     : m_Dispatcher(dispatcher), m_Scene(std::move(scene)),
-      m_AssetManager(assetManager) {
+      m_AssetManager(assetManager),
+      m_SpritesheetEditor(spritesheetEditor) {
     m_ActiveSceneSub = m_Dispatcher->Subscribe(
         Hamster::ActiveSceneChanged,
         FORWARD_CALLBACK_FUNCTION(AssetBrowser::OnActiveSceneChanged,
@@ -226,6 +229,22 @@ void AssetBrowser::Render() {
                 }
             }
         }
+        if (HComboItem(ICON_FA_TABLE_CELLS "  Import Spritesheet", false)) {
+            const char *filterPattern = {"*.png"};
+            const char *path = tinyfd_openFileDialog(
+                "Select spritesheet", "", 1, &filterPattern, "PNG Files", 1);
+            if (path) {
+                // Import as a regular texture first (sync path so we can
+                // resolve the new UUID immediately), then open the slice
+                // editor on it. The .png.sheet sidecar is created when the
+                // user clicks Save inside the editor.
+                auto texture = m_AssetManager->AddTexture(path);
+                if (texture && m_SpritesheetEditor) {
+                    m_SpritesheetEditor->Open(texture->GetUUID(),
+                                               m_AssetManager);
+                }
+            }
+        }
         if (HComboItem(ICON_FA_PLUS "  New Script", false)) {
             Hamster::UUID newId = m_AssetManager->AddDefaultScript();
             auto newScript = m_AssetManager->GetScript(newId);
@@ -245,9 +264,12 @@ void AssetBrowser::Render() {
     nextRow();
 
     // Right-click context menu. Triggers inline rename instead of a modal —
-    // the card's label flips to an InputText next frame.
+    // the card's label flips to an InputText next frame. `isTextureCard`
+    // flag adds the spritesheet "Edit Slices..." item only for texture
+    // assets (script cards don't slice).
     auto contextMenu = [&](Hamster::UUID uuid,
-                            const std::filesystem::path &assetPath) {
+                            const std::filesystem::path &assetPath,
+                            bool isTextureCard = false) {
         std::string popupId = "##ctx_" + uuid.GetUUIDString();
         if (HBeginStyledContextItem(popupId.c_str())) {
             if (HComboItem(ICON_FA_PEN "  Rename", false)) {
@@ -258,6 +280,11 @@ void AssetBrowser::Render() {
                 m_InlineRenameExt = assetPath.extension().string();
                 m_InlineRenameUUID = uuid;
                 m_InlineRenameFocus = true;
+            }
+            if (isTextureCard && m_SpritesheetEditor) {
+                if (HComboItem(ICON_FA_TABLE_CELLS "  Edit Slices...", false)) {
+                    m_SpritesheetEditor->Open(uuid, m_AssetManager);
+                }
             }
             HEndStyledContextItem();
         }
@@ -310,7 +337,7 @@ void AssetBrowser::Render() {
         ImVec2 cardPos = ImGui::GetCursorScreenPos();
         DrawAssetCard(id.c_str(), ICON_FA_IMAGE,
                       texture->GetName().c_str(), texture.get(), cardW, cardH);
-        contextMenu(mUUID, texPath);
+        contextMenu(mUUID, texPath, /*isTextureCard=*/true);
 
         // Caret overlay (top-right corner) for sheet cards. ImGui's
         // InvisibleButton would steal hover from the underlying card; use a

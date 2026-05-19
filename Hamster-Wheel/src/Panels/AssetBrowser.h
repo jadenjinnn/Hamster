@@ -12,11 +12,14 @@ namespace Hamster {
 class AssetManager;
 }
 
+class SpritesheetEditor;
+
 class AssetBrowser {
 public:
     AssetBrowser(Hamster::EventDispatcher *dispatcher,
                  std::shared_ptr<Hamster::Scene> scene,
-                 Hamster::AssetManager *assetManager);
+                 Hamster::AssetManager *assetManager,
+                 SpritesheetEditor *spritesheetEditor);
     ~AssetBrowser();
 
     void Render();
@@ -28,6 +31,7 @@ private:
     Hamster::SubscriptionHandle m_ActiveSceneSub = 0;
     std::shared_ptr<Hamster::Scene> m_Scene;
     Hamster::AssetManager *m_AssetManager;
+    SpritesheetEditor *m_SpritesheetEditor = nullptr;
 
     // Inline rename — set on new-script create and on right-click "Rename".
     // The card's label becomes an auto-focused InputText; commit on Enter /

@@ -41,7 +41,8 @@ EditorLayer::EditorLayer(Hamster::Application *app)
     m_PropertyEditor = std::make_unique<PropertyEditor>(
         m_Dispatcher, m_Scene, app->GetAssetManager(), m_ColliderEditor.get());
     m_BottomPanel = std::make_unique<BottomPanel>(
-        m_Dispatcher, m_Scene, app->GetAssetManager());
+        m_Dispatcher, m_Scene, app->GetAssetManager(),
+        m_SpritesheetEditor.get());
     m_CreateModal = std::make_unique<CreateProjectModal>(m_App);
     m_OpenModal   = std::make_unique<OpenProjectModal>(m_App);
 }

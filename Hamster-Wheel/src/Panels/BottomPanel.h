@@ -12,11 +12,14 @@ namespace Hamster {
 class AssetManager;
 }
 
+class SpritesheetEditor;
+
 class BottomPanel {
 public:
     BottomPanel(Hamster::EventDispatcher *dispatcher,
                 std::shared_ptr<Hamster::Scene> scene,
-                Hamster::AssetManager *assetManager);
+                Hamster::AssetManager *assetManager,
+                SpritesheetEditor *spritesheetEditor);
 
     void Render();
 
