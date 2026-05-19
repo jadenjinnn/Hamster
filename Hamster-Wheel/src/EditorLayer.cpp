@@ -14,6 +14,7 @@
 
 #include <Core/Base.h>
 #include <Core/Components.h>
+#include <Core/Project.h>
 #include <Renderer/Renderer.h>
 #include "Core/Application.h"
 
@@ -24,6 +25,8 @@
 #include "Panels/PropertyEditor.h"
 #include "Panels/Hierarchy.h"
 #include "Panels/BottomPanel.h"
+
+#include <Events/UIEvents.h>
 
 EditorLayer::EditorLayer(Hamster::Application *app)
     : m_App(app),
@@ -102,9 +105,9 @@ void EditorLayer::OnUpdate() {
     }
 
     // ── Mouse-pick when click lands inside viewport ──
-    // Hybrid: grabbers go through a tiny FBO render (8 quads — trivial) so
-    // their special IDs round-trip cleanly; entities go through the spatial
-    // index for O(log N + k) pick instead of O(N) full-scene render.
+    // Order (per game-ui feature spec): screen-space UI hit-test first, then
+    // grabbers (selected entity only), then world-space spatial-index. UI on
+    // top of world means a UI rect over a world entity ALWAYS wins.
     if (ImGui::IsMouseClicked(0) && m_ViewportHovered) {
         ImVec2 imGuiMousePos = ImGui::GetMousePos();
         float mousePosX = imGuiMousePos.x - m_ViewportOffset.x;
@@ -113,10 +116,42 @@ void EditorLayer::OnUpdate() {
                               mousePosX < m_LevelEditorAvailRegion.x &&
                               mousePosY < m_LevelEditorAvailRegion.y;
 
+        // Pass 0 — UI hit-test (screen-space). In play mode, post
+        // ButtonClickedEvent; in edit mode, select the entity for editing.
+        bool uiConsumed = false;
+        if (insideViewport) {
+            const bool simRunning = !m_Scene->IsSceneSimulationPaused();
+            float panelW = m_LevelEditorAvailRegion.x;
+            float panelH = m_LevelEditorAvailRegion.y;
+            auto uiView = m_Scene->GetRegistry()
+                              .view<Hamster::UIButton, Hamster::ID>();
+            for (auto e : uiView) {
+                auto &btn = uiView.get<Hamster::UIButton>(e);
+                auto &id  = uiView.get<Hamster::ID>(e);
+                Hamster::UIRect r =
+                    m_Renderer->ResolveUIButton(btn, panelW, panelH);
+                if (r.ContainsPoint(mousePosX, mousePosY)) {
+                    if (simRunning) {
+                        Hamster::ButtonClickedEvent be(id.uuid);
+                        m_Dispatcher->Post<Hamster::ButtonClickedEvent>(be);
+                    } else {
+                        m_Hierarchy->SetSelectedEntity(e);
+                        // Begin UI drag — capture offset at mousedown so the
+                        // drag delta accumulates from a fixed start.
+                        m_UIHeld = true;
+                        m_UIHeldEntity = e;
+                        m_UIHeldStartOffset = btn.offset;
+                    }
+                    uiConsumed = true;
+                    break;
+                }
+            }
+        }
+
         // Pass 1 — grabbers (only if something is selected).
         int grabberID = -1;
         entt::entity selectedEntity = m_Hierarchy->GetSelectedEntity();
-        if (insideViewport && selectedEntity != entt::null &&
+        if (!uiConsumed && insideViewport && selectedEntity != entt::null &&
             m_Scene->GetRegistry().valid(selectedEntity)) {
             glEnable(GL_SCISSOR_TEST);
             glScissor(0, 0, m_LevelEditorAvailRegion.x,
@@ -157,7 +192,9 @@ void EditorLayer::OnUpdate() {
             }
         }
 
-        if (grabberID != -1) {
+        if (uiConsumed) {
+            // UI consumed the click — no grabber / world pick.
+        } else if (grabberID != -1) {
             switch (grabberID) {
                 case TopLeftGrabberID:     m_TopLeftGrabberHeld  = true; break;
                 case TopRightGrabberID:    m_TopRightGrabberHeld = true; break;
@@ -215,6 +252,8 @@ void EditorLayer::OnUpdate() {
         m_BotLeftGrabberHeld = m_BotRightGrabberHeld = false;
         m_TopGrabberHeld = m_RightGrabberHeld = false;
         m_BotGrabberHeld = m_LeftGrabberHeld = false;
+        m_UIHeld = false;
+        m_UIHeldEntity = entt::null;
     }
     if (ImGui::IsMouseReleased(1)) m_BgHeld = false;
 
@@ -258,6 +297,24 @@ void EditorLayer::OnUpdate() {
         m_Renderer->ChangeCameraOffset({mouseDelta.x, mouseDelta.y});
     }
 
+    // UI drag — accumulate from start offset, sign-flip per anchor so +x
+    // mouse always moves the rect right regardless of which corner it
+    // anchors to.
+    if (m_UIHeld && m_UIHeldEntity != entt::null &&
+        m_Scene->GetRegistry().valid(m_UIHeldEntity) &&
+        m_Scene->GetRegistry().all_of<Hamster::UIButton>(m_UIHeldEntity)) {
+        auto &btn = m_Scene->GetRegistry().get<Hamster::UIButton>(m_UIHeldEntity);
+        ImVec2 d = ImGui::GetMouseDragDelta();
+        float xSign = (btn.anchor == Hamster::UIAnchor::TopRight ||
+                       btn.anchor == Hamster::UIAnchor::MiddleRight ||
+                       btn.anchor == Hamster::UIAnchor::BottomRight) ? -1.0f : 1.0f;
+        float ySign = (btn.anchor == Hamster::UIAnchor::BottomLeft ||
+                       btn.anchor == Hamster::UIAnchor::BottomCentre ||
+                       btn.anchor == Hamster::UIAnchor::BottomRight) ? -1.0f : 1.0f;
+        btn.offset.x = m_UIHeldStartOffset.x + d.x * xSign;
+        btn.offset.y = m_UIHeldStartOffset.y + d.y * ySign;
+    }
+
     // ── Render scene into FBO ──
     m_FramebufferTexture.ResizeFrameBuffer(m_LevelEditorAvailRegion.x,
                                            m_LevelEditorAvailRegion.y);
@@ -297,6 +354,19 @@ void EditorLayer::OnUpdate() {
 
     m_Scene->OnRender(false);
 
+    // Play-area outline at world (0,0)→(targetW, targetH). Drawn after the
+    // sprite pass so it sits on top of background sprites but below the
+    // grabbers/guizmos that come after. Hidden once the popout play window
+    // is open (stage 7 — until then it always renders).
+    if (auto activeProject = Hamster::Project::GetCurrentProject()) {
+        const auto &cfg = activeProject->GetConfig();
+        m_Renderer->DrawWorldRectOutline(
+            glm::vec2(0.0f, 0.0f),
+            glm::vec2(static_cast<float>(cfg.TargetWidth),
+                      static_cast<float>(cfg.TargetHeight)),
+            glm::vec3(0.45f, 0.45f, 0.45f), 2.0f, 1.0f);
+    }
+
     if (m_HoveredEntity != entt::null && m_HoveredEntity != sel &&
         m_Scene->GetRegistry().valid(m_HoveredEntity)) {
         m_Renderer->DrawHoverOutline(
@@ -307,6 +377,20 @@ void EditorLayer::OnUpdate() {
         m_Renderer->DrawGuizmo(
             m_Scene->GetRegistry().get<Hamster::Transform>(sel),
             Hamster::Translate, false);
+    }
+
+    // ── UI pass (screen-space, always on top) ──
+    // The renderer's world projection covers (0..vpW, 0..vpH) which is the
+    // full window FB; the level-editor FBO is panel-sized. For UI we want
+    // pixel-perfect alignment with the panel, so switch viewport here. The
+    // viewport gets reset right after FBO unbind below so the intermediate
+    // state never escapes this block.
+    if (m_LevelEditorAvailRegion.x > 0 && m_LevelEditorAvailRegion.y > 0) {
+        glViewport(0, 0,
+                   static_cast<int>(m_LevelEditorAvailRegion.x),
+                   static_cast<int>(m_LevelEditorAvailRegion.y));
+        m_Scene->OnRenderUI(m_LevelEditorAvailRegion.x,
+                            m_LevelEditorAvailRegion.y);
     }
 
     m_FramebufferTexture.Unbind();
