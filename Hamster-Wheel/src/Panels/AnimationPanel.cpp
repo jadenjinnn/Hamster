@@ -297,6 +297,52 @@ void AnimationPanel::Render() {
         m_DraggingKeyframe = false;
     }
 
+    // Drop target: multi-sub-sprite drag from the Asset Browser.
+    // Payload layout matches AssetBrowser:
+    //   uint32 count + count * sizeof(boost::uuids::uuid)
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload *payload =
+                ImGui::AcceptDragDropPayload("HAMSTER_SUBSPRITE_UUIDS")) {
+            const unsigned char *data =
+                static_cast<const unsigned char *>(payload->Data);
+            uint32_t count = 0;
+            std::memcpy(&count, data, sizeof(count));
+            const float kStep = 0.1f;
+            float firstTime;
+            if (m_Duration > 0.0f) {
+                float mouseX = ImGui::GetMousePos().x - tlPos.x;
+                if (mouseX < 0.0f) mouseX = 0.0f;
+                if (mouseX > rightW) mouseX = rightW;
+                firstTime = (mouseX / rightW) * m_Duration;
+            } else {
+                firstTime = m_Keyframes.empty()
+                                ? 0.0f
+                                : m_Keyframes.back().time + kStep;
+            }
+            for (uint32_t i = 0; i < count; ++i) {
+                boost::uuids::uuid raw;
+                std::memcpy(&raw,
+                            data + sizeof(count) +
+                                i * sizeof(boost::uuids::uuid),
+                            sizeof(raw));
+                Hamster::AnimationKeyframe kf;
+                kf.textureUUID = Hamster::UUID(raw);
+                float t = firstTime + static_cast<float>(i) * kStep;
+                if (t > 60.0f) t = 60.0f;
+                kf.time = t;
+                m_Keyframes.push_back(kf);
+            }
+            if (count > 0) {
+                for (auto &kf : m_Keyframes)
+                    if (kf.time > m_Duration) m_Duration = kf.time;
+                m_SelectedKeyframe =
+                    static_cast<int>(m_Keyframes.size()) - 1;
+                m_Dirty = true;
+            }
+        }
+        ImGui::EndDragDropTarget();
+    }
+
     ImGui::SetCursorScreenPos({prevPos.x, prevPos.y + previewSize});
     ImGui::Dummy({0, 16});
 
