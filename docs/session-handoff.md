@@ -1,5 +1,29 @@
 # Session handoff
 
+## 2026-05-24 — spritesheet stage 7 shipped (code); manual verify blocked by bugs 0011–0013
+
+- **Shipped this session (committed)**:
+  - `a7c3cafc` `feat(spritesheet): AnimationPanel accepts multi-sub-sprite drop` — stage 7 of spritesheet-support. Timeline's `InvisibleButton` now also acts as a drag-drop target for `HAMSTER_SUBSPRITE_UUIDS` (`uint32 count + count × boost::uuids::uuid`). On drop, N keyframes appended in selection order. First-keyframe time = cursor X on bar if duration > 0, else `back().time + 0.1s` (or `0.0s` if empty). Step = `0.1s` (panel's existing convention), capped at `60.0s`. Last inserted keyframe selected, panel marked dirty. Smoke 33/33 still green. No new smoke per spec — stage 7 is manual-test only.
+  - `<bug-log commit>` `docs(bugs): log 0011 + 0012 + 0013 from spritesheet stage 7 verification`.
+- **Blocked — stage 7 manual end-to-end can't run cleanly until**:
+  - **Bug 0011** (High) — SpritesheetEditor delete (Del key + X button) does not remove regions. Hypothesis: Del needs ImGui keyboard nav (dropped in 2026-05-16) or the row's `Selectable` shadows the X button (full-width `{0, ...}` claim swallows the click). Needs `/bug-fix` Tier 2 investigation.
+  - **Bug 0012** (Critical) — imported textures + their `.sheet` sidecars don't persist through project close/reopen. Root-cause hypothesis: imports never trigger `Project::SaveCurrentProject`; the only save paths are `Scene::RunSceneSimulation` (on Play) and `Application::~Application` (on exit), and the dtor save is likely amplified by bug 0008 (exit segfault). The sidecar file is on disk and intact (re-importing the same PNG reads it correctly) — the project blob just doesn't reference the texture, so `AssetManager::Deserialise` never asks for the sidecar to be read.
+  - **Bug 0013** (Low / UX) — author wants expanded sheet mini-cards to lay out as a horizontal strip below the parent card, not tile into the parent grid. Will be touched in the same `AssetBrowser.cpp` change as 0012.
+- **Approved triage**: pause stage 7 → fix 0012 + 0013 in one commit (same panel/area) → log 0011 (done) → resume stage 7 verify. Bug 0011 implementation deferred.
+- **Proposed fix for 0012 + 0013 (drafted, awaiting "go")**:
+  1. `AssetBrowser.cpp:241` (sync Import Spritesheet) — after `AddTexture(path)`, call `Hamster::Project::SaveCurrentProject(m_AssetManager)`.
+  2. `AssetBrowser.cpp:228` (async Import Texture) — TBD: either wire enqueue-time save or convert to sync; user's actual workflow is the sync path.
+  3. `SpritesheetEditor.cpp:442–477` (Save handler) — belt-and-braces: after `SheetSidecar::Write`, before `Close()`, also call `Project::SaveCurrentProject(m_AssetManager)`.
+  4. Bug 0013: rework `AssetBrowser.cpp:379–~440` expansion block so mini-cards lay out as a single horizontal strip (`BeginChild` with horizontal scrollbar, `SameLine()` between cards), flushed to next row before/after.
+  5. Verify cwd is stable between `Project::Open` (sets cwd in line 190) and the new save call sites — `SaveCurrentProject` writes `config.Name + ".hamproj"` relative to cwd.
+- **Still pending after 0012 + 0013 land**:
+  - Stage 7 manual verify (import sheet → slice 3 → Ctrl-click → drag onto timeline → 3 keyframes evenly spaced → Save → Play cycles through).
+  - Stage 8 of spritesheet-support: PropertyEditor — sub-sprite drag onto Sprite field + MISSING red label when `ResolveSpriteSource` returns missing.
+  - Stage 9 of spritesheet-support: `AssetManager::RenameAsset` moves `.sheet` sidecar alongside `.png` + `.meta`; ProjectWatcher external-rename path also covers `.sheet`.
+  - Bug 0011 (delete-region) when convenient.
+  - Existing open threads from prior handoffs: FlappyBird sample parked, bug 0008 (exit segfault), bug 0010 (zoom-out FPS drop), game-ui feature close-out.
+- **Next concrete step on return**: implement the 0012 + 0013 fix above (likely batch), rebuild + manual-verify the persistence roundtrip, then re-run stage 7 manual verification end-to-end.
+
 ## 2026-05-19 — spritesheet support stages 1–6 shipped; 7–9 pending
 
 - **Shipped today (committed, smoke 33/33)**: project-resolution-and-play-window feature (Full spec, 8 stages, closed out — moved to `shipped/2026-05-19-...`), then spritesheet-support stages 1–6:
