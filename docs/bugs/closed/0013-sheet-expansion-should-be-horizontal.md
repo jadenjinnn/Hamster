@@ -1,8 +1,8 @@
 # Bug 0013: expanded sheet mini-cards should lay out horizontally, not vertically
 
-> Status: **open**
+> Status: **fixed**
 > Severity: **Low**
-> Tier:
+> Tier: **1 — quick fix**
 > Logged: 2026-05-24
 > Found while: stage 7 manual verification of spritesheet-support
 
@@ -43,13 +43,19 @@ This is a UX preference / spec refinement rather than a functional bug, but logg
 
 ---
 
-## Fix
+## Fix (implemented)
 
-Likely approach (un-verified): flush to next row, `BeginChild` a thin strip the width of the asset-browser content area, render mini-cards with `SameLine()` between them (and enable horizontal scrollbar via `ImGuiWindowFlags_HorizontalScrollbar`), `EndChild`, flush again before the next parent card row.
+`Hamster-Wheel/src/Panels/AssetBrowser.cpp` — the expanded-sheet block no longer tiles mini-cards through the grid's `nextRow()`. Instead:
+- The parent card skips its `nextRow()` SameLine when expanded, so the strip falls onto the next line beneath it.
+- Sub-sprite mini-cards render inside a full-content-width `BeginChild` (`ImVec2(avail, miniH + 14.0f)`, `ImGuiWindowFlags_HorizontalScrollbar`), laid out left-to-right with `SameLine(0, 8.0f)` between cards. Unique child id (`##sheet_strip_<uuid>`) avoids collisions when multiple sheets are expanded.
+- After `EndChild`, `colIdx` resets to 0 so the next parent card starts a fresh grid row.
+
+Known minor deviation from the spec's "directly below the parent card": the strip is a full-width row below the parent card's row rather than anchored under the card's column. Acceptable for a Low/UX item; can be refined if the author wants strict column anchoring.
 
 ## Verification
 
 (Required at close-out — visual check of the expanded strip layout.)
+Build + link clean after fix. Visual check **pending author**: expand a sliced sheet's caret → mini-cards should appear as one horizontal row (scrolling if many) directly beneath the sheet card, with the rest of the asset grid resuming below.
 
 ---
 

@@ -27,12 +27,17 @@ namespace Hamster {
         // the filename. Sidecar uniqueness is implied by filename uniqueness.
         const std::filesystem::path projectDir =
                 Project::GetCurrentProject()->GetConfig().ProjectDirectory;
-        std::filesystem::path scriptPath = projectDir / "Untitled_Script.py";
+        // New scripts live under Assets/Scripts/.
+        const std::filesystem::path scriptDir =
+                projectDir / "Assets" / "Scripts";
+        std::error_code scriptEc;
+        std::filesystem::create_directories(scriptDir, scriptEc);
+        std::filesystem::path scriptPath = scriptDir / "Untitled_Script.py";
         for (int suffix = 1;
              std::filesystem::exists(scriptPath) ||
              std::filesystem::exists(MetaFile::SidecarPath(scriptPath));
              ++suffix) {
-            scriptPath = projectDir /
+            scriptPath = scriptDir /
                          ("Untitled_Script_" + std::to_string(suffix) + ".py");
         }
 

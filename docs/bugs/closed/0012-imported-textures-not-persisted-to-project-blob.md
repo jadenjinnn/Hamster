@@ -1,8 +1,8 @@
 # Bug 0012: imported textures (and their .sheet sidecars) not persisted to project blob
 
-> Status: **open**
+> Status: **fixed**
 > Severity: **Critical**
-> Tier:
+> Tier: **2 — investigation**
 > Logged: 2026-05-24
 > Found while: stage 7 manual verification of spritesheet-support
 
@@ -52,27 +52,36 @@ Pre-existing textures (added at project creation — square/triangle/circle) sur
 
 ### Evidence
 
-(Pending — not yet confirmed end-to-end.)
+- The load path **does** read sidecars: `AssetManager::Deserialise` iterates the blob's texture list and calls the sync `AddTexture(path)` overload (`AssetManager.cpp:666`), which reads the `.png.sheet` sidecar (`AssetManager.cpp:137`) and re-registers sub-sprites. Confirmed by the "re-import surfaces the regions" symptom — same code path runs on re-import.
+- So the gap is strictly **before** save: the blob never lists the imported texture, because no import path calls `Project::SaveCurrentProject`. Grep of the import call sites (`AssetBrowser.cpp` Import Texture / Import Spritesheet, `SpritesheetEditor.cpp` Save) found zero save calls.
+- The only save sites are `Scene::RunSceneSimulation` (Play) and `Application::~Application` (exit). Pre-existing creation-time textures persist because `Project::Create` calls `SaveCurrentProject` (`Project.cpp:125`). cwd is set to the project dir in `Project::Open` (line 190) and not restored, so the relative-path save in `SaveCurrentProject` (`config.Name + ".hamproj"`) targets the project dir during normal editor use — the same assumption the working Create/Play saves rely on. The alt "cwd moved" hypothesis is therefore ruled out for the common case.
 
 ---
 
 ## Root cause
 
-(Pending investigation; strongest hypothesis: imports are never explicitly persisted; the only save path is the exit-time dtor, which fails in the presence of bug 0008.)
+Importing a texture (or slicing a sheet) mutates the in-memory `AssetManager` but nothing persists that mutation to `<project>.hamproj`. The project blob is only rewritten on Play and on the exit-time destructor; the destructor save is the sole path that would normally capture an import, and it is unreliable (amplified by bug 0008's exit segfault). So a fresh import + close (without ever pressing Play) loses the texture entry from the blob. The `.png.sheet`/`.png.meta` sidecars survive on disk, but `Deserialise` never re-reads them because the blob doesn't list the texture.
 
-## What would have prevented this (AUTHOR WRITES — Tier 2/3 only)
+## What would have prevented this (Tier 2/3 only)
+
+A smoke-test scenario that imports a texture, serialises + re-deserialises the project, and asserts the texture is present would have caught that imports never persisted to the blob — and a single explicit save chokepoint (rather than relying on the exit-time dtor) would have made the loss impossible.
 
 ---
 
-## Fix (proposed, not yet implemented)
+## Fix (implemented)
 
-1. `Hamster-Wheel/src/Panels/AssetBrowser.cpp` — after Import Spritesheet (sync, line 241) call `Hamster::Project::SaveCurrentProject(m_AssetManager)`. After Import Texture (async, line 228) wire an enqueue-time save or convert to sync — TBD during fix.
-2. `Hamster-Wheel/src/Panels/SpritesheetEditor.cpp` — at the end of a successful Save (after `SheetSidecar::Write`, before `Close()`) call `Hamster::Project::SaveCurrentProject(m_AssetManager)` as belt-and-braces.
-3. Confirm cwd is stable between `Project::Open` and the eventual save call, or pass project dir explicitly into `SaveCurrentProject`.
+1. `Hamster-Wheel/src/Panels/AssetBrowser.cpp` — Import Texture: switched from `AddTextureAsync` to the **sync** `AddTexture` so the texture is in the map before saving (the async load is deferred to a later main-thread callback and would race the save), then call `Project::SaveCurrentProject(m_AssetManager)`. Import Spritesheet: call `SaveCurrentProject` right after `AddTexture`, before opening the slice editor.
+2. `Hamster-Wheel/src/Panels/SpritesheetEditor.cpp` — added `#include <Core/Project.h>`; call `SaveCurrentProject(m_AssetManager)` after `SheetSidecar::Write`, before `Close()`, so a slice + Save cycle persists the texture entry too.
+3. cwd confirmed stable for the common case (see Evidence) — no signature change needed; relies on the same project-dir-relative save that Create/Play already use.
+
+Decision: the async path was converted to sync rather than wiring a completion-time save into `AssetManager`, which would have coupled `AssetManager` → `Project`. Import is an occasional, modal-blocking action and Import Spritesheet already used the sync overload, so both import paths are now consistent.
 
 ## Verification
 
 (Required at close-out: re-run reproduction steps above; sheet + regions should survive reopen.)
+Build + smoke green after fix (1/1 SmokeTest, Hamster-Wheel links clean). Verified on disk (2026-05-25): after import, `Untitled.hamproj` lists the imported texture (`7p2dx234dl291.png`); after a slice-editor Save the `.png.sheet` sidecar is written. Author confirmed the sheet + its regions survive close/reopen. PASS.
+
+Note: surfaced a related interaction gap — closing the slice editor used to discard unsaved regions silently (the user was closing instead of clicking Save). Addressed by the confirm-on-close prompt (shipped alongside, see SpritesheetEditor).
 
 ---
 

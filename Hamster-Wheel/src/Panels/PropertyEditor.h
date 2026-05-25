@@ -39,6 +39,8 @@ private:
     Hamster::Rigidbody *m_Rigidbody = nullptr;
     Hamster::Animation *m_Animation = nullptr;
     Hamster::Behaviour *m_Behaviour = nullptr;
+    Hamster::UIButton  *m_UIButton  = nullptr;
+    Hamster::UIText    *m_UIText    = nullptr;
 };
 
 #endif // UIPROTO_PROPERTY_EDITOR_H

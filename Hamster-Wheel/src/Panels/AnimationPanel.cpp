@@ -64,7 +64,8 @@ void AnimationPanel::Render() {
                 m_AssetManager->AddAnimation(m_CurrentAnimUUID, data);
             }
             std::filesystem::path savePath =
-                std::filesystem::path("Animations") / (m_AnimName + ".hanim");
+                std::filesystem::path("Assets") / "Animations" /
+                (m_AnimName + ".hanim");
             std::filesystem::create_directories(savePath.parent_path());
             m_AssetManager->SaveAnimationFile(m_CurrentAnimUUID, savePath);
             m_Dirty = false;

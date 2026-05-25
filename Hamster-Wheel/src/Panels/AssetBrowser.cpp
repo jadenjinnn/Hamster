@@ -40,6 +40,31 @@ void AssetBrowser::OnActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e) {
     m_Scene = e.GetActiveScene();
 }
 
+// Copy an imported image into <project>/Assets/ so the texture and its
+// .meta/.sheet sidecars live inside the project rather than next to the
+// user's original file. Returns the in-project path; falls back to the
+// original path when no project is open or the copy fails.
+static std::string ImportIntoProject(const std::string &srcPath) {
+    auto project = Hamster::Project::GetCurrentProject();
+    if (!project) return srcPath;
+
+    std::filesystem::path src(srcPath);
+    std::filesystem::path destDir =
+        std::filesystem::path(project->GetConfig().ProjectDirectory) /
+        "Assets" / "Textures";
+
+    std::error_code ec;
+    std::filesystem::create_directories(destDir, ec);
+
+    std::filesystem::path dest = destDir / src.filename();
+    if (src != dest) {
+        std::filesystem::copy_file(
+            src, dest, std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec) return srcPath;  // copy failed — keep the original reference
+    }
+    return dest.string();
+}
+
 // Draws the card background + icon/texture preview area. Shared between the
 // normal and edit-mode card paths so they stay visually identical.
 static void DrawCardChrome(ImVec2 pos, float cardW, float cardH,
@@ -199,6 +224,44 @@ static bool DrawAddCard(float cardW, float cardH) {
 void AssetBrowser::Render() {
     ImGui::Dummy({0, 4});
 
+    // Folder context — the browser is rooted at <project>/Assets (you never
+    // see "Assets" itself; its contents are the top level). m_CurrentFolder is
+    // relative to that root; the texture + script lists are filtered to it.
+    std::filesystem::path projectDir;
+    auto activeProject = Hamster::Project::GetCurrentProject();
+    if (activeProject) projectDir = activeProject->GetConfig().ProjectDirectory;
+    std::filesystem::path assetsRoot =
+        projectDir.empty() ? std::filesystem::path{} : (projectDir / "Assets");
+    std::filesystem::path activeFolder =
+        assetsRoot.empty() ? std::filesystem::path{}
+                           : (assetsRoot / m_CurrentFolder);
+    auto stripSep = [](std::filesystem::path p) {
+        std::string s = p.lexically_normal().string();
+        while (s.size() > 1 && (s.back() == '\\' || s.back() == '/'))
+            s.pop_back();
+        return std::filesystem::path(s);
+    };
+    std::filesystem::path normActive = stripSep(activeFolder);
+
+    // ── Breadcrumb bar (top): a back button + the current path as plain,
+    // non-interactive text styled to match the panel. ──
+    {
+        const bool atRoot = m_CurrentFolder.empty();
+        ImGui::BeginDisabled(atRoot);
+        if (HToolbarButton(ICON_FA_ARROW_UP)) {
+            m_CurrentFolder = m_CurrentFolder.parent_path();
+        }
+        ImGui::EndDisabled();
+
+        ImGui::SameLine(0, 10);
+        std::string pathText = ICON_FA_FOLDER_OPEN "  Assets";
+        for (auto const &seg : m_CurrentFolder)
+            pathText += "  /  " + seg.string();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("%s", pathText.c_str());
+    }
+    ImGui::Dummy({0, 6});
+
     float cardW = 110.0f;
     float cardH = 140.0f; // preview is square (cardW = cardH - labelH(30))
     float spacing = 12.0f;
@@ -224,9 +287,21 @@ void AssetBrowser::Render() {
             if (path) {
                 std::stringstream pathSS(path);
                 std::string item;
+                bool added = false;
                 while (std::getline(pathSS, item, '|')) {
-                    m_AssetManager->AddTextureAsync(item);
+                    // Copy into <project>/Assets/ first so sidecars live in
+                    // the project, then add the in-project copy. Sync (not
+                    // AddTextureAsync) so the texture is in the map before we
+                    // persist the blob below — the deferred async load would
+                    // otherwise race the save (bug 0012).
+                    if (m_AssetManager->AddTexture(ImportIntoProject(item)))
+                        added = true;
                 }
+                // Persist the new texture entry to <project>.hamproj now; the
+                // only other save points are Play and exit, and exit is
+                // unreliable (bug 0008).
+                if (added)
+                    Hamster::Project::SaveCurrentProject(m_AssetManager);
             }
         }
         if (HComboItem(ICON_FA_TABLE_CELLS "  Import Spritesheet", false)) {
@@ -234,14 +309,20 @@ void AssetBrowser::Render() {
             const char *path = tinyfd_openFileDialog(
                 "Select spritesheet", "", 1, &filterPattern, "PNG Files", 1);
             if (path) {
-                // Import as a regular texture first (sync path so we can
-                // resolve the new UUID immediately), then open the slice
-                // editor on it. The .png.sheet sidecar is created when the
-                // user clicks Save inside the editor.
-                auto texture = m_AssetManager->AddTexture(path);
-                if (texture && m_SpritesheetEditor) {
-                    m_SpritesheetEditor->Open(texture->GetUUID(),
-                                               m_AssetManager);
+                // Copy into <project>/Assets/ first (so the .png.sheet
+                // sidecar lands in the project), then add the in-project copy
+                // as a regular texture (sync so we can resolve the new UUID
+                // immediately) and open the slice editor on it.
+                auto texture =
+                    m_AssetManager->AddTexture(ImportIntoProject(path));
+                if (texture) {
+                    // Persist the texture entry immediately (bug 0012). The
+                    // .png.sheet sidecar + sub-sprite registrations get saved
+                    // again when the user clicks Save in the slice editor.
+                    Hamster::Project::SaveCurrentProject(m_AssetManager);
+                    if (m_SpritesheetEditor)
+                        m_SpritesheetEditor->Open(texture->GetUUID(),
+                                                   m_AssetManager);
                 }
             }
         }
@@ -311,6 +392,13 @@ void AssetBrowser::Render() {
         std::string id = "tex_" + mUUID.GetUUIDString();
         std::filesystem::path texPath(texture->GetTexturePath());
 
+        // Folder-scope: only show textures whose file lives in the folder
+        // currently in view (mirrors the script filter below).
+        if (!normActive.empty() &&
+            stripSep(texPath.parent_path()) != normActive) {
+            continue;
+        }
+
         if (mUUID == m_InlineRenameUUID) {
             bool committed = false;
             if (DrawEditingCard(id.c_str(), ICON_FA_IMAGE, texture.get(),
@@ -337,6 +425,11 @@ void AssetBrowser::Render() {
         ImVec2 cardPos = ImGui::GetCursorScreenPos();
         DrawAssetCard(id.c_str(), ICON_FA_IMAGE,
                       texture->GetName().c_str(), texture.get(), cardW, cardH);
+        // Double-click a texture/sheet card to open the slice editor.
+        if (m_SpritesheetEditor && ImGui::IsItemHovered() &&
+            ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            m_SpritesheetEditor->Open(mUUID, m_AssetManager);
+        }
         contextMenu(mUUID, texPath, /*isTextureCard=*/true);
 
         // Caret overlay (top-right corner) for sheet cards. ImGui's
@@ -355,8 +448,8 @@ void AssetBrowser::Render() {
                               ImGui::ColorConvertFloat4ToU32(kSurfaceHov),
                               4.0f);
             bool expanded = m_ExpandedSheets.count(mUUID) > 0;
-            const char *glyph = expanded ? ICON_FA_CHEVRON_UP
-                                         : ICON_FA_CHEVRON_DOWN;
+            const char *glyph = expanded ? ICON_FA_CARET_LEFT
+                                         : ICON_FA_CARET_RIGHT;
             ImVec2 gSz = ImGui::CalcTextSize(glyph);
             dl->AddText({ca.x + (caretW - gSz.x) * 0.5f,
                           ca.y + (caretH - gSz.y) * 0.5f},
@@ -366,100 +459,135 @@ void AssetBrowser::Render() {
             // IsMouseClicked rather than InvisibleButton so we don't push
             // an ID that conflicts with the underlying card.
             const ImVec2 mp = ImGui::GetMousePos();
+            // AllowWhenBlockedByActiveItem: the click that lands on the caret
+            // also makes the underlying card button the active item, and a
+            // plain IsWindowHovered() returns false while any item is active —
+            // which silently swallowed every caret click (it never expanded).
             if (mp.x >= ca.x && mp.x <= cb.x && mp.y >= ca.y && mp.y <= cb.y &&
                 ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-                ImGui::IsWindowHovered()) {
+                ImGui::IsWindowHovered(
+                    ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
                 if (expanded) m_ExpandedSheets.erase(mUUID);
                 else m_ExpandedSheets.insert(mUUID);
             }
         }
 
+        // Parent sheet card flows in the grid like any other asset.
         nextRow();
 
-        // Mini-cards for the expanded sheet — rendered inline in the same
-        // grid as a stop-gap. Future work: a flushed-row block with
-        // dedicated sub-grid sizing per the spec's "card grows downward".
+        // Expanded sheet: its sub-sprites flow inline in the same grid,
+        // continuing right after the parent card and wrapping naturally
+        // (Unity-style). A rounded "tray" is painted behind the run, per
+        // occupied row, to group them visually.
         if (isSheet && m_ExpandedSheets.count(mUUID) > 0) {
-            const float miniW = std::max(60.0f, cardW * 0.55f);
-            const float miniH = miniW;
             float texW = static_cast<float>(texture->GetWidth());
             float texH = static_cast<float>(texture->GetHeight());
+            const float labelH = 30.0f;
+            const float cardR  = 6.0f;
 
-            for (size_t i = 0; i < children.size(); ++i) {
-                const auto &ss = children[i];
-                std::string mid =
-                    "sub_" + ss->uuid.GetUUIDString();
+            // Split so the grouping tray (channel 0) can be painted *behind*
+            // the sub-sprite cards (channel 1) once their rects are known.
+            ImDrawList *dl = ImGui::GetWindowDrawList();
+            dl->ChannelsSplit(2);
+            dl->ChannelsSetCurrent(1);
 
+            std::vector<ImVec4> cardRects;  // (x0,y0,x1,y1) per sub-sprite card
+
+            for (const auto &ss : children) {
+                std::string mid = "sub_" + ss->uuid.GetUUIDString();
                 ImGui::PushID(mid.c_str());
+
                 ImVec2 pos = ImGui::GetCursorScreenPos();
-                ImGui::InvisibleButton("##mini", {miniW, miniH});
+                ImGui::InvisibleButton("##subcard", {cardW, cardH});
                 bool hovered = ImGui::IsItemHovered();
                 bool clicked = ImGui::IsItemClicked();
-
                 bool selected = m_SelectedSubSprites.count(ss->uuid) > 0;
 
-                ImDrawList *dl = ImGui::GetWindowDrawList();
-                dl->AddRectFilled(pos, {pos.x + miniW, pos.y + miniH},
+                cardRects.push_back(
+                    {pos.x, pos.y, pos.x + cardW, pos.y + cardH});
+
+                dl->AddRectFilled(pos, {pos.x + cardW, pos.y + cardH},
                                   ImGui::ColorConvertFloat4ToU32(
                                       hovered ? kSurfaceHov : kSurface),
-                                  4.0f);
-                if (selected) {
-                    dl->AddRect(pos, {pos.x + miniW, pos.y + miniH},
-                                IM_COL32(255, 200, 80, 255), 4.0f, 0, 2.0f);
-                }
+                                  cardR);
 
-                // Clipped texture region — show only this sub-sprite.
-                if (texW > 0 && texH > 0) {
-                    ImVec2 uv0{ss->pixelRect.x / texW,
-                                ss->pixelRect.y / texH};
+                // Checkerboard + clipped sub-region preview (same chrome as a
+                // normal texture card, but UV-clipped to this sub-sprite).
+                if (texW > 0 && texH > 0 && texture->GetTextureId() != 0) {
+                    ImVec2 r0 = pos;
+                    ImVec2 r1 = {pos.x + cardW, pos.y + cardH - labelH};
+                    float rectW = r1.x - r0.x;
+                    float rectH = r1.y - r0.y;
+                    const float cellSz = 8.0f;
+                    int cols = (int)std::ceil(rectW / cellSz);
+                    int rows = (int)std::ceil(rectH / cellSz);
+                    for (int iy = 0; iy < rows; ++iy) {
+                        for (int ix = 0; ix < cols; ++ix) {
+                            ImU32 col = ((ix + iy) % 2 == 0)
+                                            ? IM_COL32(60, 60, 65, 255)
+                                            : IM_COL32(40, 40, 45, 255);
+                            ImVec2 c0 = {r0.x + ix * cellSz, r0.y + iy * cellSz};
+                            ImVec2 c1 = {
+                                r0.x + std::min((ix + 1) * cellSz, rectW),
+                                r0.y + std::min((iy + 1) * cellSz, rectH)};
+                            ImDrawFlags fl = ImDrawFlags_RoundCornersNone;
+                            float rr = 0.0f;
+                            if (iy == 0 && ix == 0) {
+                                fl = ImDrawFlags_RoundCornersTopLeft;
+                                rr = cardR;
+                            } else if (iy == 0 && ix == cols - 1) {
+                                fl = ImDrawFlags_RoundCornersTopRight;
+                                rr = cardR;
+                            }
+                            dl->AddRectFilled(c0, c1, col, rr, fl);
+                        }
+                    }
+
+                    ImVec2 uv0{ss->pixelRect.x / texW, ss->pixelRect.y / texH};
                     ImVec2 uv1{(ss->pixelRect.x + ss->pixelRect.z) / texW,
-                                (ss->pixelRect.y + ss->pixelRect.w) / texH};
-                    // Fit the sub-region into the mini-card preserving aspect.
+                               (ss->pixelRect.y + ss->pixelRect.w) / texH};
                     float rw = static_cast<float>(ss->pixelRect.z);
                     float rh = static_cast<float>(ss->pixelRect.w);
-                    float labelH = 18.0f;
-                    float drawAreaW = miniW - 8.0f;
-                    float drawAreaH = miniH - labelH - 4.0f;
-                    float scale = std::min(drawAreaW / rw, drawAreaH / rh);
+                    float scale = std::min(rectW / rw, rectH / rh);
                     if (scale <= 0.0f) scale = 1.0f;
                     float dw = rw * scale;
                     float dh = rh * scale;
-                    ImVec2 i0{pos.x + (miniW - dw) * 0.5f,
-                              pos.y + (drawAreaH - dh) * 0.5f + 2.0f};
+                    ImVec2 i0{r0.x + (rectW - dw) * 0.5f,
+                              r0.y + (rectH - dh) * 0.5f};
                     ImVec2 i1{i0.x + dw, i0.y + dh};
                     dl->AddImage(reinterpret_cast<ImTextureID>(
                                      static_cast<intptr_t>(
                                          texture->GetTextureId())),
                                  i0, i1, uv0, uv1);
                 }
-                // Name label (truncate if too wide).
-                ImVec2 lSz = ImGui::CalcTextSize(ss->name.c_str());
-                float maxLW = miniW - 8.0f;
-                if (lSz.x > maxLW) {
-                    std::string trimmed = ss->name;
-                    while (trimmed.size() > 1 &&
-                           ImGui::CalcTextSize((trimmed + "...").c_str()).x >
-                               maxLW) {
-                        trimmed.pop_back();
-                    }
-                    trimmed += "...";
-                    ImVec2 tSz = ImGui::CalcTextSize(trimmed.c_str());
-                    dl->AddText({pos.x + (miniW - tSz.x) * 0.5f,
-                                  pos.y + miniH - 16.0f},
-                                 ImGui::ColorConvertFloat4ToU32(kText),
-                                 trimmed.c_str());
-                } else {
-                    dl->AddText({pos.x + (miniW - lSz.x) * 0.5f,
-                                  pos.y + miniH - 16.0f},
-                                 ImGui::ColorConvertFloat4ToU32(kText),
-                                 ss->name.c_str());
+
+                if (selected) {
+                    dl->AddRect(pos, {pos.x + cardW, pos.y + cardH},
+                                IM_COL32(255, 200, 80, 255), cardR, 0, 2.0f);
                 }
 
-                // Multi-select: Ctrl-click toggles; plain click sets to
-                // exactly this one.
+                // Name label (truncated).
+                {
+                    std::string lbl = ss->name;
+                    float maxW = cardW - 8.0f;
+                    if (ImGui::CalcTextSize(lbl.c_str()).x > maxW) {
+                        ImVec2 ell = ImGui::CalcTextSize("...");
+                        while (lbl.size() > 1 &&
+                               ImGui::CalcTextSize(lbl.c_str()).x + ell.x >
+                                   maxW)
+                            lbl.pop_back();
+                        lbl += "...";
+                    }
+                    ImVec2 lSz = ImGui::CalcTextSize(lbl.c_str());
+                    dl->AddText({pos.x + (cardW - lSz.x) * 0.5f,
+                                 pos.y + cardH - 20},
+                                ImGui::ColorConvertFloat4ToU32(kText),
+                                lbl.c_str());
+                }
+
+                // Multi-select: Ctrl toggles; plain click selects only this.
                 if (clicked) {
-                    const bool ctrl = ImGui::GetIO().KeyCtrl;
-                    if (ctrl) {
+                    if (ImGui::GetIO().KeyCtrl) {
                         if (selected) m_SelectedSubSprites.erase(ss->uuid);
                         else m_SelectedSubSprites.insert(ss->uuid);
                     } else {
@@ -468,17 +596,15 @@ void AssetBrowser::Render() {
                     }
                 }
 
-                // Drag source — bundle either this UUID alone (if not in
-                // the selection set) or the whole selection. Payload format:
-                //   uint32 count + count * 16 bytes (boost::uuids::uuid).
+                // Drag source — bundle the selection (or just this one).
+                // Payload: uint32 count + count * 16 bytes (boost uuid).
                 if (ImGui::BeginDragDropSource()) {
                     std::vector<Hamster::UUID> packed;
-                    if (m_SelectedSubSprites.count(ss->uuid) > 0) {
+                    if (m_SelectedSubSprites.count(ss->uuid) > 0)
                         packed.assign(m_SelectedSubSprites.begin(),
-                                       m_SelectedSubSprites.end());
-                    } else {
+                                      m_SelectedSubSprites.end());
+                    else
                         packed.push_back(ss->uuid);
-                    }
                     std::vector<unsigned char> buf;
                     uint32_t n = static_cast<uint32_t>(packed.size());
                     buf.resize(sizeof(n) + n * sizeof(boost::uuids::uuid));
@@ -490,8 +616,7 @@ void AssetBrowser::Render() {
                                     &raw, sizeof(boost::uuids::uuid));
                     }
                     ImGui::SetDragDropPayload("HAMSTER_SUBSPRITE_UUIDS",
-                                               buf.data(),
-                                               buf.size());
+                                              buf.data(), buf.size());
                     ImGui::Text("%u sub-sprite%s", n, n == 1 ? "" : "s");
                     ImGui::EndDragDropSource();
                 }
@@ -499,48 +624,45 @@ void AssetBrowser::Render() {
                 ImGui::PopID();
                 nextRow();
             }
-        }
-    }
 
-    // ── Breadcrumb (only when navigating below the project root) ──
-    std::filesystem::path projectDir;
-    auto activeProject = Hamster::Project::GetCurrentProject();
-    if (activeProject) projectDir = activeProject->GetConfig().ProjectDirectory;
+            // Connect the tray to the parent sheet card: treat its rect as
+            // part of row 0 so the band wraps the sheet + its sub-sprites as
+            // one group. (cardPos is the parent card's top-left, captured
+            // before it was drawn.)
+            cardRects.insert(
+                cardRects.begin(),
+                {cardPos.x, cardPos.y, cardPos.x + cardW, cardPos.y + cardH});
 
-    if (!m_CurrentFolder.empty() && !projectDir.empty()) {
-        ImGui::Dummy({0, 2});
-        // "Project" link returns to root.
-        if (ImGui::SmallButton(ICON_FA_FOLDER_OPEN "  Project")) {
-            m_CurrentFolder.clear();
-        }
-        std::filesystem::path crumb;
-        for (auto const &segment : m_CurrentFolder) {
-            crumb /= segment;
-            ImGui::SameLine(0, 4);
-            ImGui::TextDisabled("/");
-            ImGui::SameLine(0, 4);
-            std::string label = segment.string() + "##crumb_" + crumb.string();
-            if (ImGui::SmallButton(label.c_str())) {
-                m_CurrentFolder = crumb;
+            // Tray: one rounded band per occupied row, behind the cards.
+            dl->ChannelsSetCurrent(0);
+            const float pad = 4.0f;
+            for (size_t a = 0; a < cardRects.size();) {
+                float rowY0 = cardRects[a].y;
+                float minX = cardRects[a].x, maxX = cardRects[a].z;
+                float maxY = cardRects[a].w;
+                size_t b = a;
+                while (b < cardRects.size() &&
+                       std::abs(cardRects[b].y - rowY0) < 1.0f) {
+                    minX = std::min(minX, cardRects[b].x);
+                    maxX = std::max(maxX, cardRects[b].z);
+                    maxY = std::max(maxY, cardRects[b].w);
+                    ++b;
+                }
+                dl->AddRectFilled({minX - pad, rowY0 - pad},
+                                  {maxX + pad, maxY + pad},
+                                  IM_COL32(255, 255, 255, 22), cardR + 2.0f);
+                a = b;
             }
+            dl->ChannelsMerge();
         }
-        ImGui::Dummy({0, 4});
-        colIdx = 0; // breadcrumb broke our row layout — reset
     }
 
     // ── Folder cards (direct subdirectories of the current folder) ──
-    std::filesystem::path activeFolder =
-        projectDir.empty() ? std::filesystem::path{}
-                            : (projectDir / m_CurrentFolder);
-
     if (!activeFolder.empty() && std::filesystem::is_directory(activeFolder)) {
         for (auto const &entry :
              std::filesystem::directory_iterator(activeFolder)) {
             if (!entry.is_directory()) continue;
             const std::string name = entry.path().filename().string();
-            // Reserved subdirectories — managed by the engine, not user
-            // browsing. Hide from the script section.
-            if (name == "Animations" || name == "Scenes") continue;
 
             // Render a folder card; double-click to enter.
             ImGui::PushID(("folder_" + name).c_str());
@@ -577,16 +699,6 @@ void AssetBrowser::Render() {
     }
 
     // ── Script assets (filtered to the current folder) ──
-    // projectDir may carry a trailing separator (registry stores it as the
-    // user typed it), and lexically_normal() preserves the trailing slash.
-    // Strip both sides to a canonical form before comparing.
-    auto stripSep = [](std::filesystem::path p) {
-        std::string s = p.lexically_normal().string();
-        while (s.size() > 1 && (s.back() == '\\' || s.back() == '/'))
-            s.pop_back();
-        return std::filesystem::path(s);
-    };
-    std::filesystem::path normActive = stripSep(activeFolder);
     for (const auto &[uuid, script] : m_AssetManager->GetScriptMap()) {
         std::filesystem::path scriptPath(script->GetScriptPath());
         std::filesystem::path scriptParent = stripSep(scriptPath.parent_path());

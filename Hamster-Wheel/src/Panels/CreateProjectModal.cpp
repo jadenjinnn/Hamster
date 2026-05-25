@@ -23,7 +23,8 @@ void CreateProjectModal::Render(ProjectRegistry *registry) {
 
   ImVec2 center = ImGui::GetMainViewport()->GetCenter();
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-  ImGui::SetNextWindowSize(ImVec2(520, 640));
+  // Width fixed; height auto-fits the content (0 on an axis = auto-size).
+  ImGui::SetNextWindowSize(ImVec2(520, 0));
 
   ImGuiWindowFlags modalFlags =
       ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
@@ -37,77 +38,6 @@ void CreateProjectModal::Render(ProjectRegistry *registry) {
     ImGui::SetNextItemWidth(-1);
     ImGui::InputTextWithHint("##ProjectName", "My Awesome Game", m_ProjectName,
                              IM_ARRAYSIZE(m_ProjectName));
-
-    ImGui::Dummy(ImVec2(0, 16));
-
-    if (g_BoldFont) ImGui::PushFont(g_BoldFont);
-    ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.65f, 1.0f), "TEMPLATE");
-    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 100.0f);
-    ImGui::TextColored(ImVec4(kHubGreen.x, kHubGreen.y, kHubGreen.z, 0.8f),
-                       "Select a starting point");
-    if (g_BoldFont) ImGui::PopFont();
-
-    ImGui::Spacing();
-
-    struct TemplateInfo {
-      const char *icon;
-      const char *name;
-      const char *desc;
-    };
-
-    static const TemplateInfo templates[] = {
-        {ICON_FA_SQUARE, "Empty", "Start from scratch with\na blank canvas."},
-        {ICON_FA_GAMEPAD, "Platformer 2D",
-         "Basic physics, character\ncontroller & tiles."},
-        {ICON_FA_COMPASS, "Top-Down",
-         "8-way movement and simple\nmap setup."},
-        {ICON_FA_WINDOW_MAXIMIZE, "UI Only",
-         "Pre-configured canvas for\nmenu interfaces."},
-    };
-
-    float templateW = (ImGui::GetContentRegionAvail().x - 8.0f) * 0.5f;
-    float templateH = 80.0f;
-
-    for (int i = 0; i < 4; i++) {
-      if (i % 2 != 0) ImGui::SameLine(0, 8.0f);
-
-      ImVec2 cursor = ImGui::GetCursorScreenPos();
-      ImDrawList *dl = ImGui::GetWindowDrawList();
-      ImVec2 tMin = cursor;
-      ImVec2 tMax = ImVec2(cursor.x + templateW, cursor.y + templateH);
-
-      bool selected = (m_SelectedTemplate == i);
-      bool hov = ImGui::IsMouseHoveringRect(tMin, tMax);
-
-      ImU32 bg = selected ? IM_COL32(30, 50, 65, 255)
-                 : hov    ? ImGui::ColorConvertFloat4ToU32(kSurfaceHov)
-                          : ImGui::ColorConvertFloat4ToU32(kSurface);
-      ImU32 border = selected
-                         ? ImGui::ColorConvertFloat4ToU32(kHubGreen)
-                         : ImGui::ColorConvertFloat4ToU32(kBorder);
-
-      dl->AddRectFilled(tMin, tMax, bg, 6.0f);
-      dl->AddRect(tMin, tMax, border, 6.0f, 0, selected ? 2.0f : 1.0f);
-
-      dl->AddText(ImVec2(cursor.x + 14.0f, cursor.y + 14.0f),
-                  ImGui::ColorConvertFloat4ToU32(selected ? kHubGreen : kTextDim),
-                  templates[i].icon);
-
-      if (g_BoldFont) ImGui::PushFont(g_BoldFont);
-      dl->AddText(ImVec2(cursor.x + 44.0f, cursor.y + 12.0f),
-                  ImGui::ColorConvertFloat4ToU32(kText), templates[i].name);
-      if (g_BoldFont) ImGui::PopFont();
-
-      dl->AddText(ImVec2(cursor.x + 44.0f, cursor.y + 32.0f),
-                  ImGui::ColorConvertFloat4ToU32(kTextDim), templates[i].desc);
-
-      if (hov && ImGui::IsMouseClicked(0))
-        m_SelectedTemplate = i;
-
-      ImGui::Dummy(ImVec2(templateW, templateH));
-      if (i == 1)
-        ImGui::Spacing();
-    }
 
     ImGui::Dummy(ImVec2(0, 16));
 

@@ -1,6 +1,6 @@
 # Bug 0009: pixel-art sprites blurry — engine uses GL_LINEAR filtering on every texture
 
-> Status: **fix-proposed**
+> Status: **fixed**
 > Severity: **High**
 > Tier: **1**
 > Logged: 2026-05-19
@@ -51,7 +51,7 @@ Implemented on 2026-05-19. Tier 1, single commit.
 
 ## Verification
 
-- Repro steps re-run on 2026-05-19: PENDING — needs visual check by author. Launching the editor for that purpose.
+- Repro steps re-run on 2026-05-19: PASS — author visually confirmed crisp pixel-block edges on a freshly-loaded sprite in the editor.
 - Smoke test result: PASS (27/27, full SmokeTest invocation took 2.57s).
 - New test added: none planned (visual-only; smoke test can't easily assert pixel crispness).
 

@@ -81,6 +81,11 @@ namespace Hamster {
 
         std::filesystem::create_directory("Scenes");
 
+        // Default asset layout — assets live under Assets/, organised by type.
+        std::filesystem::create_directories("Assets/Textures");
+        std::filesystem::create_directories("Assets/Scripts");
+        std::filesystem::create_directories("Assets/Animations");
+
         auto scene = std::make_shared<Scene>(app->GetEventDispatcher().get(), app);
 
         app->AddScene(scene);
@@ -167,6 +172,15 @@ namespace Hamster {
         // identifying .hanim files. Both happen after the blob is read
         // (which fills in textures) and before scene deserialisation (which
         // resolves asset UUIDs referenced by entity components).
+        // Ensure the default asset folders exist — projects created before
+        // the Assets/ layout (or hand-made ones) won't have them.
+        std::error_code folderEc;
+        std::filesystem::path assetsDir =
+            std::filesystem::path(config.ProjectDirectory) / "Assets";
+        std::filesystem::create_directories(assetsDir / "Textures", folderEc);
+        std::filesystem::create_directories(assetsDir / "Scripts", folderEc);
+        std::filesystem::create_directories(assetsDir / "Animations", folderEc);
+
         assetManager->LoadProjectScripts(config.ProjectDirectory);
         assetManager->LoadProjectAnimations(config.ProjectDirectory);
 

@@ -37,6 +37,52 @@ void SpriteBinding(py::module_ &m) {
       .def_readwrite("colour", &Hamster::Sprite::colour);
 }
 
+void UIAnchorBinding(py::module_ &m) {
+  py::enum_<Hamster::UIAnchor>(m, "UIAnchor")
+      .value("TopLeft",      Hamster::UIAnchor::TopLeft)
+      .value("TopCentre",    Hamster::UIAnchor::TopCentre)
+      .value("TopRight",     Hamster::UIAnchor::TopRight)
+      .value("MiddleLeft",   Hamster::UIAnchor::MiddleLeft)
+      .value("Centre",       Hamster::UIAnchor::Centre)
+      .value("MiddleRight",  Hamster::UIAnchor::MiddleRight)
+      .value("BottomLeft",   Hamster::UIAnchor::BottomLeft)
+      .value("BottomCentre", Hamster::UIAnchor::BottomCentre)
+      .value("BottomRight",  Hamster::UIAnchor::BottomRight);
+}
+
+void UITextAlignBinding(py::module_ &m) {
+  py::enum_<Hamster::UITextAlign>(m, "UITextAlign")
+      .value("Left",   Hamster::UITextAlign::Left)
+      .value("Centre", Hamster::UITextAlign::Centre)
+      .value("Right",  Hamster::UITextAlign::Right);
+}
+
+void UIButtonBinding(py::module_ &m) {
+  py::class_<Hamster::UIButton>(m, "UIButton")
+      .def(py::init<>())
+      .def_readwrite("anchor", &Hamster::UIButton::anchor)
+      .def_readwrite("offset", &Hamster::UIButton::offset)
+      .def_readwrite("size", &Hamster::UIButton::size)
+      .def_readwrite("auto_size", &Hamster::UIButton::autoSize)
+      .def_readwrite("padding", &Hamster::UIButton::padding)
+      .def_readwrite("bg_colour", &Hamster::UIButton::bgColour)
+      .def_readwrite("label", &Hamster::UIButton::label)
+      .def_readwrite("text_colour", &Hamster::UIButton::textColour)
+      .def_readwrite("font_size", &Hamster::UIButton::fontSize)
+      .def_readwrite("text_align", &Hamster::UIButton::textAlign);
+}
+
+void UITextBinding(py::module_ &m) {
+  py::class_<Hamster::UIText>(m, "UIText")
+      .def(py::init<>())
+      .def_readwrite("anchor", &Hamster::UIText::anchor)
+      .def_readwrite("offset", &Hamster::UIText::offset)
+      .def_readwrite("text", &Hamster::UIText::text)
+      .def_readwrite("text_colour", &Hamster::UIText::textColour)
+      .def_readwrite("font_size", &Hamster::UIText::fontSize)
+      .def_readwrite("wrap_width", &Hamster::UIText::wrapWidth);
+}
+
 void RigidbodyBinding(py::module_ &m) {
   py::class_<Hamster::Rigidbody>(m, "Rigidbody")
       .def(py::init<>())

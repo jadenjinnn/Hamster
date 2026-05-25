@@ -14,11 +14,16 @@
 PYBIND11_MODULE(Hamster, m) {
   Vec2Binding(m);
   Vec3Binding(m);
+  Vec4Binding(m);
   UUIDBinding(m);
   TransformBinding(m);
   BodyTypeBinding(m);
   ColliderShapeBinding(m);
   SpriteBinding(m);
+  UIAnchorBinding(m);
+  UITextAlignBinding(m);
+  UIButtonBinding(m);
+  UITextBinding(m);
   RigidbodyBinding(m);
   EntityHandleBinding(m);
   KeyCodeEnumBinding(m);

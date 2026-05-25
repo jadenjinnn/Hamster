@@ -97,7 +97,11 @@ void Hierarchy::Render() {
     // after the last top-level entity (see Render's top-level loop).
 
     {
-        const char *label = ICON_FA_PLUS "  Add Entity";
+        // Pill-styled "Add" dropdown — opens a popup with Entity / UI Button
+        // / UI Text. Replaces the bare "Add Entity" pill so UI entities are
+        // first-class additions without going through PropertyEditor's
+        // "Add Component" flow.
+        const char *label = ICON_FA_PLUS "  Add";
         ImVec2 textSz = ImGui::CalcTextSize(label);
         float padX = 14.0f, padY = 6.0f;
         float btnW = textSz.x + padX * 2;
@@ -119,7 +123,26 @@ void Hierarchy::Render() {
         dl->AddText({pos.x + padX, pos.y + padY},
                     ImGui::ColorConvertFloat4ToU32(kAccent), label);
 
-        if (clicked) m_Scene->CreateEntity();
+        if (clicked) ImGui::OpenPopup("##addEntityPopup");
+
+        if (HBeginStyledPopup("##addEntityPopup")) {
+            if (HComboItem(ICON_FA_CUBE "  Entity", false)) {
+                m_Scene->CreateEntity();
+            }
+            if (HComboItem(ICON_FA_SQUARE "  UI Button", false)) {
+                Hamster::UUID uuid = m_Scene->CreateEntity();
+                m_Scene->AddEntityComponent<Hamster::UIButton>(uuid);
+                auto &n = m_Scene->GetEntityComponent<Hamster::Name>(uuid);
+                n.name = "UI Button";
+            }
+            if (HComboItem(ICON_FA_FONT "  UI Text", false)) {
+                Hamster::UUID uuid = m_Scene->CreateEntity();
+                m_Scene->AddEntityComponent<Hamster::UIText>(uuid);
+                auto &n = m_Scene->GetEntityComponent<Hamster::Name>(uuid);
+                n.name = "UI Text";
+            }
+            HEndStyledPopup();
+        }
     }
 
     g_HierarchyPanel.EndContent();

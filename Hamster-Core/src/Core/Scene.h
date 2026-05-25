@@ -17,6 +17,7 @@
 #include "Components.h"
 
 #include "Events/ApplicationEvents.h"
+#include "Events/UIEvents.h"
 #include "Events/WindowEvents.h"
 #include "Log.h"
 #include "Utils/SpatialIndex.h"
@@ -28,6 +29,7 @@ class SceneCreatedEvent;
 class Scene {
 public:
   Scene(EventDispatcher *dispatcher, Application *app);
+  ~Scene();
 
   UUID CreateEntity();
   UUID CreateEntityRuntime(const std::string &name, const Transform &transform);
@@ -54,6 +56,11 @@ public:
   void RebuildHierarchyIndex();
 
   entt::entity &GetEntity(UUID entityUUID) { return m_Entities[entityUUID]; }
+
+  // Linear scan over the Name component view. Returns UUID::GetNil() when no
+  // entity has the given Name. First-match-wins on duplicates (EnTT iteration
+  // order — deterministic per registry state but not stable across saves).
+  UUID FindEntityByName(const std::string &name);
 
   UUID GetEntityUUID(entt::entity entity) {
     return m_Registry.get<ID>(entity).uuid;
@@ -92,6 +99,14 @@ public:
   void CacheVelocities();
 
   void OnRender(bool renderFlat);
+
+  // Screen-space UI pass. Iterates UIButton and UIText components, resolves
+  // their anchored rects against the given panel size, and submits one
+  // batched draw per pass. Called by EditorLayer AFTER OnRender so UI sits on
+  // top of world sprites. panelW/panelH are the size of the FBO/visible
+  // region — coordinates use top-left origin, increasing y down (mouse
+  // convention).
+  void OnRenderUI(float panelW, float panelH);
 
   // Spatial-index facade. Rebuilt at the top of OnRender each frame from
   // current Transform + Sprite state. Renderer uses it for viewport-rect
@@ -139,7 +154,16 @@ public:
 
   std::shared_ptr<Logger> GetClientLogger() { return m_ClientLogger; }
 
+  Application *GetApp() const { return m_App; }
+
   std::vector<UUID> &GetPendingBodies() { return m_PendingBodies; }
+
+  // ButtonClickedEvent receiver. Pushes the clicked entity's UUID onto
+  // m_ClickedButtonsThisFrame; OnScriptUpdate drains the queue and calls
+  // on_button_clicked(uuid) on every Python behaviour that defines it.
+  // Per-frame queue avoids running Python code outside the dispatch loop's
+  // exception guard.
+  void OnButtonClicked(ButtonClickedEvent &e);
 
 private:
   bool m_IsRunning = false;
@@ -173,6 +197,12 @@ private:
 
   std::vector<UUID> m_DestroyQueue;
   std::vector<UUID> m_PendingBodies;
+
+  // Per-frame queue of UI button entity UUIDs that received a click this
+  // frame. Drained by OnScriptUpdate after dispatching each entry to every
+  // Python behaviour's on_button_clicked.
+  std::vector<UUID> m_ClickedButtonsThisFrame;
+  SubscriptionHandle m_ButtonClickedHandle = 0;
 
   // In-memory snapshot of the entire scene captured at RunSceneSimulation
   // start, restored on PauseSceneSimulation end. Implements Unity-style

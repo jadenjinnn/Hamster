@@ -153,6 +153,8 @@ build.ninja
 
 ### Build artifacts ###
 build/
+build-asan/
+build-release/
 imgui.ini
 
 ### Python ###

@@ -31,6 +31,11 @@ public:
     bool IsOpen() const { return m_Open; }
 
 private:
+    // Diffs m_Working against AssetManager, writes the .sheet sidecar, and
+    // persists the project. Returns true on success; on a name collision it
+    // sets m_LastError and returns false without writing. Does not close.
+    bool CommitSave();
+
     enum class DragMode {
         None,
         DrawNew,
@@ -58,6 +63,11 @@ private:
     // Inline error from last Save attempt (collision detection).
     std::string m_LastError;
 
+    // Unsaved-changes guard. m_Dirty is set on any region edit and cleared on
+    // Open/Save; m_WantClosePrompt requests the confirm-on-close modal.
+    bool m_Dirty = false;
+    bool m_WantClosePrompt = false;
+
     // Display.
-    float m_Zoom = 4.0f;
+    float m_Zoom = 1.0f;
 };

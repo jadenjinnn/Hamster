@@ -11,7 +11,9 @@
 #include <imgui.h>
 #include <imgui_stdlib.h>
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
 
 static Panel g_PropPanel = {"Property Editor", "...##pe", false, true};
 
@@ -40,6 +42,8 @@ void PropertyEditor::OnActiveSceneChanged(Hamster::ActiveSceneChangedEvent &e) {
     m_Rigidbody = nullptr;
     m_Animation = nullptr;
     m_Behaviour = nullptr;
+    m_UIButton = nullptr;
+    m_UIText = nullptr;
 }
 
 void PropertyEditor::SetSelectedEntity(Hamster::UUID uuid) {
@@ -52,6 +56,8 @@ void PropertyEditor::SetSelectedEntity(Hamster::UUID uuid) {
         m_Rigidbody = nullptr;
         m_Animation = nullptr;
         m_Behaviour = nullptr;
+        m_UIButton = nullptr;
+        m_UIText = nullptr;
         return;
     }
 
@@ -67,6 +73,10 @@ void PropertyEditor::SetSelectedEntity(Hamster::UUID uuid) {
                   ? &m_Scene->GetEntityComponent<Hamster::Animation>(uuid) : nullptr;
     m_Behaviour = m_Scene->EntityHasComponent<Hamster::Behaviour>(uuid)
                   ? &m_Scene->GetEntityComponent<Hamster::Behaviour>(uuid) : nullptr;
+    m_UIButton  = m_Scene->EntityHasComponent<Hamster::UIButton>(uuid)
+                  ? &m_Scene->GetEntityComponent<Hamster::UIButton>(uuid) : nullptr;
+    m_UIText    = m_Scene->EntityHasComponent<Hamster::UIText>(uuid)
+                  ? &m_Scene->GetEntityComponent<Hamster::UIText>(uuid) : nullptr;
 }
 
 void PropertyEditor::Render() {
@@ -134,6 +144,40 @@ void PropertyEditor::Render() {
     if (m_Sprite) {
         SectionHeader(ICON_FA_IMAGE "  Sprite");
 
+        // Resolve the sprite the same way the renderer does, so this preview
+        // matches the viewport: when assetUUID is set it is the source of
+        // truth (texture UUID → whole texture; sub-sprite UUID → parent
+        // texture + UV sub-rect), otherwise fall back to the legacy texture
+        // pointer at full UV.
+        Hamster::Texture *previewTex = nullptr;
+        glm::vec4 uv(0.0f, 0.0f, 1.0f, 1.0f);  // {u0, v0, w, h} normalised
+        bool missing = false;
+        std::string assetName = "None";
+        int aw = 0, ah = 0;
+        if (!Hamster::UUID::IsNil(m_Sprite->assetUUID)) {
+            auto src = m_AssetManager->ResolveSpriteSource(m_Sprite->assetUUID);
+            previewTex = src.texture;
+            uv = src.uvRect;
+            missing = src.missing;
+            if (auto ss = m_AssetManager->GetSubSprite(m_Sprite->assetUUID)) {
+                assetName = ss->name;
+                aw = ss->pixelRect.z;
+                ah = ss->pixelRect.w;
+            } else if (!missing && src.texture) {
+                // Use the already-resolved texture — do NOT call GetTexture()
+                // here: it does m_Textures.at(uuid) and throws when the UUID
+                // is a (now-deleted) sub-sprite rather than a texture.
+                assetName = src.texture->GetName();
+                aw = src.texture->GetWidth();
+                ah = src.texture->GetHeight();
+            }
+        } else if (m_Sprite->texture) {
+            previewTex = m_Sprite->texture.get();
+            assetName = m_Sprite->texture->GetName();
+            aw = m_Sprite->texture->GetWidth();
+            ah = m_Sprite->texture->GetHeight();
+        }
+
         float thumbSz = 64.0f;
         ImVec2 tp = ImGui::GetCursorScreenPos();
         ImDrawList *dl = ImGui::GetWindowDrawList();
@@ -151,25 +195,53 @@ void PropertyEditor::Render() {
             }
         }
 
-        // Sprite texture (or placeholder)
-        if (m_Sprite->texture && m_Sprite->texture->GetTextureId() != 0) {
-            ImVec4 tint(m_Sprite->colour.r, m_Sprite->colour.g, m_Sprite->colour.b, 1.0f);
-            dl->AddImage(
-                reinterpret_cast<ImTextureID>(
-                    static_cast<intptr_t>(m_Sprite->texture->GetTextureId())),
-                tp, {tp.x + thumbSz, tp.y + thumbSz},
-                {0, 0}, {1, 1}, ImGui::ColorConvertFloat4ToU32(tint));
+        // Preview image — aspect-fit, UV-clipped to the resolved region.
+        if (previewTex && previewTex->GetTextureId() != 0) {
+            ImVec4 tint(m_Sprite->colour.r, m_Sprite->colour.g,
+                        m_Sprite->colour.b, 1.0f);
+            ImVec2 uv0{uv.x, uv.y};
+            ImVec2 uv1{uv.x + uv.z, uv.y + uv.w};
+            float rw = aw > 0 ? (float)aw : 1.0f;
+            float rh = ah > 0 ? (float)ah : 1.0f;
+            float scale = std::min(thumbSz / rw, thumbSz / rh);
+            if (scale <= 0.0f) scale = 1.0f;
+            float dw = rw * scale, dh = rh * scale;
+            ImVec2 i0{tp.x + (thumbSz - dw) * 0.5f, tp.y + (thumbSz - dh) * 0.5f};
+            ImVec2 i1{i0.x + dw, i0.y + dh};
+            dl->AddImage(reinterpret_cast<ImTextureID>(
+                             static_cast<intptr_t>(previewTex->GetTextureId())),
+                         i0, i1, uv0, uv1,
+                         ImGui::ColorConvertFloat4ToU32(tint));
         }
 
+        // The thumbnail is a drop target for sub-sprites dragged from the
+        // Asset Browser (HAMSTER_SUBSPRITE_UUIDS; the first UUID wins).
         ImGui::Dummy({thumbSz, thumbSz});
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload *p =
+                    ImGui::AcceptDragDropPayload("HAMSTER_SUBSPRITE_UUIDS")) {
+                const unsigned char *data =
+                    static_cast<const unsigned char *>(p->Data);
+                uint32_t count = 0;
+                std::memcpy(&count, data, sizeof(count));
+                if (count > 0) {
+                    boost::uuids::uuid raw;
+                    std::memcpy(&raw, data + sizeof(count), sizeof(raw));
+                    m_Sprite->assetUUID = Hamster::UUID(raw);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
         ImGui::SameLine();
         ImGui::BeginGroup();
 
-        if (m_Sprite->texture) {
-            ImGui::TextDisabled("%s", m_Sprite->texture->GetName().c_str());
-            ImGui::TextDisabled("%dx%d",
-                                m_Sprite->texture->GetWidth(),
-                                m_Sprite->texture->GetHeight());
+        if (missing) {
+            ImGui::TextColored({0.9f, 0.22f, 0.27f, 1.0f}, "MISSING");
+            ImGui::TextDisabled("- x -");
+        } else if (previewTex) {
+            ImGui::TextDisabled("%s", assetName.c_str());
+            ImGui::TextDisabled("%dx%d", aw, ah);
         } else {
             ImGui::TextDisabled("None");
             ImGui::TextDisabled("- x -");
@@ -189,15 +261,34 @@ void PropertyEditor::Render() {
         if (HButton("Select Sprite", avail)) {
             ImGui::OpenPopup("Select Sprite");
         }
-        if (ImGui::BeginPopup("Select Sprite")) {
-            for (const auto &[uuid, texture] : m_AssetManager->GetTextureMap()) {
-                std::string id = texture->GetName() + "##" +
-                                 texture->GetUUID().GetUUIDString();
-                if (ImGui::Selectable(id.c_str())) {
-                    m_Sprite->texture = texture;
+        if (HBeginStyledPopup("Select Sprite")) {
+            // Sub-sprites first (named, more specific), then whole textures.
+            // Both set assetUUID — the renderer's source of truth. Styled
+            // items (HComboItem) keep this consistent with the panel's other
+            // dropdowns (Add Component / Add Script).
+            // PushID(uuid) keeps each item's ID unique while HComboItem shows
+            // the clean name (HComboItem draws the label verbatim — it does
+            // not strip a "##" suffix the way ImGui::Selectable does).
+            for (const auto &[uuid, ss] : m_AssetManager->GetSubSpriteMap()) {
+                if (!ss) continue;
+                ImGui::PushID(ss->uuid.GetUUIDString().c_str());
+                bool isSel =
+                    m_Sprite->assetUUID.GetUUID() == ss->uuid.GetUUID();
+                if (HComboItem(ss->name.c_str(), isSel)) {
+                    m_Sprite->assetUUID = ss->uuid;
                 }
+                ImGui::PopID();
             }
-            ImGui::EndPopup();
+            for (const auto &[uuid, texture] : m_AssetManager->GetTextureMap()) {
+                ImGui::PushID(texture->GetUUID().GetUUIDString().c_str());
+                bool isSel = m_Sprite->assetUUID.GetUUID() ==
+                             texture->GetUUID().GetUUID();
+                if (HComboItem(texture->GetName().c_str(), isSel)) {
+                    m_Sprite->assetUUID = texture->GetUUID();
+                }
+                ImGui::PopID();
+            }
+            HEndStyledPopup();
         }
 
         SectionSeparator();
@@ -393,6 +484,124 @@ void PropertyEditor::Render() {
         SectionSeparator();
     }
 
+    // ── UI Button ──
+    if (m_UIButton) {
+        SectionHeader(ICON_FA_SQUARE "  UI Button");
+        ImGui::Dummy({0, 2});
+
+        const char *anchors[] = {
+            "Top Left", "Top Centre", "Top Right",
+            "Middle Left", "Centre", "Middle Right",
+            "Bottom Left", "Bottom Centre", "Bottom Right",
+        };
+        int anchorIdx = static_cast<int>(m_UIButton->anchor);
+        HCombo("Anchor", "##uibtn_anchor", &anchorIdx, anchors, 9);
+        m_UIButton->anchor = static_cast<Hamster::UIAnchor>(anchorIdx);
+
+        ImGui::Text("Offset (px from anchor, +moves inward)");
+        AxisDotInput("X", "##uibtn_offx", &m_UIButton->offset.x,
+                     IM_COL32(220, 70, 70, 255), fieldW2);
+        AxisDotInput("Y", "##uibtn_offy", &m_UIButton->offset.y,
+                     IM_COL32(70, 180, 100, 255), fieldW2);
+        ImGui::NewLine();
+        ImGui::Dummy({0, 2});
+
+        HCheckbox("Auto Size", "##uibtn_auto", &m_UIButton->autoSize);
+        if (!m_UIButton->autoSize) {
+            ImGui::Text("Size (px)");
+            AxisDotInput("W", "##uibtn_w", &m_UIButton->size.x,
+                         IM_COL32(220, 70, 70, 255), fieldW2);
+            AxisDotInput("H", "##uibtn_h", &m_UIButton->size.y,
+                         IM_COL32(70, 180, 100, 255), fieldW2);
+            ImGui::NewLine();
+        } else {
+            HDragFloat("Padding", "##uibtn_pad", &m_UIButton->padding, 0.5f, 0.0f, 64.0f);
+        }
+        ImGui::Dummy({0, 2});
+
+        ImGui::Text("Background");
+        ImGui::SameLine();
+        float bg[4] = {m_UIButton->bgColour.r, m_UIButton->bgColour.g,
+                       m_UIButton->bgColour.b, m_UIButton->bgColour.a};
+        ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - kScrollGap);
+        if (ImGui::ColorEdit4("##uibtn_bg", bg, ImGuiColorEditFlags_NoLabel)) {
+            m_UIButton->bgColour = glm::vec4(bg[0], bg[1], bg[2], bg[3]);
+        }
+        ImGui::PopItemWidth();
+
+        ImGui::Dummy({0, 4});
+
+        ImGui::Text("Label");
+        ImGui::PushItemWidth(avail);
+        ImGui::InputText("##uibtn_label", &m_UIButton->label);
+        ImGui::PopItemWidth();
+
+        ImGui::Text("Text Colour");
+        ImGui::SameLine();
+        float tc[4] = {m_UIButton->textColour.r, m_UIButton->textColour.g,
+                       m_UIButton->textColour.b, m_UIButton->textColour.a};
+        ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - kScrollGap);
+        if (ImGui::ColorEdit4("##uibtn_tc", tc, ImGuiColorEditFlags_NoLabel)) {
+            m_UIButton->textColour = glm::vec4(tc[0], tc[1], tc[2], tc[3]);
+        }
+        ImGui::PopItemWidth();
+
+        HDragFloat("Font Size", "##uibtn_fs", &m_UIButton->fontSize,
+                   0.5f, 4.0f, 200.0f);
+
+        const char *aligns[] = {"Left", "Centre", "Right"};
+        int alignIdx = static_cast<int>(m_UIButton->textAlign);
+        HCombo("Align", "##uibtn_align", &alignIdx, aligns, 3);
+        m_UIButton->textAlign = static_cast<Hamster::UITextAlign>(alignIdx);
+
+        SectionSeparator();
+    }
+
+    // ── UI Text ──
+    if (m_UIText) {
+        SectionHeader(ICON_FA_FONT "  UI Text");
+        ImGui::Dummy({0, 2});
+
+        const char *anchors[] = {
+            "Top Left", "Top Centre", "Top Right",
+            "Middle Left", "Centre", "Middle Right",
+            "Bottom Left", "Bottom Centre", "Bottom Right",
+        };
+        int anchorIdx = static_cast<int>(m_UIText->anchor);
+        HCombo("Anchor", "##uitxt_anchor", &anchorIdx, anchors, 9);
+        m_UIText->anchor = static_cast<Hamster::UIAnchor>(anchorIdx);
+
+        ImGui::Text("Offset");
+        AxisDotInput("X", "##uitxt_offx", &m_UIText->offset.x,
+                     IM_COL32(220, 70, 70, 255), fieldW2);
+        AxisDotInput("Y", "##uitxt_offy", &m_UIText->offset.y,
+                     IM_COL32(70, 180, 100, 255), fieldW2);
+        ImGui::NewLine();
+        ImGui::Dummy({0, 2});
+
+        ImGui::Text("Text");
+        ImGui::PushItemWidth(avail);
+        ImGui::InputText("##uitxt_text", &m_UIText->text);
+        ImGui::PopItemWidth();
+
+        ImGui::Text("Text Colour");
+        ImGui::SameLine();
+        float ttc[4] = {m_UIText->textColour.r, m_UIText->textColour.g,
+                        m_UIText->textColour.b, m_UIText->textColour.a};
+        ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - kScrollGap);
+        if (ImGui::ColorEdit4("##uitxt_tc", ttc, ImGuiColorEditFlags_NoLabel)) {
+            m_UIText->textColour = glm::vec4(ttc[0], ttc[1], ttc[2], ttc[3]);
+        }
+        ImGui::PopItemWidth();
+
+        HDragFloat("Font Size", "##uitxt_fs", &m_UIText->fontSize,
+                   0.5f, 4.0f, 200.0f);
+        HDragFloat("Wrap Width", "##uitxt_wrap", &m_UIText->wrapWidth,
+                   1.0f, 0.0f, 4096.0f);
+
+        SectionSeparator();
+    }
+
     // ── Add Component ──
     {
         const char *label = ICON_FA_PLUS "  Add Component";
@@ -437,6 +646,14 @@ void PropertyEditor::Render() {
             if (!m_Animation && HComboItem(ICON_FA_FILM "  Animation", false)) {
                 m_Scene->AddEntityComponent<Hamster::Animation>(m_SelectedEntity);
                 m_Animation = &m_Scene->GetEntityComponent<Hamster::Animation>(m_SelectedEntity);
+            }
+            if (!m_UIButton && HComboItem(ICON_FA_SQUARE "  UI Button", false)) {
+                m_Scene->AddEntityComponent<Hamster::UIButton>(m_SelectedEntity);
+                m_UIButton = &m_Scene->GetEntityComponent<Hamster::UIButton>(m_SelectedEntity);
+            }
+            if (!m_UIText && HComboItem(ICON_FA_FONT "  UI Text", false)) {
+                m_Scene->AddEntityComponent<Hamster::UIText>(m_SelectedEntity);
+                m_UIText = &m_Scene->GetEntityComponent<Hamster::UIText>(m_SelectedEntity);
             }
             HEndStyledPopup();
         }

@@ -63,6 +63,18 @@ void HamsterBehaviourBinding(pybind11::module_ m) {
       pybind11::arg("name"), pybind11::arg("transform"),
       pybind11::arg("parent") = pybind11::none())
       .def("destroy_entity", &Hamster::HamsterBehaviour::DestroyEntityRuntime)
+      .def("find_entity_by_name",
+           [](Hamster::HamsterBehaviour &self, const std::string &name)
+               -> pybind11::object {
+             auto scene = self.GetScene();
+             Hamster::UUID uuid = scene->FindEntityByName(name);
+             if (Hamster::UUID::IsNil(uuid)) {
+               return pybind11::none();
+             }
+             return pybind11::cast(
+                 EntityHandle{uuid, scene, self.GetApp()});
+           },
+           pybind11::arg("name"))
       .def_property_readonly("uuid", &Hamster::HamsterBehaviour::GetUUID)
       .def_property_readonly("parent", &Hamster::HamsterBehaviour::GetParent)
       .def_property_readonly("children", &Hamster::HamsterBehaviour::GetChildren)

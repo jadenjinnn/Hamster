@@ -29,7 +29,8 @@ enum EventType {
 
   // Game Events
   Collision,
-  AnimationCompleted
+  AnimationCompleted,
+  ButtonClicked
 };
 
 class Event {

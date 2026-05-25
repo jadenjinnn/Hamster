@@ -482,7 +482,8 @@ namespace Hamster {
 
     void AssetManager::LoadProjectAnimations(
         const std::filesystem::path &projectDir) {
-        const std::filesystem::path animDir = projectDir / "Animations";
+        const std::filesystem::path animDir =
+            projectDir / "Assets" / "Animations";
         if (!std::filesystem::exists(animDir) ||
             !std::filesystem::is_directory(animDir)) {
             return;
