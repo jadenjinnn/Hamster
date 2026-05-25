@@ -39,7 +39,7 @@ When unsure, guess and move on. Severity is reviewed when the bug is picked up f
 2. **Identify root cause, not symptom.** Before any fix, the bug file's "Root cause" section must be filled in. If the cause is genuinely unknown, the bug stays in investigation phase — fixing without a known cause is guessing.
 3. **The fix verifies against the original repro case.** Close-out includes re-running the documented reproduction and confirming it no longer triggers the bug.
 4. **Each fix or related-fix-batch is its own commit.** No mixing bug fixes into feature commits. Batching multiple related bugs in one commit is fine if they share a root cause.
-5. **For Tier 2/3, the author writes a "What would have prevented this" line in their own words.** One sentence. This is a counter-rubber-stamp check: if you can't answer it, you didn't understand the bug.
+5. **For Tier 2/3, Claude drafts a "What would have prevented this" line.** One sentence, kept for its postmortem value. The author may edit it but is not required to, and it does not gate close-out.
 
 ## When found mid-task
 

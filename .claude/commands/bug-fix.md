@@ -55,26 +55,16 @@ This mirrors the feature workflow's "stop and re-spec" rule.
 When the cause is identified:
 
 1. Write the "Root cause" section in the bug file. One paragraph, in plain language. Why does this bug happen? Not "what's broken" — *why*.
-2. For Tier 2/3: leave the "What would have prevented this" section with a placeholder telling me to write it myself: `<!-- AUTHOR: write one sentence in your own words -->`. Do NOT draft this section.
+2. For Tier 2/3: draft the "What would have prevented this" section yourself — one sentence, based on the root cause. I may edit it, but it does not gate the fix.
 3. Propose the fix: which files change, what changes, why.
 4. If the fix is large or touches multiple modules unexpectedly: this might be Tier 3 in disguise. Surface that and ask whether to escalate.
 5. Wait for my approval before any source edits.
 
-## Step 6: Author rubber-stamp check (Tier 2/3 only)
-
-Before I approve the fix, prompt me:
-
-> "In your own words, what would have prevented this bug? One sentence — write it directly into the bug file's 'What would have prevented this' section."
-
-Wait for me. Don't draft it. Don't accept "yeah looks right" — I have to write the sentence.
-
-For Tier 1: skip this.
-
-## Step 7: Implement
+## Step 6: Implement
 
 Apply the fix. Update the bug file's "Fix" section with files changed and what changed.
 
-## Step 8: Verify against repro
+## Step 7: Verify against repro
 
 Run the documented reproduction case. Confirm the bug no longer triggers.
 
@@ -82,7 +72,7 @@ Update "Verification" section with PASS/FAIL and date.
 
 If FAIL: do not close. The fix is incomplete. Either iterate or surface that we missed something in root cause analysis (which means going back to Step 4 with new info — log this in Investigation).
 
-## Step 9: Test extension
+## Step 8: Test extension
 
 Ask: should the smoke test (or any other test) be extended to catch this bug if it returns?
 
@@ -91,7 +81,7 @@ Ask: should the smoke test (or any other test) be extended to catch this bug if 
 
 If yes: add the test. Run the smoke test, confirm it passes. Document under "Verification".
 
-## Step 10: Close out
+## Step 9: Close out
 
 1. Update bug status to "fixed".
 2. Move the file: `docs/bugs/active/NNNN-slug.md` → `docs/bugs/closed/NNNN-slug.md`.

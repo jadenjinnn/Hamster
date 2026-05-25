@@ -62,18 +62,17 @@ What test isolated the cause? -->
 order in MainApp.cpp put Z after the panel that uses it."
 Not "X is broken." -->
 
-## What would have prevented this (AUTHOR WRITES — Tier 2/3 only)
+## What would have prevented this (Tier 2/3 only)
 
-<!-- One sentence in your own words. Counter-rubber-stamp check.
+<!-- One sentence, drafted by Claude from the root cause. Postmortem value;
+the author may edit but it does not gate close-out.
 
 Examples of what makes a good answer:
 - "An init-order assertion in Renderer::Begin would have caught this at startup."
 - "A smoke test that creates an entity and checks the renderer's draw count
    would have caught this in CI."
 - "A clearer ownership model — Renderer should own the FrameAllocator, not
-   borrow it — would have made this impossible to write."
-
-If you can't answer this, you don't understand the bug yet. -->
+   borrow it — would have made this impossible to write." -->
 
 ---
 
