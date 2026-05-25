@@ -93,3 +93,15 @@ When the user clicks the popout's X, GLFW sets its should-close flag. `Applicati
 ### Project::GetCurrentProject() over DI threading for the popout-mouse-callback Scene + Renderer access
 
 The popout's mouse-button callback (registered in `Application::OpenPlayWindow`) needs to reach the current Scene and Renderer to hit-test UI buttons. The window's GLFW user-pointer is already taken by the EventDispatcher (so the parent key callback can post events). Rather than wrap a struct into the user-pointer or thread Application through the callback, the popout-specific path uses `Application::GetApplicationInstance()` — matches existing Hamster-Wheel singleton usage; cleanup is a separate DI refactor task.
+
+## Asset-browser sheet expansion: inline cards + grouping tray, not a horizontal strip (2026-05-25)
+
+The spritesheet spec sketched an expanded sheet's sub-sprites as a separate full-width horizontal strip. Seen in practice it read worse than Unity's model, so the shipped version flows the sub-sprite cards inline in the same grid (full card size) right after the parent sheet card, with a rounded "tray" painted behind the run — one band per occupied row, via an `ImDrawList` channel split so the tray sits *under* the cards. The expand affordance is a sideways caret. The caret click had a latent bug: `IsWindowHovered()` returns false on the frame a click activates the underlying card item, so the toggle never fired — fixed with `ImGuiHoveredFlags_AllowWhenBlockedByActiveItem`.
+
+## Imports are copied into the project; the slice editor confirms on close (2026-05-25)
+
+Importing a texture copies the file into `<project>/Assets/Textures/` before registering it, so the `.meta` / `.sheet` sidecars live inside the project rather than next to the user's original file, and the import is persisted immediately via `Project::SaveCurrentProject` (the only prior save points were Play and the exit-time dtor, the latter unreliable per bug 0008). The `SpritesheetEditor` tracks a dirty flag and prompts Save / Discard / Cancel when closed with unsaved slice edits — closing used to discard silently, which read as "regions don't save."
+
+## PropertyEditor resolves the sprite preview via SpriteSource, never GetTexture (2026-05-25)
+
+`AssetManager::GetTexture` does `m_Textures.at(uuid)` and throws on a missing key. The PropertyEditor's sprite preview must tolerate a `Sprite::assetUUID` that points at a now-deleted sub-sprite, so it reads the already-resolved `ResolveSpriteSource(...)` result (which returns a MISSING fallback) instead of calling `GetTexture` — calling it there crashed the editor with an uncaught `std::out_of_range`. `GetTexture`'s unguarded `.at()` is left as a known footgun for a later hardening pass.

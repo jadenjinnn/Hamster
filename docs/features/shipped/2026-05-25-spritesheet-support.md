@@ -1,7 +1,7 @@
 # Feature spec: spritesheet support
 
 > Tier: **Full spec**
-> Status: **approved**
+> Status: **shipped** (all 9 stages; 2026-05-25)
 > Started: 2026-05-19
 > Spec author: Jaden
 
