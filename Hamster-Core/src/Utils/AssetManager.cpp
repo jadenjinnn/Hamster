@@ -468,6 +468,31 @@ namespace Hamster {
                 MetaFile::Write(newPath, uuid);
             }
 
+            // Move the .png.sheet sidecar too, so a sliced sheet's sub-sprites
+            // travel with the rename (stage 9). If the move fails, rewrite the
+            // sidecar at the new path from the in-memory sub-sprites for this
+            // texture so the regions are never orphaned at the old name.
+            std::filesystem::path oldSheet = SheetSidecar::SidecarPath(oldPath);
+            std::filesystem::path newSheet = SheetSidecar::SidecarPath(newPath);
+            if (std::filesystem::exists(oldSheet)) {
+                std::filesystem::rename(oldSheet, newSheet, ec);
+                if (ec) {
+                    std::vector<SubSpriteEntry> entries;
+                    for (auto &kv : m_SubSprites) {
+                        auto &ss = kv.second;
+                        if (ss && ss->parentTextureUUID.GetUUID() ==
+                                      uuid.GetUUID()) {
+                            SubSpriteEntry e;
+                            e.uuid = ss->uuid;
+                            e.name = ss->name;
+                            e.pixelRect = ss->pixelRect;
+                            entries.push_back(e);
+                        }
+                    }
+                    if (!entries.empty()) SheetSidecar::Write(newPath, entries);
+                }
+            }
+
             // Texture has no in-place setter for its path — rebuild the
             // shared_ptr-tracked Texture path field. Easiest: it's only
             // used cosmetically; readers re-derive from GetTexturePath.

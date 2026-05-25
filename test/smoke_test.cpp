@@ -1326,6 +1326,61 @@ int main() {
         << std::endl;
   }
 
+  // SHEET-5: RenameAsset moves the .png.sheet sidecar alongside the .png
+  // (stage 9). Uses real files in a temp dir so the filesystem move runs;
+  // PNG validity is irrelevant to the rename path.
+  {
+    namespace fs = std::filesystem;
+    auto am = std::make_unique<Hamster::AssetManager>(
+        [](std::function<void()>) {});
+
+    fs::path dir = fs::temp_directory_path() / "hamster_sheet_rename_smoke";
+    fs::create_directories(dir);
+    fs::path oldPng = dir / "atlas.png";
+    fs::path newPng = dir / "renamed.png";
+    fs::remove(newPng);
+    fs::remove(Hamster::SheetSidecar::SidecarPath(newPng));
+    { std::ofstream(oldPng) << "not-a-real-png"; }
+
+    std::vector<Hamster::SubSpriteEntry> entries;
+    Hamster::SubSpriteEntry e;
+    e.uuid = Hamster::UUID();
+    e.name = "region0";
+    e.pixelRect = glm::ivec4(0, 0, 8, 8);
+    entries.push_back(e);
+    Hamster::SheetSidecar::Write(oldPng, entries);
+
+    Hamster::UUID tex;
+    am->AddTexture(tex, oldPng.string(), "atlas");
+
+    if (!am->RenameAsset(tex, "renamed.png")) {
+      std::cerr << "FAIL: SHEET-5 — RenameAsset returned false" << std::endl;
+      return 1;
+    }
+    if (!fs::exists(newPng)) {
+      std::cerr << "FAIL: SHEET-5 — .png did not move" << std::endl;
+      return 1;
+    }
+    if (!fs::exists(Hamster::SheetSidecar::SidecarPath(newPng))) {
+      std::cerr << "FAIL: SHEET-5 — .sheet did not travel with the rename"
+                << std::endl;
+      return 1;
+    }
+    if (fs::exists(Hamster::SheetSidecar::SidecarPath(oldPng))) {
+      std::cerr << "FAIL: SHEET-5 — old .sheet left behind" << std::endl;
+      return 1;
+    }
+    std::vector<Hamster::SubSpriteEntry> back;
+    if (!Hamster::SheetSidecar::Read(newPng, back) || back.size() != 1 ||
+        back[0].name != "region0") {
+      std::cerr << "FAIL: SHEET-5 — region lost after rename" << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: SHEET-5 — RenameAsset moves the .png.sheet sidecar"
+              << std::endl;
+    fs::remove_all(dir);
+  }
+
   // ─── Project resolution: serialise round-trip + legacy default ───
   // PRJ-1: writes the new on-disk format manually (so we test Deserialise
   // against the exact byte layout we ship) and verifies all five fields
