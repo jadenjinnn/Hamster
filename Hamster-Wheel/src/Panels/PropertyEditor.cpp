@@ -554,6 +554,8 @@ void PropertyEditor::Render() {
         HCombo("Align", "##uibtn_align", &alignIdx, aligns, 3);
         m_UIButton->textAlign = static_cast<Hamster::UITextAlign>(alignIdx);
 
+        HCheckbox("Bold", "##uibtn_bold", &m_UIButton->bold);
+
         SectionSeparator();
     }
 
@@ -598,6 +600,8 @@ void PropertyEditor::Render() {
                    0.5f, 4.0f, 200.0f);
         HDragFloat("Wrap Width", "##uitxt_wrap", &m_UIText->wrapWidth,
                    1.0f, 0.0f, 4096.0f);
+
+        HCheckbox("Bold", "##uitxt_bold", &m_UIText->bold);
 
         SectionSeparator();
     }

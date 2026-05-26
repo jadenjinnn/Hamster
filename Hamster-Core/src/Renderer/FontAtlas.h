@@ -20,9 +20,12 @@ class FontAtlas {
 public:
     static constexpr int   kFirstChar = 32;
     static constexpr int   kNumChars  = 95;     // 32..126 inclusive
-    static constexpr int   kAtlasW    = 512;
-    static constexpr int   kAtlasH    = 512;
-    static constexpr float kBakeSize  = 32.0f;
+    // Bake at 64px into a 1024x1024 atlas: text renders crisp up to ~64px
+    // (font sizes above this magnify the bitmap and soften). Raise kBakeSize
+    // for larger crisp text — keep the atlas big enough to fit all glyphs.
+    static constexpr int   kAtlasW    = 1024;
+    static constexpr int   kAtlasH    = 1024;
+    static constexpr float kBakeSize  = 64.0f;
 
     explicit FontAtlas(const std::string &ttfPath);
     ~FontAtlas();

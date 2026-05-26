@@ -712,48 +712,58 @@ void Scene::OnRenderUI(float panelW, float panelH) {
 
   auto *renderer = m_App->GetRenderer();
   const FontAtlas *atlas = renderer->GetFontAtlas();
+  const FontAtlas *boldAtlas = renderer->GetFontAtlasBold();
+  auto pickAtlas = [&](bool bold) {
+    return (bold && boldAtlas && boldAtlas->IsValid()) ? boldAtlas : atlas;
+  };
 
   renderer->BeginUIPass(panelW, panelH);
 
-  // Buttons — background rect + label text inside (horizontal alignment
-  // honoured, vertically centred).
+  // Buttons. Backgrounds first, then flush rects, THEN labels — bold text
+  // forces a mid-pass text flush, so rects must already be drawn or the label
+  // (flushed early) gets painted over by the opaque rect.
   auto buttonView = m_Registry.view<UIButton>();
-  buttonView.each([renderer, atlas, panelW, panelH](auto &btn) {
+  buttonView.each([renderer, panelW, panelH](auto &btn) {
     UIRect r = renderer->ResolveUIButton(btn, panelW, panelH);
     renderer->SubmitUIRect(r, btn.bgColour);
+  });
+  renderer->FlushUIRect();
 
-    if (!btn.label.empty() && atlas && atlas->IsValid()) {
-      float labelW = atlas->MeasureWidth(btn.label, btn.fontSize);
-      float labelX = 0.0f;
-      switch (btn.textAlign) {
-        case UITextAlign::Left:
-          labelX = r.x + btn.padding;
-          break;
-        case UITextAlign::Centre:
-          labelX = r.x + (r.w - labelW) * 0.5f;
-          break;
-        case UITextAlign::Right:
-          labelX = r.x + r.w - labelW - btn.padding;
-          break;
-      }
-      float labelY = r.y + (r.h - btn.fontSize) * 0.5f;
-      renderer->SubmitUIText(btn.label, {labelX, labelY},
-                             btn.fontSize, btn.textColour, 0.0f);
+  buttonView.each([renderer, &pickAtlas, panelW, panelH](auto &btn) {
+    const FontAtlas *la = pickAtlas(btn.bold);
+    if (btn.label.empty() || !la || !la->IsValid()) return;
+    UIRect r = renderer->ResolveUIButton(btn, panelW, panelH);
+    float labelW = la->MeasureWidth(btn.label, btn.fontSize);
+    float labelX = 0.0f;
+    switch (btn.textAlign) {
+      case UITextAlign::Left:
+        labelX = r.x + btn.padding;
+        break;
+      case UITextAlign::Centre:
+        labelX = r.x + (r.w - labelW) * 0.5f;
+        break;
+      case UITextAlign::Right:
+        labelX = r.x + r.w - labelW - btn.padding;
+        break;
     }
+    float labelY = r.y + (r.h - btn.fontSize) * 0.5f;
+    renderer->SubmitUIText(btn.label, {labelX, labelY},
+                           btn.fontSize, btn.textColour, 0.0f, btn.bold);
   });
 
   // UIText — anchored, optional wrap.
   auto textView = m_Registry.view<UIText>();
-  textView.each([renderer, atlas, panelW, panelH](auto &txt) {
-    if (txt.text.empty() || !atlas || !atlas->IsValid()) return;
+  textView.each([renderer, &pickAtlas, panelW, panelH](auto &txt) {
+    const FontAtlas *ta = pickAtlas(txt.bold);
+    if (txt.text.empty() || !ta || !ta->IsValid()) return;
     // Pivot the bounding box by the text's measured width × fontSize so the
     // chosen anchor lines up with the matching corner of the rendered text.
-    glm::vec2 size = {atlas->MeasureWidth(txt.text, txt.fontSize),
+    glm::vec2 size = {ta->MeasureWidth(txt.text, txt.fontSize),
                       txt.fontSize};
     glm::vec2 tl = ResolveAnchoredTopLeft(txt.anchor, txt.offset, size,
                                           panelW, panelH);
     renderer->SubmitUIText(txt.text, tl, txt.fontSize, txt.textColour,
-                           txt.wrapWidth);
+                           txt.wrapWidth, txt.bold);
   });
 
   renderer->EndUIPass();

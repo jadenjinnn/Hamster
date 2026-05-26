@@ -114,14 +114,16 @@ namespace Hamster {
         // the source-tree fallback for in-place runs. Fail-soft: a missing
         // TTF leaves m_FontAtlas as a null-atlas wrapper and SubmitUIText
         // becomes a no-op (the renderer logs once at load).
-        {
+        auto loadFont = [](const char *file) {
             std::string exeRel = Application::GetExecutablePath() +
-                "/../share/Resources/Hamster-Wheel/Resources/Fonts/Inter-Regular.ttf";
+                "/../share/Resources/Hamster-Wheel/Resources/Fonts/" + file;
             std::string srcRel = std::string(HAMSTER_CORE_SRC_DIR) +
-                "/../../Hamster-Wheel/Resources/Fonts/Inter-Regular.ttf";
+                "/../../Hamster-Wheel/Resources/Fonts/" + file;
             std::ifstream peek(exeRel, std::ios::binary);
-            m_FontAtlas = std::make_unique<FontAtlas>(peek ? exeRel : srcRel);
-        }
+            return std::make_unique<FontAtlas>(peek ? exeRel : srcRel);
+        };
+        m_FontAtlas     = loadFont("Inter-Regular.ttf");
+        m_FontAtlasBold = loadFont("Inter-Bold.ttf");
 
         SetViewport(m_ViewportHeight, m_ViewportWidth);
         SetClearColour(0.0f, 0.0f, 0.0f, 1.0f);
@@ -482,8 +484,12 @@ namespace Hamster {
 
     UIRect Renderer::ResolveUIButton(const UIButton &b, float vw, float vh) const {
         UIButton local = b;
-        if (b.autoSize && m_FontAtlas && m_FontAtlas->IsValid()) {
-            float w = m_FontAtlas->MeasureWidth(b.label, b.fontSize);
+        const FontAtlas *measureAtlas =
+            (b.bold && m_FontAtlasBold && m_FontAtlasBold->IsValid())
+                ? m_FontAtlasBold.get()
+                : m_FontAtlas.get();
+        if (b.autoSize && measureAtlas && measureAtlas->IsValid()) {
+            float w = measureAtlas->MeasureWidth(b.label, b.fontSize);
             local.size.x = w + 2.0f * b.padding;
             local.size.y = b.fontSize + 2.0f * b.padding;
         }
@@ -702,6 +708,7 @@ namespace Hamster {
     void Renderer::BeginUIPass(float panelWidth, float panelHeight) {
         m_UIRectVerts.clear();
         m_UITextVerts.clear();
+        m_CurTextAtlas = nullptr;
         if (!m_UIRectShader) return;
 
         // Screen-space ortho aligned with the FBO's pixel grid. The level-
@@ -745,9 +752,19 @@ namespace Hamster {
 
     void Renderer::SubmitUIText(const std::string &text, glm::vec2 topLeft,
                                 float fontSize, const glm::vec4 &colour,
-                                float wrapWidth) {
-        if (!m_UITextShader || !m_FontAtlas || !m_FontAtlas->IsValid()) return;
+                                float wrapWidth, bool bold) {
+        const FontAtlas *atlas =
+            (bold && m_FontAtlasBold && m_FontAtlasBold->IsValid())
+                ? m_FontAtlasBold.get()
+                : m_FontAtlas.get();
+        if (!m_UITextShader || !atlas || !atlas->IsValid()) return;
         if (text.empty()) return;
+
+        // The text batch holds glyphs for one atlas — flush before switching
+        // (e.g. a regular run followed by a bold run).
+        if (m_CurTextAtlas && atlas != m_CurTextAtlas && !m_UITextVerts.empty())
+            FlushUIText();
+        m_CurTextAtlas = atlas;
 
         const float scale = fontSize / FontAtlas::kBakeSize;
         const float atlasW = static_cast<float>(FontAtlas::kAtlasW);
@@ -755,7 +772,7 @@ namespace Hamster {
         const float lineHeight = fontSize;
 
         float lineTopY = topLeft.y;
-        float baselineY = m_FontAtlas->BaselineYFromTop(lineTopY, fontSize);
+        float baselineY = atlas->BaselineYFromTop(lineTopY, fontSize);
         float cursorX = topLeft.x;
         const float rowStartX = topLeft.x;
 
@@ -793,9 +810,9 @@ namespace Hamster {
             size_t wordEnd = wordStart;
             while (wordEnd < text.size() && text[wordEnd] != ' ' && text[wordEnd] != '\n') ++wordEnd;
             // wordEnd-exclusive is the slice of word chars.
-            const float wordAdvance = m_FontAtlas->MeasureWidth(
+            const float wordAdvance = atlas->MeasureWidth(
                 text.substr(wordStart, wordEnd - wordStart), fontSize);
-            const float leadingSpaceAdvance = m_FontAtlas->MeasureWidth(
+            const float leadingSpaceAdvance = atlas->MeasureWidth(
                 text.substr(i, wordStart - i), fontSize);
 
             // Hard wrap if this word won't fit.
@@ -805,7 +822,7 @@ namespace Hamster {
             if (needWrap) {
                 cursorX = rowStartX;
                 lineTopY += lineHeight;
-                baselineY = m_FontAtlas->BaselineYFromTop(lineTopY, fontSize);
+                baselineY = atlas->BaselineYFromTop(lineTopY, fontSize);
                 // Skip the leading spaces of this run (they'd be rendered
                 // at the start of the new line, which is ugly).
                 i = wordStart;
@@ -816,18 +833,18 @@ namespace Hamster {
                 if (text[k] == '\n') {
                     cursorX = rowStartX;
                     lineTopY += lineHeight;
-                    baselineY = m_FontAtlas->BaselineYFromTop(lineTopY, fontSize);
+                    baselineY = atlas->BaselineYFromTop(lineTopY, fontSize);
                     continue;
                 }
-                const stbtt_bakedchar *bc = m_FontAtlas->GetGlyph(text[k]);
+                const stbtt_bakedchar *bc = atlas->GetGlyph(text[k]);
                 if (!bc) continue;
                 cursorX += bc->xadvance * scale;
             }
 
             // Emit the word.
             for (size_t k = wordStart; k < wordEnd; ++k) {
-                const stbtt_bakedchar *bc = m_FontAtlas->GetGlyph(text[k]);
-                if (!bc) bc = m_FontAtlas->GetGlyph('?');
+                const stbtt_bakedchar *bc = atlas->GetGlyph(text[k]);
+                if (!bc) bc = atlas->GetGlyph('?');
                 if (!bc) continue;
                 const float gx0 = cursorX + bc->xoff * scale;
                 const float gy0 = baselineY + bc->yoff * scale;
@@ -845,43 +862,49 @@ namespace Hamster {
         }
     }
 
+    void Renderer::FlushUIRect() {
+        if (!m_UIRectShader || m_UIRectVerts.empty()) return;
+        m_UIRectShader->use();
+        glBindVertexArray(m_PopoutMode ? m_UIRectVAO_Popout : m_UIRectVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, m_UIRectVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0,
+                        m_UIRectVerts.size() * sizeof(float),
+                        m_UIRectVerts.data());
+        constexpr int kFloatsPerVert = 6;
+        GLsizei vertCount =
+            static_cast<GLsizei>(m_UIRectVerts.size() / kFloatsPerVert);
+        glDrawArrays(GL_TRIANGLES, 0, vertCount);
+        glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        m_UIRectVerts.clear();
+    }
+
     void Renderer::EndUIPass() {
-        // Rect pass — opaque background, draws first so text lands on top.
-        if (m_UIRectShader && !m_UIRectVerts.empty()) {
-            m_UIRectShader->use();
-            glBindVertexArray(m_PopoutMode ? m_UIRectVAO_Popout : m_UIRectVAO);
-            glBindBuffer(GL_ARRAY_BUFFER, m_UIRectVBO);
-            glBufferSubData(GL_ARRAY_BUFFER, 0,
-                            m_UIRectVerts.size() * sizeof(float),
-                            m_UIRectVerts.data());
-            constexpr int kFloatsPerVert = 6;
-            GLsizei vertCount = static_cast<GLsizei>(
-                m_UIRectVerts.size() / kFloatsPerVert);
-            glDrawArrays(GL_TRIANGLES, 0, vertCount);
-            glBindVertexArray(0);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-            m_UIRectVerts.clear();
-        }
+        // Rects first (so text lands on top), then any remaining text. Callers
+        // that mix bold/regular text flush rects explicitly before text.
+        FlushUIRect();
+        FlushUIText();
+    }
 
-        // Text pass — sampled atlas alpha blended over rects.
-        if (m_UITextShader && m_FontAtlas && m_FontAtlas->IsValid() &&
-            !m_UITextVerts.empty()) {
-            m_UITextShader->use();
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, m_FontAtlas->GetTextureId());
-
-            glBindVertexArray(m_PopoutMode ? m_UITextVAO_Popout : m_UITextVAO);
-            glBindBuffer(GL_ARRAY_BUFFER, m_UITextVBO);
-            glBufferSubData(GL_ARRAY_BUFFER, 0,
-                            m_UITextVerts.size() * sizeof(float),
-                            m_UITextVerts.data());
-            constexpr int kFloatsPerVert = 8;
-            GLsizei vertCount = static_cast<GLsizei>(
-                m_UITextVerts.size() / kFloatsPerVert);
-            glDrawArrays(GL_TRIANGLES, 0, vertCount);
-            glBindVertexArray(0);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-            m_UITextVerts.clear();
-        }
+    void Renderer::FlushUIText() {
+        const FontAtlas *atlas = m_CurTextAtlas ? m_CurTextAtlas : m_FontAtlas.get();
+        if (!m_UITextShader || !atlas || !atlas->IsValid() ||
+            m_UITextVerts.empty())
+            return;
+        m_UITextShader->use();
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, atlas->GetTextureId());
+        glBindVertexArray(m_PopoutMode ? m_UITextVAO_Popout : m_UITextVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, m_UITextVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0,
+                        m_UITextVerts.size() * sizeof(float),
+                        m_UITextVerts.data());
+        constexpr int kFloatsPerVert = 8;
+        GLsizei vertCount =
+            static_cast<GLsizei>(m_UITextVerts.size() / kFloatsPerVert);
+        glDrawArrays(GL_TRIANGLES, 0, vertCount);
+        glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        m_UITextVerts.clear();
     }
 } // namespace Hamster

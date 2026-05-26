@@ -75,13 +75,19 @@ namespace Hamster {
         // the baked atlas; wrapWidth == 0 means single-line.
         void SubmitUIText(const std::string &text, glm::vec2 topLeft,
                           float fontSize, const glm::vec4 &colour,
-                          float wrapWidth);
+                          float wrapWidth, bool bold = false);
         void EndUIPass();
+        // Draws the accumulated UI rects immediately. Call after submitting all
+        // backgrounds and before any text, so text always lands on top (bold
+        // text triggers a mid-pass text flush, so we can't rely on EndUIPass's
+        // ordering alone).
+        void FlushUIRect();
 
-        // Font atlas — owned by the renderer. Nullable when the TTF failed
+        // Font atlases — owned by the renderer. Nullable when the TTF failed
         // to load (text becomes a no-op). Exposed read-only so Scene's auto-
         // size path can call MeasureWidth without going through the renderer.
         const FontAtlas *GetFontAtlas() const { return m_FontAtlas.get(); }
+        const FontAtlas *GetFontAtlasBold() const { return m_FontAtlasBold.get(); }
 
         // Resolve a UIButton's screen-space rect. When autoSize is true and
         // the atlas is loaded, size is replaced with label-width + 2·padding
@@ -148,6 +154,10 @@ namespace Hamster {
         std::vector<float> m_UITextVerts;
 
         std::unique_ptr<FontAtlas> m_FontAtlas;
+        std::unique_ptr<FontAtlas> m_FontAtlasBold;
+        // Atlas the pending m_UITextVerts belong to; the text batch flushes
+        // when it changes so regular/bold runs use the right atlas texture.
+        const FontAtlas *m_CurTextAtlas = nullptr;
 
         // Batching state. m_BatchVBO is pre-allocated once at construction
         // (sized for kMaxBatchSprites) so SubmitSprite never reallocates GPU
@@ -178,5 +188,6 @@ namespace Hamster {
         glm::vec2 m_CameraOffset{0.0f, 0.0f};
 
         void FlushSpriteBatch();
+        void FlushUIText(); // draws m_UITextVerts with m_CurTextAtlas bound
     };
 } // namespace Hamster

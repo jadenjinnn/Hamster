@@ -163,6 +163,7 @@ struct UIButton {
   glm::vec4 textColour = glm::vec4(1.0f);
   float fontSize = 18.0f;
   UITextAlign textAlign = UITextAlign::Centre;
+  bool bold = false;
 };
 
 // Screen-space text label, no background, not clickable. wrapWidth == 0 means
@@ -174,6 +175,7 @@ struct UIText {
   glm::vec4 textColour = glm::vec4(1.0f);
   float fontSize = 18.0f;
   float wrapWidth = 0.0f;
+  bool bold = false;
 };
 
 // Screen-space rect: top-left + size. Returned by ResolveUIButtonRect so

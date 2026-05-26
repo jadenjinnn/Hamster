@@ -69,7 +69,8 @@ void UIButtonBinding(py::module_ &m) {
       .def_readwrite("label", &Hamster::UIButton::label)
       .def_readwrite("text_colour", &Hamster::UIButton::textColour)
       .def_readwrite("font_size", &Hamster::UIButton::fontSize)
-      .def_readwrite("text_align", &Hamster::UIButton::textAlign);
+      .def_readwrite("text_align", &Hamster::UIButton::textAlign)
+      .def_readwrite("bold", &Hamster::UIButton::bold);
 }
 
 void UITextBinding(py::module_ &m) {
@@ -80,7 +81,8 @@ void UITextBinding(py::module_ &m) {
       .def_readwrite("text", &Hamster::UIText::text)
       .def_readwrite("text_colour", &Hamster::UIText::textColour)
       .def_readwrite("font_size", &Hamster::UIText::fontSize)
-      .def_readwrite("wrap_width", &Hamster::UIText::wrapWidth);
+      .def_readwrite("wrap_width", &Hamster::UIText::wrapWidth)
+      .def_readwrite("bold", &Hamster::UIText::bold);
 }
 
 void RigidbodyBinding(py::module_ &m) {
