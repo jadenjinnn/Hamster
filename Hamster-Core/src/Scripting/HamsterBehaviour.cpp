@@ -83,6 +83,21 @@ void HamsterBehaviour::SetVelocity(float vx, float vy) {
   }
 }
 
+void HamsterBehaviour::SetPosition(float x, float y) {
+  // (x, y) is a top-left position, matching transform.position. Box2D bodies
+  // are centre-anchored, so convert and queue for the physics step (a Dynamic
+  // body's transform is otherwise owned by Box2D and overwritten each frame).
+  // No Rigidbody -> write the transform directly.
+  if (m_Rigidbody && m_Transform) {
+    m_Rigidbody->pendingPosition = glm::vec2(
+        x + m_Transform->size.x * 0.5f, y + m_Transform->size.y * 0.5f);
+    m_Rigidbody->hasPendingPosition = true;
+  } else if (m_Transform) {
+    m_Transform->position.x = x;
+    m_Transform->position.y = y;
+  }
+}
+
 void HamsterBehaviour::ApplyForce(float fx, float fy) {
   if (m_Rigidbody) {
     m_Rigidbody->pendingForce += glm::vec2(fx, fy);

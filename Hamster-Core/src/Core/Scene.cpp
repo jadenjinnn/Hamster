@@ -532,6 +532,14 @@ void Scene::ApplyPendingForces() {
       rb.pendingVelocity = {0.0f, 0.0f};
     }
 
+    if (rb.hasPendingPosition) {
+      b2Body_SetTransform(rb.bodyId,
+                          {rb.pendingPosition.x / PIXELS_PER_METER,
+                           rb.pendingPosition.y / PIXELS_PER_METER},
+                          b2Body_GetRotation(rb.bodyId));
+      rb.hasPendingPosition = false;
+    }
+
     if (rb.pendingForce.x != 0.0f || rb.pendingForce.y != 0.0f) {
       b2Vec2 force = {rb.pendingForce.x, rb.pendingForce.y};
       b2Body_ApplyForceToCenter(rb.bodyId, force, true);

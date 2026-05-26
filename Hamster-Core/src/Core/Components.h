@@ -47,7 +47,7 @@ enum class UITextAlign : uint8_t { Left, Centre, Right };
 struct Transform {
   glm::vec3 position = glm::vec3(0.0f);
   float rotation = 0.0f;
-  glm::vec2 size = glm::vec2(10.0f);
+  glm::vec2 size = glm::vec2(100.0f);
 };
 
 // Contains a shared_ptr to a texture stored in the asset manager, also contains
@@ -104,6 +104,8 @@ struct Rigidbody {
   glm::vec2 pendingImpulse = glm::vec2(0.0f);
   glm::vec2 pendingVelocity = glm::vec2(0.0f);
   bool hasPendingVelocity = false;
+  glm::vec2 pendingPosition = glm::vec2(0.0f); // body-centre teleport, pixels
+  bool hasPendingPosition = false;
   glm::vec2 cachedVelocity = glm::vec2(0.0f);
 };
 

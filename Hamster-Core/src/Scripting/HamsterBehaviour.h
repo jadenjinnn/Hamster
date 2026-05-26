@@ -60,6 +60,7 @@ public:
 
   glm::vec2 GetVelocity() const;
   void SetVelocity(float vx, float vy);
+  void SetPosition(float x, float y);
   void ApplyForce(float fx, float fy);
   void ApplyImpulse(float ix, float iy);
 
