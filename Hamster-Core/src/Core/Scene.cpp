@@ -653,6 +653,25 @@ void Scene::OnRender(bool renderFlat) {
     AABB viewport = renderer->GetViewportWorldAABB();
     std::vector<UUID> visible = m_SpatialIndex.QueryRect(viewport);
 
+    // QueryRect returns UUIDs in quadtree order, and the batch draws in
+    // submission order with no depth test — so sort by sprite z here to get
+    // painter's-algorithm layering (lower z behind, higher z in front).
+    // Without this, layering follows quadtree order and the z value is
+    // effectively ignored (bug 0015).
+    std::sort(visible.begin(), visible.end(),
+              [&](const UUID &a, const UUID &b) {
+                auto ia = m_Entities.find(a), ib = m_Entities.find(b);
+                float za = (ia != m_Entities.end() &&
+                            m_Registry.all_of<Transform>(ia->second))
+                               ? m_Registry.get<Transform>(ia->second).position.z
+                               : 0.0f;
+                float zb = (ib != m_Entities.end() &&
+                            m_Registry.all_of<Transform>(ib->second))
+                               ? m_Registry.get<Transform>(ib->second).position.z
+                               : 0.0f;
+                return za < zb;
+              });
+
     renderer->BeginSpriteBatch();
     for (const UUID &uuid : visible) {
       auto it = m_Entities.find(uuid);
