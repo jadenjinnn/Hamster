@@ -33,6 +33,10 @@ HamsterBehaviour::HamsterBehaviour(UUID entityUUID,
   m_CollisionHandle = app->GetEventDispatcher()->Subscribe(
       Collision,
       FORWARD_CALLBACK_FUNCTION(HamsterBehaviour::OnCollision, CollisionEvent));
+
+  m_CollisionEndHandle = app->GetEventDispatcher()->Subscribe(
+      CollisionEnd, FORWARD_CALLBACK_FUNCTION(HamsterBehaviour::OnCollisionEnd,
+                                              CollisionEndEvent));
 }
 
 HamsterBehaviour::~HamsterBehaviour() {
@@ -40,6 +44,7 @@ HamsterBehaviour::~HamsterBehaviour() {
     dispatcher->Unsubscribe(KeyPressed, m_KeyPressedHandle);
     dispatcher->Unsubscribe(KeyReleased, m_KeyReleasedHandle);
     dispatcher->Unsubscribe(Collision, m_CollisionHandle);
+    dispatcher->Unsubscribe(CollisionEnd, m_CollisionEndHandle);
   }
 }
 
@@ -161,6 +166,11 @@ void HamsterBehaviour::AddCollisionEntity(const std::string &uuid) {
   m_Colliding = true;
 }
 
+void HamsterBehaviour::RemoveCollisionEntity(const std::string &uuid) {
+  m_CollisionEntities.erase(uuid);
+  m_Colliding = !m_CollisionEntities.empty();
+}
+
 void HamsterBehaviour::EmptyCollisionEntity() {
   m_CollisionEntities.clear();
   m_Colliding = false;
@@ -171,6 +181,14 @@ void HamsterBehaviour::OnCollision(CollisionEvent &e) {
     AddCollisionEntity(e.GetUUIDB().GetUUIDString());
   } else if (e.GetUUIDB().GetUUID() == m_UUID.GetUUID()) {
     AddCollisionEntity(e.GetUUIDA().GetUUIDString());
+  }
+}
+
+void HamsterBehaviour::OnCollisionEnd(CollisionEndEvent &e) {
+  if (e.GetUUIDA().GetUUID() == m_UUID.GetUUID()) {
+    RemoveCollisionEntity(e.GetUUIDB().GetUUIDString());
+  } else if (e.GetUUIDB().GetUUID() == m_UUID.GetUUID()) {
+    RemoveCollisionEntity(e.GetUUIDA().GetUUIDString());
   }
 }
 

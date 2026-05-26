@@ -106,7 +106,7 @@ public:
   // top of world sprites. panelW/panelH are the size of the FBO/visible
   // region — coordinates use top-left origin, increasing y down (mouse
   // convention).
-  void OnRenderUI(float panelW, float panelH);
+  void OnRenderUI(float panelW, float panelH, bool worldProjection = false);
 
   // Spatial-index facade. Rebuilt at the top of OnRender each frame from
   // current Transform + Sprite state. Renderer uses it for viewport-rect

@@ -69,13 +69,28 @@ namespace Hamster {
         // input). End restores world-space state and flushes the batched
         // rects + text. SubmitUIRect / SubmitUIText append one rect or one
         // text run; each batches into a single draw call per pass.
-        void BeginUIPass(float panelWidth, float panelHeight);
+        // worldProjection=true renders UI through the world view matrix instead
+        // of a screen ortho — the editor uses it so UI anchored within
+        // (0,0)->(target) lands on the play-area box and pans/zooms with it.
+        // Play (popout) uses the screen ortho (the window IS the play area).
+        void BeginUIPass(float panelWidth, float panelHeight,
+                         bool worldProjection = false);
         void SubmitUIRect(const UIRect &rect, const glm::vec4 &colour);
         // text is rendered with top-left origin at `topLeft`. fontSize scales
         // the baked atlas; wrapWidth == 0 means single-line.
         void SubmitUIText(const std::string &text, glm::vec2 topLeft,
                           float fontSize, const glm::vec4 &colour,
                           float wrapWidth, bool bold = false);
+        // Draws one textured quad filling `rect`, in the UI pass's projection
+        // (so it works under both the editor's world projection and the
+        // popout's screen ortho). Image buttons are few, so this is an
+        // immediate single-draw (no batching). Reuses the sprite-batch shader
+        // + VAO (popout-aware) and restores the world projection afterward.
+        // Call after FlushUIRect and before any text so layering is
+        // bg-rect → image → label.
+        void SubmitUIImage(Texture &texture, const UIRect &rect,
+                           glm::vec4 uvRect = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
+                           glm::vec3 tint = glm::vec3(1.0f));
         void EndUIPass();
         // Draws the accumulated UI rects immediately. Call after submitting all
         // backgrounds and before any text, so text always lands on top (bold
@@ -186,6 +201,11 @@ namespace Hamster {
 
         glm::mat4 m_ViewMatrix{1.0f};
         glm::vec2 m_CameraOffset{0.0f, 0.0f};
+
+        // Projection set by the last BeginUIPass — world view matrix (editor)
+        // or screen ortho (popout). SubmitUIImage uses it so image quads land
+        // in the same space as the UI rects/text of the current pass.
+        glm::mat4 m_UIProjection{1.0f};
 
         void FlushSpriteBatch();
         void FlushUIText(); // draws m_UITextVerts with m_CurTextAtlas bound

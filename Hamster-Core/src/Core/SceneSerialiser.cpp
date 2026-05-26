@@ -250,6 +250,9 @@ void SceneSerialiser::SerialiseEntity(std::ostream &out,
     SerialiseVec4(out, btn.textColour);
     out.write(reinterpret_cast<const char *>(&btn.fontSize), sizeof(btn.fontSize));
     out.write(reinterpret_cast<const char *>(&align), sizeof(align));
+    uint8_t bold = btn.bold ? 1 : 0;
+    out.write(reinterpret_cast<const char *>(&bold), sizeof(bold));
+    UUID::Serialise(out, btn.imageUUID);
   }
 
   if (m_Scene->EntityHasComponent<UIText>(entity_uuid)) {
@@ -265,6 +268,8 @@ void SceneSerialiser::SerialiseEntity(std::ostream &out,
     SerialiseVec4(out, txt.textColour);
     out.write(reinterpret_cast<const char *>(&txt.fontSize), sizeof(txt.fontSize));
     out.write(reinterpret_cast<const char *>(&txt.wrapWidth), sizeof(txt.wrapWidth));
+    uint8_t bold = txt.bold ? 1 : 0;
+    out.write(reinterpret_cast<const char *>(&bold), sizeof(bold));
   }
 
   if (m_Scene->EntityHasComponent<Behaviour>(entity_uuid)) {
@@ -496,6 +501,10 @@ UUID SceneSerialiser::DeserialiseEntity(std::istream &in) {
       uint8_t align;
       in.read(reinterpret_cast<char *>(&align), sizeof(align));
       btn.textAlign = static_cast<UITextAlign>(align);
+      uint8_t bold;
+      in.read(reinterpret_cast<char *>(&bold), sizeof(bold));
+      btn.bold = (bold != 0);
+      btn.imageUUID = UUID::Deserialise(in);
 
       m_Scene->AddEntityComponent<UIButton>(uuid, btn);
       break;
@@ -510,6 +519,9 @@ UUID SceneSerialiser::DeserialiseEntity(std::istream &in) {
       txt.textColour = DeserialiseVec4(in);
       in.read(reinterpret_cast<char *>(&txt.fontSize), sizeof(txt.fontSize));
       in.read(reinterpret_cast<char *>(&txt.wrapWidth), sizeof(txt.wrapWidth));
+      uint8_t bold;
+      in.read(reinterpret_cast<char *>(&bold), sizeof(bold));
+      txt.bold = (bold != 0);
 
       m_Scene->AddEntityComponent<UIText>(uuid, txt);
       break;

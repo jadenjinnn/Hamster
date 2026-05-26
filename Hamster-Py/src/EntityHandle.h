@@ -108,6 +108,28 @@ struct EntityHandle {
     scene->GetEntityComponent<Hamster::UIText>(uuid).text = text;
   }
 
+  // Runtime show/hide for this entity's UI components. Sets `visible` on the
+  // UIButton and/or UIText if present (a hidden UI element is neither drawn
+  // nor clickable). Refuses if the entity has neither — scripts want a clear
+  // failure, not a silent no-op. Not persisted: stopping the scene restores
+  // visibility to true.
+  void SetVisible(bool visible) {
+    if (Hamster::UUID::IsNil(uuid)) return;
+    bool any = false;
+    if (scene->EntityHasComponent<Hamster::UIButton>(uuid)) {
+      scene->GetEntityComponent<Hamster::UIButton>(uuid).visible = visible;
+      any = true;
+    }
+    if (scene->EntityHasComponent<Hamster::UIText>(uuid)) {
+      scene->GetEntityComponent<Hamster::UIText>(uuid).visible = visible;
+      any = true;
+    }
+    if (!any) {
+      throw py::value_error(
+          "set_visible: entity has no UIButton or UIText component");
+    }
+  }
+
   // Assign an asset to this entity's Sprite by name. Resolves over the unified
   // texture + sub-sprite namespace (FindAssetByName) and stores the asset UUID
   // on the Sprite; the renderer's ResolveSpriteSource applies the whole-texture
@@ -141,6 +163,7 @@ void EntityHandleBinding(py::module_ &m) {
       .def("set_texture", &EntityHandle::SetTexture)
       .def("set_label", &EntityHandle::SetLabel)
       .def("set_text", &EntityHandle::SetText)
+      .def("set_visible", &EntityHandle::SetVisible)
       .def_property("transform", &EntityHandle::GetTransform,
                     &EntityHandle::SetTransform)
       .def("set_velocity", &EntityHandle::SetVelocity)

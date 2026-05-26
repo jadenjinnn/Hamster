@@ -46,8 +46,10 @@ public:
   }
 
   void OnCollision(CollisionEvent &e);
+  void OnCollisionEnd(CollisionEndEvent &e);
 
   void AddCollisionEntity(const std::string &uuid);
+  void RemoveCollisionEntity(const std::string &uuid);
 
   void EmptyCollisionEntity();
 
@@ -101,5 +103,6 @@ private:
   SubscriptionHandle m_KeyPressedHandle = 0;
   SubscriptionHandle m_KeyReleasedHandle = 0;
   SubscriptionHandle m_CollisionHandle = 0;
+  SubscriptionHandle m_CollisionEndHandle = 0;
 };
 } // namespace Hamster

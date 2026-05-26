@@ -336,6 +336,7 @@ namespace Hamster {
             for (auto e : uiView) {
                 auto &btn = uiView.get<Hamster::UIButton>(e);
                 auto &id = uiView.get<Hamster::ID>(e);
+                if (!btn.visible) continue; // hidden buttons aren't clickable
                 Hamster::UIRect r = renderer->ResolveUIButton(
                     btn, static_cast<float>(winW), static_cast<float>(winH));
                 if (r.ContainsPoint(static_cast<float>(mx),

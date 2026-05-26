@@ -310,6 +310,68 @@ int main() {
 
   std::cout << "PASS: animation played, stopped on last frame, sprite swapped correctly" << std::endl;
 
+  // --- Animation with spritesheet sub-sprite keyframes ---
+  // Keyframes can reference a sub-sprite UUID (not just a whole texture).
+  // Playback must point Sprite.assetUUID at the keyframe asset so the renderer
+  // resolves the sub-sprite's UV rect via ResolveSpriteSource — GetTexture
+  // can't resolve a sub-sprite, so the old sprite.texture-only path silently
+  // failed to show sub-sprite frames.
+  {
+    auto subAnimScene =
+        std::make_shared<Hamster::Scene>(app.GetEventDispatcher().get(), &app);
+
+    Hamster::UUID sheetUUID;
+    am->AddTexture(sheetUUID, "<sheet>", "anim_sheet");
+    Hamster::UUID sub0 =
+        am->AddSubSprite(sheetUUID, glm::ivec4(0, 0, 16, 16), "anim_f0");
+    Hamster::UUID sub1 =
+        am->AddSubSprite(sheetUUID, glm::ivec4(16, 0, 16, 16), "anim_f1");
+
+    std::vector<Hamster::AnimationKeyframe> subKeyframes = {{0.0f, sub0},
+                                                            {0.1f, sub1}};
+    Hamster::UUID subAnimUUID = am->AddAnimation("SubWalk", subKeyframes);
+
+    Hamster::UUID e = subAnimScene->CreateEntity();
+    subAnimScene->AddEntityComponent<Hamster::Sprite>(e, glm::vec3(1.0f));
+    Hamster::Animation a;
+    a.animations["SubWalk"] = subAnimUUID;
+    a.defaultAnimation = "";
+    a.loop = false;
+    subAnimScene->AddEntityComponent<Hamster::Animation>(e, a);
+
+    app.AddScene(subAnimScene);
+    app.SetSceneActive(subAnimScene->GetUUID());
+    subAnimScene->RunScene();
+    subAnimScene->RunSceneSimulation();
+
+    auto &ac = subAnimScene->GetEntityComponent<Hamster::Animation>(e);
+    ac.currentAnimation = "SubWalk";
+    ac.currentTime = 0.0f;
+    ac.playing = true;
+    ac.runtimeLoop = false;
+
+    for (int i = 0; i < 10; i++) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+      subAnimScene->OnUpdate();
+    }
+
+    auto &sp = subAnimScene->GetEntityComponent<Hamster::Sprite>(e);
+    // The key invariant: playback points assetUUID at the keyframe's sub-sprite
+    // (not just sprite.texture, which can't represent a sub-sprite). The
+    // renderer's ResolveSpriteSource turns that into a UV sub-rect — exercised
+    // against real-dimension textures in the SHEET-* scenarios. (The dummy
+    // texture here is 0x0, so a sub-sprite of it resolves MISSING by design.)
+    if (sp.assetUUID.GetUUID() != sub1.GetUUID()) {
+      std::cerr << "FAIL: sub-sprite keyframe did not set Sprite.assetUUID to "
+                   "the last frame's sub-sprite"
+                << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: animation sub-sprite keyframe routes through "
+                 "Sprite.assetUUID"
+              << std::endl;
+  }
+
   // --- Entity hierarchy: parent/child + cycle refuse + cascade destroy ---
   {
     auto hScene = std::make_shared<Hamster::Scene>(app.GetEventDispatcher().get(), &app);

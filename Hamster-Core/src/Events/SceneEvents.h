@@ -21,6 +21,25 @@ namespace Hamster {
     UUID& uuidA;
     UUID& uuidB;
   };
+
+  // Posted when two shapes stop touching (Box2D end-touch), and synthesised
+  // by Scene::DestroyEntity for a destroyed body's live contacts (Box2D emits
+  // no end-touch on destruction). Stores UUIDs by value — destruction-time
+  // callers don't have a stable reference to hand out. Lets HamsterBehaviour
+  // drop the partner from its collision set so `colliding` reflects current
+  // contact state instead of latching true forever.
+  class CollisionEndEvent : public Event {
+  public:
+    CollisionEndEvent(UUID uuidA, UUID uuidB) : uuidA(uuidA), uuidB(uuidB) {};
+
+    [[nodiscard]] UUID GetUUIDA() const {return uuidA;}
+    [[nodiscard]] UUID GetUUIDB() const {return uuidB;}
+
+    BIND_EVENT_TYPE(CollisionEnd);
+  private:
+    UUID uuidA;
+    UUID uuidB;
+  };
   class AnimationCompletedEvent : public Event {
   public:
     AnimationCompletedEvent(UUID entityUUID, std::string animationName)

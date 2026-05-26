@@ -128,6 +128,35 @@ void Scene::DestroyEntity(UUID entityUUID) {
   for (UUID u : destroyList) {
     auto it = m_Entities.find(u);
     if (it == m_Entities.end()) continue;
+    // Tear down the Box2D body too, or kinematic/dynamic descendants (e.g.
+    // child pipes under a destroyed pair) keep their physics bodies alive
+    // and colliding after the entity is gone.
+    if (m_Registry.all_of<Rigidbody>(it->second)) {
+      auto &rb = m_Registry.get<Rigidbody>(it->second);
+      if (b2Body_IsValid(rb.bodyId)) {
+        // Box2D emits no end-touch event when a body is destroyed, so any
+        // partner currently touching this body would keep it latched in its
+        // collision set. Synthesise the end-touch for each live contact
+        // before destroying, so `colliding` clears on the partner.
+        int cap = b2Body_GetContactCapacity(rb.bodyId);
+        if (cap > 0) {
+          std::vector<b2ContactData> contacts(cap);
+          int n = b2Body_GetContactData(rb.bodyId, contacts.data(), cap);
+          for (int k = 0; k < n; k++) {
+            if (contacts[k].manifold.pointCount == 0) continue; // not touching
+            b2BodyId bA = b2Shape_GetBody(contacts[k].shapeIdA);
+            b2BodyId bB = b2Shape_GetBody(contacts[k].shapeIdB);
+            auto *uA = static_cast<UUID *>(b2Body_GetUserData(bA));
+            auto *uB = static_cast<UUID *>(b2Body_GetUserData(bB));
+            if (uA && uB) {
+              CollisionEndEvent e(*uA, *uB);
+              m_Dispatcher->Post<CollisionEndEvent>(e);
+            }
+          }
+        }
+        b2DestroyBody(rb.bodyId);
+      }
+    }
     m_Registry.destroy(it->second);
     m_Entities.erase(it);
     m_ChildrenIndex.erase(u);
@@ -249,19 +278,12 @@ void Scene::QueueDestroyEntity(UUID entityUUID) {
 }
 
 void Scene::FlushDestroyQueue() {
+  // DestroyEntity cascades to descendants and tears down each one's Box2D
+  // body. The previous inline version destroyed only the queued entity, so
+  // children of a destroyed parent (e.g. the two pipes under a PipePair)
+  // were orphaned — visible and still colliding.
   for (auto &uuid : m_DestroyQueue) {
-    if (m_Entities.find(uuid) == m_Entities.end())
-      continue;
-
-    if (EntityHasComponent<Rigidbody>(uuid)) {
-      auto &rb = GetEntityComponent<Rigidbody>(uuid);
-      if (b2Body_IsValid(rb.bodyId)) {
-        b2DestroyBody(rb.bodyId);
-      }
-    }
-
-    m_Registry.destroy(m_Entities[uuid]);
-    m_Entities.erase(uuid);
+    DestroyEntity(uuid);
   }
   m_DestroyQueue.clear();
 }
@@ -391,10 +413,16 @@ void Scene::OnUpdate() {
           break;
       }
 
+      // Drive rendering through assetUUID so spritesheet sub-sprite keyframes
+      // resolve to the correct UV rect via ResolveSpriteSource. Also keep
+      // sprite.texture coherent for whole-texture keyframes and any code that
+      // reads it directly (a sub-sprite UUID throws from GetTexture — that's
+      // fine, assetUUID already drives the renderer).
+      sprite.assetUUID = current->textureUUID;
       try {
         sprite.texture = assetManager->GetTexture(current->textureUUID);
       } catch (const std::out_of_range &) {
-        // texture not loaded — keep current sprite
+        // sub-sprite keyframe — assetUUID handles it; leave sprite.texture
       }
     });
 
@@ -515,6 +543,26 @@ void Scene::ProcessContactEvents() {
       m_Dispatcher->Post<CollisionEvent>(e);
     }
   }
+
+  // End-touch — keeps `colliding` reflecting current contact state instead of
+  // latching true on first contact. The event arrays "may become invalid if
+  // bodies/shapes are destroyed" (box2d types.h), so guard each shape.
+  for (int i = 0; i < events.endCount; i++) {
+    b2ContactEndTouchEvent &evt = events.endEvents[i];
+    if (!b2Shape_IsValid(evt.shapeIdA) || !b2Shape_IsValid(evt.shapeIdB))
+      continue;
+
+    b2BodyId bodyA = b2Shape_GetBody(evt.shapeIdA);
+    b2BodyId bodyB = b2Shape_GetBody(evt.shapeIdB);
+
+    auto *uuidA = static_cast<UUID *>(b2Body_GetUserData(bodyA));
+    auto *uuidB = static_cast<UUID *>(b2Body_GetUserData(bodyB));
+
+    if (uuidA && uuidB) {
+      CollisionEndEvent e(*uuidA, *uuidB);
+      m_Dispatcher->Post<CollisionEndEvent>(e);
+    }
+  }
 }
 
 void Scene::ApplyPendingForces() {
@@ -533,10 +581,13 @@ void Scene::ApplyPendingForces() {
     }
 
     if (rb.hasPendingPosition) {
+      // Teleport upright and drop any spin — a respawn shouldn't carry over
+      // rotation/angular velocity picked up from a pre-teleport collision.
       b2Body_SetTransform(rb.bodyId,
                           {rb.pendingPosition.x / PIXELS_PER_METER,
                            rb.pendingPosition.y / PIXELS_PER_METER},
-                          b2Body_GetRotation(rb.bodyId));
+                          b2MakeRot(0.0f));
+      b2Body_SetAngularVelocity(rb.bodyId, 0.0f);
       rb.hasPendingPosition = false;
     }
 
@@ -707,7 +758,7 @@ void Scene::OnRender(bool renderFlat) {
   }
 }
 
-void Scene::OnRenderUI(float panelW, float panelH) {
+void Scene::OnRenderUI(float panelW, float panelH, bool worldProjection) {
   if (panelW <= 0.0f || panelH <= 0.0f) return;
 
   auto *renderer = m_App->GetRenderer();
@@ -717,19 +768,36 @@ void Scene::OnRenderUI(float panelW, float panelH) {
     return (bold && boldAtlas && boldAtlas->IsValid()) ? boldAtlas : atlas;
   };
 
-  renderer->BeginUIPass(panelW, panelH);
+  renderer->BeginUIPass(panelW, panelH, worldProjection);
 
   // Buttons. Backgrounds first, then flush rects, THEN labels — bold text
   // forces a mid-pass text flush, so rects must already be drawn or the label
   // (flushed early) gets painted over by the opaque rect.
   auto buttonView = m_Registry.view<UIButton>();
   buttonView.each([renderer, panelW, panelH](auto &btn) {
+    if (!btn.visible) return;
     UIRect r = renderer->ResolveUIButton(btn, panelW, panelH);
     renderer->SubmitUIRect(r, btn.bgColour);
   });
   renderer->FlushUIRect();
 
+  // Button background images (optional) — drawn after the bg rect, before the
+  // label, so layering is bgColour rect → image → label. Resolved through the
+  // AssetManager so a sub-sprite or whole texture both work; MISSING uuids
+  // fall back to the checker texture.
+  if (AssetManager *am = m_App->GetAssetManager()) {
+    buttonView.each([renderer, am, panelW, panelH](auto &btn) {
+      if (!btn.visible) return;
+      if (UUID::IsNil(btn.imageUUID)) return;
+      SpriteSource src = am->ResolveSpriteSource(btn.imageUUID);
+      if (!src.texture) return;
+      UIRect r = renderer->ResolveUIButton(btn, panelW, panelH);
+      renderer->SubmitUIImage(*src.texture, r, src.uvRect);
+    });
+  }
+
   buttonView.each([renderer, &pickAtlas, panelW, panelH](auto &btn) {
+    if (!btn.visible) return;
     const FontAtlas *la = pickAtlas(btn.bold);
     if (btn.label.empty() || !la || !la->IsValid()) return;
     UIRect r = renderer->ResolveUIButton(btn, panelW, panelH);
@@ -754,6 +822,7 @@ void Scene::OnRenderUI(float panelW, float panelH) {
   // UIText — anchored, optional wrap.
   auto textView = m_Registry.view<UIText>();
   textView.each([renderer, &pickAtlas, panelW, panelH](auto &txt) {
+    if (!txt.visible) return;
     const FontAtlas *ta = pickAtlas(txt.bold);
     if (txt.text.empty() || !ta || !ta->IsValid()) return;
     // Pivot the bounding box by the text's measured width × fontSize so the

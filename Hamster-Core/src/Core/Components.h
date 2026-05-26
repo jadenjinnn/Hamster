@@ -164,6 +164,15 @@ struct UIButton {
   float fontSize = 18.0f;
   UITextAlign textAlign = UITextAlign::Centre;
   bool bold = false;
+  // Optional background image. When non-nil, the renderer resolves it via
+  // AssetManager::ResolveSpriteSource (texture or sub-sprite) and draws it
+  // filling the button rect, between the bgColour rect and the label.
+  UUID imageUUID = UUID::GetNil();
+  // Runtime-only show/hide toggle (NOT serialised — always true at load).
+  // Scripts flip it during play via EntityHandle::set_visible; the snapshot
+  // restore on stop resets it to true. When false the renderer skips it and
+  // the play-mode hit-tests treat it as non-clickable.
+  bool visible = true;
 };
 
 // Screen-space text label, no background, not clickable. wrapWidth == 0 means
@@ -176,6 +185,8 @@ struct UIText {
   float fontSize = 18.0f;
   float wrapWidth = 0.0f;
   bool bold = false;
+  // Runtime-only show/hide toggle (NOT serialised). See UIButton::visible.
+  bool visible = true;
 };
 
 // Screen-space rect: top-left + size. Returned by ResolveUIButtonRect so

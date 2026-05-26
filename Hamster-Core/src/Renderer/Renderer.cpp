@@ -705,7 +705,8 @@ namespace Hamster {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
 
-    void Renderer::BeginUIPass(float panelWidth, float panelHeight) {
+    void Renderer::BeginUIPass(float panelWidth, float panelHeight,
+                               bool worldProjection) {
         m_UIRectVerts.clear();
         m_UITextVerts.clear();
         m_CurTextAtlas = nullptr;
@@ -716,7 +717,10 @@ namespace Hamster {
         // mouse-input coordinates — no Y-flip needed (the FBO is later
         // displayed UV-flipped, which is exactly what we want for this
         // origin convention).
-        glm::mat4 ui = glm::ortho(0.0f, panelWidth, panelHeight, 0.0f, -1.0f, 1.0f);
+        glm::mat4 ui = worldProjection
+            ? m_ViewMatrix
+            : glm::ortho(0.0f, panelWidth, panelHeight, 0.0f, -1.0f, 1.0f);
+        m_UIProjection = ui; // SubmitUIImage draws quads in this same space.
         m_UIRectShader->use();
         m_UIRectShader->setUniformMat4("projection", ui);
         if (m_UITextShader) {
@@ -877,6 +881,30 @@ namespace Hamster {
         glBindVertexArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         m_UIRectVerts.clear();
+    }
+
+    void Renderer::SubmitUIImage(Texture &texture, const UIRect &rect,
+                                 glm::vec4 uvRect, glm::vec3 tint) {
+        if (!m_SpriteBatchShader) return;
+        // Immediate single-quad draw. Reuses the sprite-batch staging buffer
+        // and VBO; the world batch has already flushed by the time the UI pass
+        // runs, so borrowing them here is safe. We deliberately avoid
+        // Begin/EndSpriteBatch so the per-frame draw-call HUD counter isn't
+        // reset or finalised by this UI-side draw.
+        m_SpriteBatchShader->use();
+        m_SpriteBatchShader->setUniformi("image", 0);
+        m_SpriteBatchShader->setUniformMat4("projection", m_UIProjection);
+
+        m_BatchVerts.clear();
+        m_BatchTexture = nullptr; // SubmitSprite adopts it on first push.
+        SubmitSprite(texture, {rect.x, rect.y}, {rect.w, rect.h}, 0.0f, tint,
+                     0.0f, uvRect);
+        FlushSpriteBatch(); // popout-aware VAO selection lives here.
+
+        // Restore the world projection so the next frame's world-pass batch
+        // (which only calls use(), not set-projection) renders correctly.
+        m_SpriteBatchShader->setUniformMat4("projection", m_ViewMatrix);
+        m_BatchTexture = nullptr;
     }
 
     void Renderer::EndUIPass() {
