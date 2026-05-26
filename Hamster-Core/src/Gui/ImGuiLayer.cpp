@@ -4,6 +4,8 @@
 
 #include "HamsterPCH.h"
 
+#include <cstdlib> // std::getenv — APPDATA lookup for the layout .ini
+
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
@@ -22,6 +24,18 @@ namespace Hamster {
         ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
     // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable; // Enable
     // Multi-Viewport / Platform Windows
+
+    // Layout .ini lives in %APPDATA%/Hamster, not the cwd: an installed build
+    // runs from a read-only Program Files dir. ImGui keeps the path by pointer
+    // (no copy), so the backing string must outlive the context — hence static.
+    static std::string s_IniPath;
+    if (const char *appData = std::getenv("APPDATA")) {
+      std::filesystem::path dir = std::filesystem::path(appData) / "Hamster";
+      std::error_code ec;
+      std::filesystem::create_directories(dir, ec);
+      s_IniPath = (dir / "imgui.ini").string();
+      io.IniFilename = s_IniPath.c_str();
+    }
 
     // Color scheme applied by HamsterTheme::Apply() in HamsterWheelApp.cpp
 

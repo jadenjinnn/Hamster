@@ -75,7 +75,16 @@ namespace Hamster {
     }
 
     void Renderer::InitRendererData(AssetManager *assetManager) {
-        std::string hamsterCorePath = HAMSTER_CORE_SRC_DIR;
+        // Shaders are disk files. Prefer the installed layout
+        // (<exe>/../share/Resources/Hamster-Core/...); fall back to the baked
+        // source dir for dev / in-place runs. HAMSTER_CORE_SRC_DIR is an
+        // absolute build-machine path and does not exist on an installed box.
+        std::string shaderProbe = Application::GetExecutablePath() +
+            "/../share/Resources/Hamster-Core/Renderer/DefaultShaders/SpriteShader.vs";
+        std::ifstream shaderPeek(shaderProbe);
+        std::string hamsterCorePath = shaderPeek
+            ? Application::GetExecutablePath() + "/../share/Resources/Hamster-Core"
+            : std::string(HAMSTER_CORE_SRC_DIR);
 
         m_SpriteShader = assetManager->AddShader(
             "sprite", hamsterCorePath + "/Renderer/DefaultShaders/SpriteShader.vs",

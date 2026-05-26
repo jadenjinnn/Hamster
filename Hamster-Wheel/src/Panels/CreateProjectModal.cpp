@@ -5,6 +5,7 @@
 
 #include <imgui.h>
 #include <tinyfiledialogs.h>
+#include <cstdlib> // std::getenv — USERPROFILE for the default project location
 #include <cstring>
 
 #include "../Theme.h"
@@ -12,7 +13,14 @@
 #include "IconsFontAwesome6.h"
 
 CreateProjectModal::CreateProjectModal(Hamster::Application *app)
-    : m_App(app) {}
+    : m_App(app) {
+  // Default new projects to the user's Documents — a writable location.
+  // An installed build's own dir is read-only for non-admins, so we never
+  // want the empty/install-relative default. User can still Browse elsewhere.
+  if (const char *userProfile = std::getenv("USERPROFILE")) {
+    m_ProjectDirectory = std::filesystem::path(userProfile) / "Documents";
+  }
+}
 
 void CreateProjectModal::Render(ProjectRegistry *registry) {
   if (m_OpenRequested) {

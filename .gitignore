@@ -157,6 +157,10 @@ build-asan/
 build-release/
 imgui.ini
 
+### Packaging (Scripts/package.ps1) ###
+dist/
+Scripts/.cache/
+
 ### Python ###
 __pycache__/
 *.pyc

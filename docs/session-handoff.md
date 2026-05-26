@@ -1,5 +1,15 @@
 # Session handoff
 
+## 2026-05-25 — spritesheet finished + closed out; Windows-installer spec drafted (awaiting approval)
+
+Shipped + pushed to origin/master this session: spritesheet stages 7–9 + close-out (spec moved to `docs/features/shipped/`), bug fixes 0011/0012/0013, SpritesheetEditor confirm-on-close, the `Assets/{Textures,Scripts,Animations}` project structure + folder-scoped asset browser (breadcrumb + back button), a large editor polish pass, and `docs/architecture.md` brought current.
+
+- **New feature spec drafted, NOT committed**: `docs/features/active/windows-installer.md` (Phase 6 — Design tier). Status **draft**, **awaiting "spec approved"** before any code. Open question: commit the spec or keep it local until reviewed.
+- Design calls already baked into the spec (don't re-litigate): bundle Python via the **embeddable package + `._pth`** (self-locating, isolated, no interpreter-bootstrap code change); **Inno Setup** installer (per-user or per-machine); **app-local MSVC runtime DLLs** (not static `/MT`); install tree mirrors `<exe>/../share/Resources/...`; two small code touches (ImGui ini → `%APPDATA%`, default project dir → Documents). Editor-only; game-export out of scope (no runtime-only player exists).
+- Installer verification is inherently a **manual clean-machine (VM / fresh user, no Python, no VS)** checklist — the smoke test can't cover it; a structural file-manifest check in `package.ps1` is the in-repo contribution.
+- Other open threads (unchanged): **game-ui** still un-closed-out (spec in `active/`); bug **0008** (exit segfault), bug **0010** (zoom-out FPS); latent **`AssetManager::GetTexture` `.at()`** footgun (throws on a bad key — only worked around at the PropertyEditor call site); **animation × `Sprite::assetUUID`** unverified (anim swaps `texture`, renderer resolves `assetUUID` first → a sub-sprite-backed animated sprite may not display).
+- Working tree at break: dirty with the uncommitted `windows-installer.md` spec + this handoff edit (`CLAUDE.local.md` is gitignored).
+
 ## 2026-05-24 — spritesheet stage 7 shipped (code); manual verify blocked by bugs 0011–0013
 
 - **Shipped this session (committed)**:

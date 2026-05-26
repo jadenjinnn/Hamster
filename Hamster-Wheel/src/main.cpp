@@ -2,11 +2,32 @@
 #include <Core/Application.h>
 #include <imgui.h>
 
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+
 #include "Theme.h"
 #include "ProjectHubLayer.h"
 #include "EditorLayer.h"
 
 int main() {
+    // The shipped build has no console (/SUBSYSTEM:WINDOWS), so route stdout/
+    // stderr to %APPDATA%/Hamster/log.txt — otherwise all diagnostics vanish.
+    // static: the file buffer must outlive every std::cout/cerr use, including
+    // during static destruction at process exit.
+    static std::ofstream s_LogFile;
+    if (const char *appData = std::getenv("APPDATA")) {
+        std::filesystem::path dir = std::filesystem::path(appData) / "Hamster";
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);
+        s_LogFile.open((dir / "log.txt").string(), std::ios::trunc);
+        if (s_LogFile.is_open()) {
+            std::cout.rdbuf(s_LogFile.rdbuf());
+            std::cerr.rdbuf(s_LogFile.rdbuf());
+        }
+    }
+
     Hamster::WindowProps props(768.0f, 1376.0f, "Hamster",
                                /*borderless*/ true, /*maximized*/ true);
     auto *app = new Hamster::Application(props);

@@ -58,6 +58,16 @@ target_link_libraries(Hamster-Wheel PRIVATE
     pybind11::embed
 )
 
+# Ship as a GUI app: no console window on launch. /SUBSYSTEM:WINDOWS drops the
+# console; /ENTRY:mainCRTStartup keeps the standard main() entry so we don't
+# have to write a WinMain. With no console, std::cout/cerr are redirected to a
+# log file in main.cpp. The LINKER: prefix forwards these through the clang-cl
+# driver to the linker correctly.
+target_link_options(Hamster-Wheel PRIVATE
+    "LINKER:/SUBSYSTEM:WINDOWS"
+    "LINKER:/ENTRY:mainCRTStartup"
+)
+
 # Hamster-Wheel needs the pybind11 module built first
 add_dependencies(Hamster-Wheel Hamster)
 
