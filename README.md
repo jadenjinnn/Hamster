@@ -14,18 +14,18 @@
 
 <!-- Live demo: [link] -->
 
-> Hamster started as a tool for teaching beginners Python by writing small games — that "scripting must stay dead-simple" constraint shaped the whole engine. It's a personal engineering project; the focus below is the systems work.
-
 ## Demo
 
-<!-- Replace the GIFs in docs/ — capture instructions are in the project notes. -->
+<!-- GIFs live in docs/ -->
+
+**Python scripting → play** — write a `HamsterBehaviour`, attach it to an entity, hit Play. The game runs in a popout window with Box2D physics.
+
+![Scripting to play](docs/demo-play.gif)
 
 |  |  |
 |:--:|:--:|
-| **Scene editor** — hierarchy, property panel, gizmo drag/resize, asset browser | **Play mode** — popout game window, Box2D physics, scripted movement |
-| ![Editor](docs/demo-editor.gif) | ![Play mode](docs/demo-play.gif) |
-| **Python scripting** — write a `HamsterBehaviour`, attach it, press Play | **Spritesheet + animation** — slice a sheet, build a keyframe timeline |
-| ![Scripting](docs/demo-scripting.gif) | ![Spritesheet](docs/demo-spritesheet.gif) |
+| **Scene editor** — hierarchy, property panel, gizmo drag/resize, collider setup, asset browser | **Spritesheet + animation** — slice a sheet, build a keyframe timeline |
+| ![Editor](docs/demo-editor.gif) | ![Spritesheet](docs/demo-spritesheet.gif) |
 
 ## What a Hamster script looks like
 
