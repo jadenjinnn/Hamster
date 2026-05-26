@@ -8,6 +8,10 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'Hamster',
+			logo: {
+				src: './src/assets/hamster-logo.png',
+			},
+			favicon: '/hamster-logo.png',
 			social: {
 				github: 'https://github.com/DoritoThePug/Hamster',
 			},
@@ -15,9 +19,13 @@ export default defineConfig({
 				{
 					label: 'Start Here',
 					items: [
-						// Each item here is one entry in the navigation menu.
-						{ label: 'Getting Started', link: 'start-here/getting-started'},
+						{ label: 'Getting Started', link: 'start-here/getting-started' },
+						{ label: 'Your First Game', link: 'start-here/your-first-game' },
 					],
+				},
+				{
+					label: 'Guides',
+					autogenerate: { directory: 'guides' },
 				},
 				{
 					label: 'Reference',

@@ -1,34 +1,46 @@
 ---
-title: Hamster 
-description: A intuitive game engine made for Python.
+title: Hamster
+description: A 2D game engine where you write the gameplay in Python.
 template: splash
 hero:
-  tagline:  An intuitive game engine made for Python. 
+  tagline: A 2D game engine where you write the gameplay in Python, backed by a native C++/OpenGL runtime and a visual editor.
+  image:
+    file: ../../assets/hamster-logo.png
   actions:
-    - text: Getting Started
+    - text: Get Started
       link: start-here/getting-started
       icon: right-arrow
       variant: primary
-    - text: Read the Hamster docs 
-      link: reference/example/
+    - text: View on GitHub
+      link: https://github.com/DoritoThePug/Hamster
       icon: external
+      variant: minimal
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-##  Features 
+## What it is
 
-<CardGrid stagger>
-	<Card title="Code in Python" icon="pencil">
-		Write code using an intuitive and Pythonic scripting API.
+Hamster is a 2D game engine for Windows. You build scenes in a visual editor — placing sprites, setting up physics, slicing spritesheets — and write the gameplay logic in **Python**. A Python class drives each entity; the C++ runtime calls it every frame. Press **Play** and the game runs in its own window.
+
+<CardGrid>
+	<Card title="Gameplay in Python" icon="pencil">
+		Subclass `HamsterBehaviour`, implement `on_create` and `on_update`, and the engine runs your code per entity. Read input, apply forces, spawn entities, look others up by name.
 	</Card>
-	<Card title="Graphical Editor" icon="puzzle">
-    Create with a lightweight and easy-to-use graphical editor.
+	<Card title="Native C++ / OpenGL core" icon="setting">
+		An EnTT entity-component-system, a batched OpenGL renderer, and a quadtree spatial index for culling and picking. Python is embedded via pybind11.
 	</Card>
-	<Card title="Easy to Start" icon="rocket">
-    No experience needed, go straight to creating!
+	<Card title="Visual editor" icon="puzzle">
+		Scene hierarchy, property inspector, asset browser, spritesheet slicer, and a keyframe animation timeline. Non-destructive play mode — Stop reverts everything.
 	</Card>
-	<Card title="Open Source" icon="github">
-    All code is available on GitHub.
+	<Card title="Box2D physics" icon="rocket">
+		Rigidbodies (static / dynamic / kinematic), box and circle colliders, gravity, forces, and impulses, exposed straight to your Python scripts.
 	</Card>
 </CardGrid>
+
+## Next steps
+
+- **[Getting Started](start-here/getting-started)** — install Hamster and open the editor.
+- **[Your First Game](start-here/your-first-game)** — build a controllable sprite from an empty project.
+- **[Writing Scripts](guides/writing-scripts)** — the `HamsterBehaviour` model in full.
+- **[Python API Reference](reference/python-api)** — every method, property, and component.

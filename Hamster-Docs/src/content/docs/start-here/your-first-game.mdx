@@ -1,0 +1,135 @@
+---
+title: Your First Game
+description: Build a controllable sprite with physics, from an empty project.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+This walkthrough builds a small scene: a sprite you move left and right with the keyboard, that falls under gravity and lands on a floor. By the end you'll have touched the editor, the component system, physics, and a Python script.
+
+You should already have Hamster installed — see [Getting Started](/Hamster/start-here/getting-started) if not.
+
+## 1. Create a project
+
+<Steps>
+
+1. From the project hub, click **New Project**.
+2. Give it a name and pick a target resolution (the size of the game window). The defaults are fine.
+3. Click create. The editor opens with an empty scene.
+
+</Steps>
+
+![Creating a new project](/Hamster/docs/tutorial-new-project.png)
+
+Hamster scaffolds an `Assets/` folder for you with `Textures/`, `Scripts/`, and `Animations/` subfolders, and copies the `Hamster` Python module into the project so scripts can import it.
+
+The editor has four regions: the **Hierarchy** (entities in the scene), the **viewport** (the scene itself), the **Property Editor** (the selected entity's components), and the **bottom panel** (Asset Browser, Animation, and Console tabs).
+
+## 2. Import a sprite
+
+You need an image for the player. Any PNG works.
+
+<Steps>
+
+1. Go to the **Asset Browser** tab in the bottom panel.
+2. Click **Add Asset** (or drag a `.png` into the browser) and pick an image. It's copied into `Assets/Textures/`.
+
+</Steps>
+
+![A texture imported into the asset browser](/Hamster/docs/tutorial-import-texture.png)
+
+## 3. Create the player entity
+
+<Steps>
+
+1. In the **Hierarchy**, click **Add → Entity**. A new entity appears, selected.
+2. Rename it to `Player` (double-click its name, or use the Property Editor).
+3. With it selected, in the **Property Editor** click **Add Component → Sprite**.
+4. Assign your texture to the Sprite — drag the texture from the Asset Browser onto the Sprite field, or use the **Select Sprite** dropdown.
+
+</Steps>
+
+The sprite shows up in the viewport. Drag it, or use the Transform fields in the Property Editor, to position and size it near the top of the play area.
+
+![The player entity with a sprite](/Hamster/docs/tutorial-sprite-entity.png)
+
+<Aside type="tip">
+The grey outline in the viewport is your project's target resolution — the area the game window will show. Keep gameplay inside it.
+</Aside>
+
+## 4. Add physics
+
+For the player to fall, give it a dynamic rigidbody.
+
+<Steps>
+
+1. With `Player` selected, click **Add Component → Rigidbody**.
+2. Set **Body Type** to **Dynamic**.
+
+</Steps>
+
+Now make a floor so the player has something to land on:
+
+<Steps>
+
+1. **Add → Entity**, rename it `Floor`.
+2. Give it a **Sprite** (any texture) and a **Rigidbody** with **Body Type = Static**.
+3. Position it across the bottom of the play area and stretch its width.
+
+</Steps>
+
+A **Static** body never moves but collides; a **Dynamic** body is driven by gravity, forces, and collisions.
+
+![Player and floor with rigidbodies](/Hamster/docs/tutorial-rigidbody.png)
+
+## 5. Write the movement script
+
+<Steps>
+
+1. Select the `Player` entity.
+2. In the Property Editor, click **Add Script → New Script**. This creates a file under `Assets/Scripts/` and attaches it to the entity.
+3. Open that file (`Assets/Scripts/Untitled_Script.py`) in your text editor and replace its contents:
+
+</Steps>
+
+```python title="Assets/Scripts/Untitled_Script.py"
+import Hamster
+
+class Player(Hamster.HamsterBehaviour):
+    def on_create(self):
+        # Runs once when the simulation starts.
+        self.speed = 2500.0
+        self.log("Player ready")
+
+    def on_update(self, delta_time):
+        # Runs every frame while the game is playing.
+        key = self.key_pressed
+        if key == Hamster.key_code.key_a:
+            self.apply_force(-self.speed, 0.0)
+        elif key == Hamster.key_code.key_d:
+            self.apply_force(self.speed, 0.0)
+```
+
+A script is a class that subclasses `Hamster.HamsterBehaviour`. The engine creates one instance per entity the script is attached to, calls `on_create()` once when play starts, and `on_update(delta_time)` every frame.
+
+`self.key_pressed` is the key held this frame (a `key_code` value, or `key_not_pressed`). `self.apply_force(x, y)` pushes the rigidbody — so A and D shove the player left and right while gravity keeps pulling it down.
+
+<Aside>
+Scripts are reloaded each time you press Play, so the edit-then-Play loop is: save the `.py`, switch to the editor, press Play.
+</Aside>
+
+## 6. Play it
+
+Press **Play** in the viewport toolbar. A separate game window opens at your project's resolution. The player falls, lands on the floor, and moves when you hold **A** or **D**. Watch the **Console** tab for your `"Player ready"` log line.
+
+![Playing the scene](/Hamster/docs/tutorial-play.gif)
+
+Press **Stop**. The scene snaps back to exactly how you left it — play mode is non-destructive, so nothing you did at runtime (physics, spawned entities, script changes to state) is saved into the scene.
+
+## Where to go next
+
+- **[Writing Scripts](/Hamster/guides/writing-scripts)** — every lifecycle method and callback, input, collisions, spawning entities, animation, and UI.
+- **[Python API Reference](/Hamster/reference/python-api)** — the full surface of `HamsterBehaviour` and `EntityHandle`.
+- **[Components & Types](/Hamster/reference/components-and-types)** — `Transform`, `Sprite`, `Rigidbody`, UI components, enums, and the math types.
+
+Some things to try from here: tune the `speed`, add a jump with `self.apply_impulse(0, ...)`, or use `self.find_entity_by_name("Floor")` to react when the player lands.

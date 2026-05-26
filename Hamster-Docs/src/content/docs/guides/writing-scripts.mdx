@@ -1,0 +1,171 @@
+---
+title: Writing Scripts
+description: The HamsterBehaviour model — lifecycle, input, physics, collisions, entities, animation, and UI.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Gameplay in Hamster is written in Python. The C++ engine owns the game loop; your code runs as **behaviours** attached to entities. This guide covers the whole scripting surface. For exact signatures, see the [Python API Reference](/Hamster/reference/python-api).
+
+## The model
+
+A script is a Python class that subclasses `Hamster.HamsterBehaviour`:
+
+```python
+import Hamster
+
+class Player(Hamster.HamsterBehaviour):
+    def on_create(self):
+        ...
+
+    def on_update(self, delta_time):
+        ...
+```
+
+Script files live in `Assets/Scripts/`. You attach a script to an entity in the editor (Property Editor → **Add Script**). When the simulation starts, the engine instantiates **one object per entity** the script is attached to and drives it through the loop. The engine calls *into* Python; Python calls *back* into the engine through the methods below.
+
+<Aside>
+Scripts are reloaded every time you press **Play**, so iterate by saving the `.py` and pressing Play again. If a script raises an exception, the simulation pauses and the traceback is written to the **Console**.
+</Aside>
+
+## Lifecycle
+
+| Method | When |
+|---|---|
+| `on_create(self)` | Once, when the simulation starts. |
+| `on_update(self, delta_time)` | Every frame while playing. `delta_time` is seconds since the last frame. |
+
+These are the two you'll define most. Physics, transforms, and input are all read and written from `on_update`.
+
+## Input
+
+Input is read as properties on `self`, refreshed each frame:
+
+```python
+def on_update(self, delta_time):
+    if self.key_pressed == Hamster.key_code.key_space:
+        self.apply_impulse(0.0, 600.0)
+```
+
+- `self.key_pressed` — the key pressed this frame, as a `key_code` value (or `key_code.key_not_pressed`).
+- `self.key_released` — the key released this frame.
+
+Key codes are lowercase-named: `key_a`…`key_z`, `key_0`…`key_9`, `key_space`, `key_left`, `key_right`, `key_up`, `key_down`, `key_escape`, and so on. The full list is in the [reference](/Hamster/reference/components-and-types#key_code).
+
+## Physics
+
+A script can drive its entity's rigidbody (the entity needs a `Rigidbody` component):
+
+```python
+self.apply_force(fx, fy)      # continuous push; use while a key is held
+self.apply_impulse(ix, iy)    # instantaneous kick; use for a jump
+self.set_velocity(vx, vy)     # set velocity directly
+v = self.velocity             # read current velocity (a vec2)
+```
+
+`apply_force` accumulates over the frame and suits held-key movement; `apply_impulse` is a one-shot change in momentum.
+
+## Collisions
+
+Collisions are **polled**, not delivered as a callback. Each frame, check what your entity is touching:
+
+```python
+def on_update(self, delta_time):
+    if self.colliding:
+        for uuid in self.collision_entities:
+            self.log(f"touching {uuid}")
+        self.reset_collision_entities()
+```
+
+- `self.colliding` — `True` if the entity is in contact with anything this frame.
+- `self.collision_entities` — list of `UUID`s the entity is touching.
+- `self.reset_collision_entities()` — clears the list.
+
+## Transform
+
+`self.transform` reads and writes the entity's `Transform` (position, rotation, size):
+
+```python
+t = self.transform
+t.position = Hamster.vec3(t.position.x + 1.0, t.position.y, t.position.z)
+self.transform = t
+```
+
+<Aside type="caution">
+Physics drives the transform for rigidbodies. If an entity has a `Dynamic` rigidbody, prefer forces/velocity over writing `transform.position` directly — the two will fight.
+</Aside>
+
+## Finding, spawning, and destroying entities
+
+```python
+floor = self.find_entity_by_name("Floor")   # -> EntityHandle, or None
+if floor is not None:
+    floor.set_text("Game Over")
+
+spawned = self.create_entity(
+    "Bullet",
+    Hamster.Transform(Hamster.vec3(0, 0, 0), 0.0, Hamster.vec2(16, 16)),
+)
+spawned.add_component(Hamster.Sprite(Hamster.vec3(1, 1, 1)))
+spawned.set_velocity(500.0, 0.0)
+
+self.destroy_entity(spawned.uuid)
+```
+
+`find_entity_by_name` and `create_entity` return an **`EntityHandle`** — a reference to another entity you can manipulate: `set_texture`, `set_label`, `set_text`, `transform`, `set_velocity`, `apply_impulse`, `add_component`, and `parent` / `children` / `set_parent`. See the [reference](/Hamster/reference/python-api#entityhandle).
+
+## Hierarchy
+
+Entities can be parented (organisational — there's no transform inheritance):
+
+```python
+self.parent          # parent UUID
+self.children        # list of child UUIDs
+self.set_parent(some_uuid)
+```
+
+Destroying a parent destroys its children.
+
+## Animation
+
+If the entity has an animation (built in the Animation panel), play it by name:
+
+```python
+self.animate("walk", loop=True)
+self.stop_animation()
+playing = self.is_animating
+```
+
+When a non-looping animation finishes, the engine calls `on_animation_complete` if you've defined it:
+
+```python
+def on_animation_complete(self, animation_name):
+    if animation_name == "attack":
+        self.animate("idle", loop=True)
+```
+
+## UI buttons
+
+Screen-space `UIButton` entities dispatch clicks to scripts. Define `on_button_clicked`; the engine passes the clicked button's `UUID`:
+
+```python
+def on_create(self):
+    self.start_btn = self.find_entity_by_name("StartButton")
+
+def on_button_clicked(self, uuid):
+    if self.start_btn is not None and uuid == self.start_btn.uuid:
+        self.log("start!")
+```
+
+## Event callbacks, in one place
+
+Define any of these on your class and the engine will call them; omit the ones you don't need.
+
+| Callback | Signature | Fires |
+|---|---|---|
+| `on_create` | `(self)` | once, at play start |
+| `on_update` | `(self, delta_time)` | every frame |
+| `on_animation_complete` | `(self, animation_name)` | a non-looping animation ends |
+| `on_button_clicked` | `(self, uuid)` | a `UIButton` is clicked |
+
+Collisions and input are **read** (via `self.colliding` / `self.key_pressed`), not delivered as callbacks.

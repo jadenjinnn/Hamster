@@ -1,51 +1,101 @@
 ---
 title: Getting Started
-description: This is a page is a guide on getting started to use Hamster
+description: Install Hamster and open the editor.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
-import { Aside } from '@astrojs/starlight/components';
+import { Tabs, TabItem, Steps, Aside } from '@astrojs/starlight/components';
 
-This page is a guide on getting started with Hamster.
+Hamster runs on **Windows 10/11 (64-bit)**. There are two ways to get it: download the installer (no dependencies), or build from source.
 
-### Introduction
+<Aside type="caution" title="Windows only">
+Hamster currently targets Windows. It was previously built on Linux, but the file watcher, window chrome, and installer are Windows-specific and the Linux build is not maintained.
+</Aside>
 
-Hamster is a lightweight and easy-to-use game engine designed to help teach Python programming through the creation of games.
+## Install with the installer (recommended)
 
-### Installing Hamster
+The installer bundles its own copy of Python and the Visual C++ runtime, so it runs on a machine that has **never had Python or Visual Studio installed**.
 
-Hamster is still in the early stages of development, therefore there are no prebuilt binaries or installation managers available. The Hamster library for Python will become available on pip once a stable version is released.
+<Steps>
 
-First clone Hamster from GitHub.
-```sh
-git clone --recursive https://github.com/DoritoThePug/Hamster.git 
+1. Download **`HamsterSetup.exe`** from the [Releases page](https://github.com/DoritoThePug/Hamster/releases).
+
+   {/* Releases: https://github.com/DoritoThePug/Hamster/releases */}
+
+2. Run it. Choose **per-user** (no admin) or **per-machine** (needs admin) when prompted.
+
+   ![Hamster installer wizard](/Hamster/docs/install-wizard.png)
+
+3. Launch **Hamster** from the Start menu. The editor opens to the project hub.
+
+</Steps>
+
+<Aside title="SmartScreen">
+The installer is unsigned, so Windows SmartScreen may warn that it's from an "unrecognized publisher." Click **More info → Run anyway**.
+</Aside>
+
+## Build from source
+
+Build from source if you want to develop the engine itself.
+
+**Prerequisites:**
+
+- [LLVM / clang-cl](https://releases.llvm.org/) (the engine is built with the MSVC ABI via clang-cl)
+- [CMake](https://cmake.org/) 3.28+
+- [Ninja](https://ninja-build.org/)
+- [Python 3.11](https://www.python.org/) (for the embedded interpreter and the bindings module)
+
+Everything else — pybind11, GLFW, GLAD, GLM, Dear ImGui, EnTT, Box2D, stb_image, tinyfiledialogs — is vendored as a submodule or in-tree. No package manager required.
+
+<Steps>
+
+1. Clone with submodules:
+
+   ```powershell
+   git clone --recurse-submodules https://github.com/DoritoThePug/Hamster.git
+   cd Hamster
+   ```
+
+2. Configure with Ninja + clang-cl, pointing CMake at your Python 3.11 install:
+
+   ```powershell
+   cmake -G "Ninja" `
+     -DCMAKE_BUILD_TYPE=Debug `
+     -DCMAKE_C_COMPILER="C:/Program Files/LLVM/bin/clang-cl.exe" `
+     -DCMAKE_CXX_COMPILER="C:/Program Files/LLVM/bin/clang-cl.exe" `
+     -DPython_ROOT_DIR="C:/Path/To/Python311" `
+     -DCMAKE_CXX_FLAGS="/EHsc -Wno-unused-command-line-argument" `
+     -S . -B build
+   ```
+
+3. Build the editor (this also builds the `Hamster` Python module):
+
+   ```powershell
+   cmake --build build --target Hamster-Wheel -j 8
+   ```
+
+4. Run it:
+
+   ```powershell
+   .\build\Hamster-Wheel\Hamster-Wheel.exe
+   ```
+
+</Steps>
+
+<Aside type="tip">
+The two CMake flags are deliberate: `/EHsc` enables C++ exceptions (clang-cl defaults them off; pybind11 needs them), and `-Wno-unused-command-line-argument` silences a flag Box2D's CMake passes that clang-cl doesn't recognise.
+</Aside>
+
+To produce the installer yourself, do a Release build and run the packaging script (requires [Inno Setup 6](https://jrsoftware.org/isdl.php)):
+
+```powershell
+cmake --build build-release --target Hamster-Wheel Hamster -j 8
+.\Scripts\package.ps1 -MakeInstaller   # -> dist\HamsterSetup.exe
 ```
 
-Currently, in order to use Hamster, you need to build the project yourself. This can be done with the following commands:
+## Open the editor
 
-<Tabs>
-  <TabItem label="Windows" icon="seti:windows">
-    ```sh
-    ./scripts/setup-windows.bat
-    ```
-  </TabItem>
-  <TabItem label="Linux" icon="linux">
-    ```sh
-    ./scripts/setup-linux.sh
-    ``` 
-  </TabItem>
-</Tabs>
+However you installed it, launching Hamster opens the **project hub**. Create a new project (you'll pick a name and a target resolution), and the editor scaffolds an `Assets/{Textures, Scripts, Animations}` folder layout and copies in the `Hamster` Python module so your scripts can `import Hamster`.
 
-### Using Hamster in Python
+![The Hamster project hub](/Hamster/docs/project-hub.png)
 
-A new file will be generated following this for the Python module, this file will be named `Hamster.cpython-...`. Copy this file and paste it into the directory of your python project.
-
-Import Hamster into your file.
-
-```python
-import Hamster
-```
-
-And voila! You will now be able to use Hamster. 
-
-<Aside type="danger">Hamster is in the early stages of development so use at your own risk!</Aside>
+From here, head to **[Your First Game](/Hamster/start-here/your-first-game)** to build something.
