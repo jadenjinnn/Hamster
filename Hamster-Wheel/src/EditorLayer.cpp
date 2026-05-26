@@ -404,11 +404,37 @@ void EditorLayer::OnUpdate() {
     // viewport gets reset right after FBO unbind below so the intermediate
     // state never escapes this block.
     if (m_LevelEditorAvailRegion.x > 0 && m_LevelEditorAvailRegion.y > 0) {
-        glViewport(0, 0,
-                   static_cast<int>(m_LevelEditorAvailRegion.x),
-                   static_cast<int>(m_LevelEditorAvailRegion.y));
-        m_Scene->OnRenderUI(m_LevelEditorAvailRegion.x,
-                            m_LevelEditorAvailRegion.y);
+        // Anchor the UI preview to the play-area box (world (0,0)->(target)) so
+        // it matches where it renders in the play window — not to the whole
+        // panel. Map that world rect to an FBO viewport via the inverse of
+        // PanelMouseToWorld, then render the UI (sized to the target res) into
+        // it. (bug 0019)
+        auto activeProject = Hamster::Project::GetCurrentProject();
+        float zoom = m_Renderer->GetZoom();
+        if (activeProject && zoom > 0.0f) {
+            const auto &cfg = activeProject->GetConfig();
+            glm::vec2 cam = m_Renderer->GetCameraOffset();
+            float tw = static_cast<float>(cfg.TargetWidth);
+            float th = static_cast<float>(cfg.TargetHeight);
+            float panelH = m_LevelEditorAvailRegion.y;
+            float vpH = static_cast<float>(m_Renderer->GetViewportHeight());
+            // Play-area world (0,0)->(tw,th) in panel (top-left) coords:
+            float px = -cam.x * zoom;
+            float py = -cam.y * zoom - (vpH - panelH);
+            float pw = tw * zoom;
+            float ph = th * zoom;
+            // glViewport is bottom-left within the panel-sized FBO:
+            glViewport(static_cast<int>(px),
+                       static_cast<int>(panelH - (py + ph)),
+                       static_cast<int>(pw), static_cast<int>(ph));
+            m_Scene->OnRenderUI(tw, th);
+        } else {
+            glViewport(0, 0,
+                       static_cast<int>(m_LevelEditorAvailRegion.x),
+                       static_cast<int>(m_LevelEditorAvailRegion.y));
+            m_Scene->OnRenderUI(m_LevelEditorAvailRegion.x,
+                                m_LevelEditorAvailRegion.y);
+        }
     }
 
     m_FramebufferTexture.Unbind();
@@ -771,14 +797,18 @@ void EditorLayer::OnImGuiUpdate() {
     ImGui::End();
 
     // Focus the Console when the simulation starts (edit -> play edge), so
-    // script logs and errors are immediately visible.
+    // script logs and errors are immediately visible. SetNextWindowFocus before
+    // Begin is the reliable focus path (a SetWindowFocus inside the panel got
+    // overridden by the viewport keeping focus after the Play-button click).
     bool simRunning = m_Scene && !m_Scene->IsSceneSimulationPaused();
-    if (simRunning && !m_PrevSimRunning) m_BottomPanel->ShowConsole();
+    bool focusConsole = simRunning && !m_PrevSimRunning;
+    if (focusConsole) m_BottomPanel->ShowConsole();
     m_PrevSimRunning = simRunning;
 
     // Bottom panel
     ImGui::SetNextWindowPos({centerX, bottomY});
     ImGui::SetNextWindowSize({centerW, bottomH});
+    if (focusConsole) ImGui::SetNextWindowFocus();
     ImGui::Begin("##BottomPanel", nullptr, kPanelFlags);
     m_BottomPanel->Render();
     ImGui::End();
