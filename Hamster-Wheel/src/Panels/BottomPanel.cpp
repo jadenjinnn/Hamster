@@ -17,6 +17,14 @@ BottomPanel::BottomPanel(Hamster::EventDispatcher *dispatcher,
 }
 
 void BottomPanel::Render() {
+    // Focus the panel when a console-focus was requested (e.g. on play start).
+    // Runs inside the ##BottomPanel window EditorLayer begins around Render(),
+    // so SetWindowFocus targets that window; the tab was already set to Console.
+    if (m_FocusConsole) {
+        ImGui::SetWindowFocus();
+        m_FocusConsole = false;
+    }
+
     const char *tabs[] = {"Asset Browser", "Animation", "Console"};
     g_BottomPanel.DrawTabbedHeader(tabs, 3, &m_Tab);
     g_BottomPanel.BeginContent();

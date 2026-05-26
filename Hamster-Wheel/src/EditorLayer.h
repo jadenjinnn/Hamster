@@ -100,6 +100,9 @@ public:
     bool m_ViewportHovered = false;
     entt::entity m_HoveredEntity = entt::null;
 
+    // Edge-detect the play/edit transition to focus the Console on play start.
+    bool m_PrevSimRunning = false;
+
     // UI drag (edit mode). On click into a UIButton, capture the initial
     // offset so subsequent mouse-drag deltas mutate it; the sign-flip is
     // re-applied per frame so +x mouse always moves the rect rightward

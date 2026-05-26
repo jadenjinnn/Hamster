@@ -770,6 +770,12 @@ void EditorLayer::OnImGuiUpdate() {
 
     ImGui::End();
 
+    // Focus the Console when the simulation starts (edit -> play edge), so
+    // script logs and errors are immediately visible.
+    bool simRunning = m_Scene && !m_Scene->IsSceneSimulationPaused();
+    if (simRunning && !m_PrevSimRunning) m_BottomPanel->ShowConsole();
+    m_PrevSimRunning = simRunning;
+
     // Bottom panel
     ImGui::SetNextWindowPos({centerX, bottomY});
     ImGui::SetNextWindowSize({centerW, bottomH});

@@ -23,8 +23,13 @@ public:
 
     void Render();
 
+    // Switch to the Console tab and focus the panel — called when the scene
+    // simulation starts so script logs/errors are immediately visible.
+    void ShowConsole() { m_Tab = 2; m_FocusConsole = true; }
+
 private:
     int m_Tab = 0;
+    bool m_FocusConsole = false;
     std::unique_ptr<AssetBrowser> m_AssetBrowser;
     std::unique_ptr<AnimationPanel> m_AnimationPanel;
     std::unique_ptr<Console> m_Console;
