@@ -614,7 +614,7 @@ namespace Hamster {
         glActiveTexture(GL_TEXTURE0);
         m_BatchTexture->BindTexture();
 
-        glBindVertexArray(m_BatchVAO);
+        glBindVertexArray(m_PopoutMode ? m_BatchVAO_Popout : m_BatchVAO);
         glBindBuffer(GL_ARRAY_BUFFER, m_BatchVBO);
         glBufferSubData(GL_ARRAY_BUFFER, 0,
                         m_BatchVerts.size() * sizeof(float),
@@ -637,6 +637,66 @@ namespace Hamster {
         }
         m_BatchTexture = nullptr;
         m_DrawCallsLastFrame = m_DrawCallsThisFrame;
+    }
+
+    void Renderer::CreatePopoutVertexArrays() {
+        // Must run with the popout's GL context current. Recreates the three
+        // VAOs the popout render uses, wiring the SAME shared VBOs with the
+        // identical attribute layouts from InitRendererData (bug 0017).
+
+        // Sprite batch: vec2 pos, vec2 uv, vec3 colour.
+        glGenVertexArrays(1, &m_BatchVAO_Popout);
+        glBindVertexArray(m_BatchVAO_Popout);
+        glBindBuffer(GL_ARRAY_BUFFER, m_BatchVBO);
+        {
+            const GLsizei stride = kFloatsPerVertex * sizeof(float);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, (void *)0);
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride,
+                                  (void *)(2 * sizeof(float)));
+            glEnableVertexAttribArray(2);
+            glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, stride,
+                                  (void *)(4 * sizeof(float)));
+        }
+
+        // UI rect: vec2 pos, vec4 colour (stride 6).
+        glGenVertexArrays(1, &m_UIRectVAO_Popout);
+        glBindVertexArray(m_UIRectVAO_Popout);
+        glBindBuffer(GL_ARRAY_BUFFER, m_UIRectVBO);
+        {
+            const GLsizei stride = 6 * sizeof(float);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, (void *)0);
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, stride,
+                                  (void *)(2 * sizeof(float)));
+        }
+
+        // UI text: vec2 pos, vec2 uv, vec4 colour (stride 8).
+        glGenVertexArrays(1, &m_UITextVAO_Popout);
+        glBindVertexArray(m_UITextVAO_Popout);
+        glBindBuffer(GL_ARRAY_BUFFER, m_UITextVBO);
+        {
+            const GLsizei stride = 8 * sizeof(float);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, (void *)0);
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride,
+                                  (void *)(2 * sizeof(float)));
+            glEnableVertexAttribArray(2);
+            glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride,
+                                  (void *)(4 * sizeof(float)));
+        }
+
+        glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+        // GL render state is per-context too — match the editor's setup
+        // (InitRendererData) so the popout blends sprites and ignores depth.
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
 
     void Renderer::BeginUIPass(float panelWidth, float panelHeight) {
@@ -789,7 +849,7 @@ namespace Hamster {
         // Rect pass — opaque background, draws first so text lands on top.
         if (m_UIRectShader && !m_UIRectVerts.empty()) {
             m_UIRectShader->use();
-            glBindVertexArray(m_UIRectVAO);
+            glBindVertexArray(m_PopoutMode ? m_UIRectVAO_Popout : m_UIRectVAO);
             glBindBuffer(GL_ARRAY_BUFFER, m_UIRectVBO);
             glBufferSubData(GL_ARRAY_BUFFER, 0,
                             m_UIRectVerts.size() * sizeof(float),
@@ -810,7 +870,7 @@ namespace Hamster {
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, m_FontAtlas->GetTextureId());
 
-            glBindVertexArray(m_UITextVAO);
+            glBindVertexArray(m_PopoutMode ? m_UITextVAO_Popout : m_UITextVAO);
             glBindBuffer(GL_ARRAY_BUFFER, m_UITextVBO);
             glBufferSubData(GL_ARRAY_BUFFER, 0,
                             m_UITextVerts.size() * sizeof(float),

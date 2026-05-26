@@ -427,9 +427,12 @@ void EditorLayer::OnUpdate() {
             m_Renderer->SetZoom(1.0f);
             m_Renderer->SetCameraOffset(glm::vec2(0.0f, 0.0f));
 
+            // Bind the popout-context VAOs for this render (bug 0017).
+            m_Renderer->SetPopoutMode(true);
             m_Scene->OnRender(false);
             m_Scene->OnRenderUI(static_cast<float>(popoutW),
                                 static_cast<float>(popoutH));
+            m_Renderer->SetPopoutMode(false);
 
             glfwSwapBuffers(popout);
 

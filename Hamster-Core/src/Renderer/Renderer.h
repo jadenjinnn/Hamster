@@ -50,6 +50,16 @@ namespace Hamster {
         void EndSpriteBatch();
         uint32_t GetLastFrameDrawCallCount() const { return m_DrawCallsLastFrame; }
 
+        // Popout play-window support. VAOs (and GL render state) are NOT shared
+        // across GL contexts, even shared ones — only buffers/textures/shaders
+        // are. The popout has its own context, so it needs its own VAOs (wiring
+        // the shared VBOs) and its own blend/depth state. Call
+        // CreatePopoutVertexArrays() once with the popout context current, then
+        // wrap the popout's scene render in SetPopoutMode(true)/(false) so the
+        // draw paths bind the popout VAOs (bug 0017).
+        void CreatePopoutVertexArrays();
+        void SetPopoutMode(bool on) { m_PopoutMode = on; }
+
         void DrawFlat(glm::vec2 position, glm::vec2 size, float rotation,
                       glm::vec3 colour);
 
@@ -145,6 +155,14 @@ namespace Hamster {
         // to exactly the same maximum to avoid runtime growth.
         unsigned int m_BatchVAO = 0;
         unsigned int m_BatchVBO = 0;
+
+        // Popout-context duplicates of the VAOs the scene + UI render use. The
+        // shared VBOs are reused; only the VAO objects differ per context.
+        // m_PopoutMode selects them at the draw-bind sites (bug 0017).
+        unsigned int m_BatchVAO_Popout = 0;
+        unsigned int m_UIRectVAO_Popout = 0;
+        unsigned int m_UITextVAO_Popout = 0;
+        bool m_PopoutMode = false;
         std::vector<float> m_BatchVerts;
         Texture *m_BatchTexture = nullptr;
         float m_BatchZ = 0.0f;

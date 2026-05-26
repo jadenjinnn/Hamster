@@ -348,9 +348,14 @@ namespace Hamster {
             }
         });
 
-        // After creating the new window, GLFW makes its context current as a
-        // side effect. Restore the editor's context so subsequent rendering
-        // still targets it. Stage 5 will switch deliberately each frame.
+        // VAOs and GL render state are per-context (not shared like buffers /
+        // textures / shaders), so the popout needs its own VAOs wiring the
+        // shared VBOs and its own blend/depth state, or it renders nothing
+        // (bug 0017). glfwCreateWindow does NOT make the new context current
+        // (the old comment here claimed it did — it doesn't), so switch to the
+        // popout context explicitly to build them, then restore the editor's.
+        glfwMakeContextCurrent(m_PlayWindow);
+        if (m_Renderer) m_Renderer->CreatePopoutVertexArrays();
         if (editor) glfwMakeContextCurrent(editor);
     }
 
