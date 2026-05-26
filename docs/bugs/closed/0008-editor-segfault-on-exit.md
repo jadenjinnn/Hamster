@@ -1,8 +1,8 @@
 # Bug 0008: editor segfaults on exit (post-Application destructor)
 
-> Status: **open**
-> Severity: **Low**
-> Tier: blank
+> Status: **fixed**
+> Severity: **Medium** (raised from Low — it caused bug 0016's data loss)
+> Tier: **2**
 > Logged: 2026-05-17
 > Found while: spatial-index feature manual verification
 
@@ -68,21 +68,28 @@ the crash happens before any "Application destroyed" log; sometimes after.
 
 ## Root cause
 
-<!-- TBD — needs investigation. Filled at fix time. -->
+Two independent teardown-order faults, both producing SIGSEGV:
 
-## What would have prevented this (AUTHOR WRITES — Tier 2/3 only)
+1. **Dead GL context during layer shutdown.** `Application::Close` (the window-close handler) called `m_Window.reset()` immediately, which runs `glfwDestroyWindow` + `glfwTerminate`. The destructor then pops the layer stack — `ImGuiLayer::OnDetach` runs `ImGui_ImplOpenGL3_Shutdown` / `ImGui_ImplGlfw_Shutdown` — on an already-terminated GLFW/dead GL context.
 
-<!-- AUTHOR: write one sentence in your own words at fix time. -->
+2. **Dead interpreter during scene teardown (same class as bug 0007).** The destructor cleared `m_Scenes` and finalised Python, but `m_ActiveScene` is a *second* `shared_ptr<Scene>`, and the static `Project::s_ActiveProject` holds the start-scene plus the file-watcher thread. Those refs outlived `FinaliseInterpreter()` and were released during implicit/static destruction, decref-ing `Behaviour::pyObjects` on a dead interpreter (and the watcher thread touched a freed AssetManager). Bug 0007 fixed `m_Scenes` but missed these holders — exactly the "less-obvious holder" its notes predicted.
+
+## What would have prevented this
+
+Treating "release everything that holds a GL or Python handle, in dependency order, before terminating GLFW / finalising Python" as an explicit, single owned step (with the duplicate scene `shared_ptr`s accounted for) rather than leaning on implicit/static destruction order.
 
 ---
 
 ## Fix
 
-<!-- TBD -->
+`Hamster-Core/src/Core/Application.cpp` + `Project.{h,cpp}`:
+- `Application::Close` no longer destroys the window; the window now outlives the destructor's layer-pop so ImGui/GL shutdown runs on a live context, and the window is destroyed last via implicit member destruction.
+- The destructor resets `m_ActiveScene` and calls the new `Project::Close()` (which resets `s_ActiveProject`, stopping the watcher thread and releasing the start-scene) **before** `FinaliseInterpreter()` and `m_AssetManager.reset()`, so all scene/script teardown happens with a live interpreter and a live AssetManager.
 
 ## Verification
 
-<!-- TBD -->
+- Smoke test PASS — it constructs an `Application`, runs script scenarios (creating `Behaviour::pyObjects`), and tears down at exit; a clean pass exercises the interpreter-finalise ordering with no crash.
+- Editor: open a project, Play/Stop, close the window → process exits 0 (no 139). Confirmed by author.
 
 ---
 

@@ -139,6 +139,14 @@ namespace Hamster {
         // interpreter (HamsterScript::m_Module, Behaviour::pyObjects), which
         // is UB and crashes in practice once enough modules accumulate.
         m_Scenes.clear();
+        // bug 0008: m_ActiveScene is a *second* shared_ptr to the active scene,
+        // so clearing m_Scenes alone left it alive — it was then destroyed in
+        // implicit member destruction, AFTER FinaliseInterpreter, decref'ing
+        // its Behaviour::pyObjects on a dead interpreter (SIGSEGV). Drop it,
+        // and close the static Project (which holds the start-scene + the file
+        // watcher thread), before finalising Python and freeing the AssetManager.
+        m_ActiveScene.reset();
+        Project::Close();
         m_AssetManager.reset();
 
         Scripting::FinaliseInterpreter();
@@ -242,7 +250,19 @@ namespace Hamster {
 
     void Application::Close(WindowCloseEvent &e) {
         m_Running = false;
-        m_Window.reset();
+
+        // Persist scenes NOW — while the interpreter, AssetManager, and scenes
+        // are all alive — instead of relying on the destructor (bug 0016).
+        // The dtor saves too, but doing it here guarantees the write lands
+        // before any teardown can go wrong.
+        Project::SaveCurrentProject(m_AssetManager.get());
+        for (auto const &[uuid, scene] : m_Scenes) {
+            Scene::SaveScene(scene);
+        }
+
+        // Do NOT destroy the window here. It must outlive the destructor's
+        // layer-pop, because ImGui/GL shutdown needs a live context — calling
+        // glfwTerminate here ran that shutdown on a dead context (bug 0008).
     }
 
     void Application::OpenPlayWindow(int width, int height,

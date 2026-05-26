@@ -797,16 +797,14 @@ void Scene::RebuildSpatialIndex() {
 }
 
 void Scene::SaveScene(std::shared_ptr<Scene> scene) {
-  std::cout << "Saving scene" << std::endl;
-
-  SceneSerialiser serialiser(scene);
-
-  std::cout << scene->GetPath() << std::endl;
-
+  // Pass the AssetManager so sprite asset references serialise correctly —
+  // this matches the play-snapshot serialiser. The AssetManager-less ctor was
+  // the odd one out and could drop sprite asset data (bug 0016 hardening).
+  AssetManager *am =
+      scene->GetApp() ? scene->GetApp()->GetAssetManager() : nullptr;
+  SceneSerialiser serialiser(scene, am);
   std::ofstream out(scene->GetPath(), std::ios::binary);
-
   serialiser.Serialise(out);
-
   out.close();
 }
 

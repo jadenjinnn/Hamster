@@ -225,6 +225,13 @@ namespace Hamster {
         }
     }
 
+    void Project::Close() {
+        // Dropping the last shared_ptr runs ~Project: ~ProjectWatcher stops the
+        // watcher thread and m_StartScene is released. Done before the caller
+        // finalises Python so any scene/script teardown sees a live interpreter.
+        s_ActiveProject.reset();
+    }
+
     void Project::SetStartScene(std::shared_ptr<Scene> scene) {
         m_StartScene = std::move(scene);
     }

@@ -36,6 +36,11 @@ public:
 
   static void SaveCurrentProject(AssetManager *assetManager);
 
+  // Releases the active project (stops its file watcher, drops its start-scene
+  // shared_ptr). Call during shutdown BEFORE finalising the Python interpreter
+  // so scene/script teardown happens while the interpreter is still alive (bug 0008).
+  static void Close();
+
   void SetStartScene(std::shared_ptr<Scene> scene);
 
   // Starts the file-system watcher on the project directory. Must be called
