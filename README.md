@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/hamster-logo.png" alt="Hamster" width="140">
+</p>
+
 # Hamster
 
 **A 2D game engine with an embedded Python scripting layer and a full visual editor.** Author gameplay in Python against a native C++ runtime — ECS, OpenGL rendering, Box2D physics — and build scenes in a custom Dear ImGui editor, then press Play to run the game in its own window.
@@ -32,16 +36,14 @@ import Hamster
 
 class Player(Hamster.HamsterBehaviour):
     def on_create(self):
-        self.speed = 600.0
+        self.speed = 2500.0
 
     def on_update(self, delta_time):
-        if self.key_pressed(Hamster.key_code.D):
-            self.apply_force(self.speed, 0.0)
-        if self.key_pressed(Hamster.key_code.A):
+        key = self.key_pressed                 # key held this frame
+        if key == Hamster.key_code.key_d:
+            self.apply_force(self.speed, 0.0)   # needs a Rigidbody
+        elif key == Hamster.key_code.key_a:
             self.apply_force(-self.speed, 0.0)
-
-    def on_collision(self, other):
-        self.log("hit something")
 ```
 
 ## Features
