@@ -108,14 +108,13 @@ struct EntityHandle {
     scene->GetEntityComponent<Hamster::UIText>(uuid).text = text;
   }
 
-  // Look the texture up by name in AssetManager and assign it to this
-  // entity's Sprite. Entity must already have a Sprite component (call
-  // add_component(Sprite(...)) first). Added so the batching benchmark
-  // script can spawn textured sprites at runtime without going through
-  // the editor.
-  // TODO(spritesheet stage 2): switch this to AssetManager::FindAssetByName
-  // so sub-sprite names resolve too, and stash the asset UUID on Sprite for
-  // ResolveSpriteSource to apply the UV rect at render time.
+  // Assign an asset to this entity's Sprite by name. Resolves over the unified
+  // texture + sub-sprite namespace (FindAssetByName) and stores the asset UUID
+  // on the Sprite; the renderer's ResolveSpriteSource applies the whole-texture
+  // or the sub-sprite UV rect at draw time. Entity must already have a Sprite
+  // component (call add_component(Sprite(...)) first). This is what lets a
+  // runtime-spawned entity use a spritesheet sub-sprite, e.g.
+  // set_texture("pipedown").
   void SetTexture(const std::string &name) {
     if (Hamster::UUID::IsNil(uuid)) return;
     if (!scene->EntityHasComponent<Hamster::Sprite>(uuid)) {
@@ -126,13 +125,12 @@ struct EntityHandle {
       throw py::value_error("set_texture: no AssetManager available");
     }
     auto *am = app->GetAssetManager();
-    for (auto const &[texUUID, tex] : am->GetTextureMap()) {
-      if (tex && tex->GetName() == name) {
-        scene->GetEntityComponent<Hamster::Sprite>(uuid).texture = tex;
-        return;
-      }
+    Hamster::UUID assetUUID = am->FindAssetByName(name);
+    if (Hamster::UUID::IsNil(assetUUID)) {
+      throw py::value_error(
+          "set_texture: no texture or sub-sprite named '" + name + "'");
     }
-    throw py::value_error("set_texture: no texture named '" + name + "'");
+    scene->GetEntityComponent<Hamster::Sprite>(uuid).assetUUID = assetUUID;
   }
 };
 
