@@ -4,6 +4,9 @@
 #include <cmath>
 #include <imgui.h>
 
+#include <Core/Application.h>
+#include <Utils/AssetManager.h>
+
 #include "Theme/IconsFontAwesome6.h"
 
 static constexpr float kHandleSize = 8.0f;
@@ -113,13 +116,28 @@ void ColliderEditor::Render() {
   ImVec2 refTL = {center.x - refW * 0.5f, center.y - refH * 0.5f};
   ImVec2 refBR = {center.x + refW * 0.5f, center.y + refH * 0.5f};
 
-  // Draw sprite or grey reference rect
-  if (sprite && sprite->texture && sprite->texture->GetTextureId() != 0) {
-    dl->AddImage(
-        (ImTextureID)(intptr_t)sprite->texture->GetTextureId(),
-        refTL, refBR,
-        {0, 0}, {1, 1},
-        IM_COL32(255, 255, 255, 200));
+  // Draw sprite or grey reference rect. Resolve the Sprite's asset to a
+  // (texture, UV sub-rect) so a spritesheet sub-sprite shows just its region
+  // instead of the whole sheet — mirrors Scene::OnRender / PropertyEditor,
+  // which resolve via SpriteSource rather than the raw ->texture pointer.
+  Hamster::Texture *tex = nullptr;
+  glm::vec4 uv(0.0f, 0.0f, 1.0f, 1.0f);
+  if (sprite) {
+    Hamster::Application *app = m_Scene ? m_Scene->GetApp() : nullptr;
+    Hamster::AssetManager *am = app ? app->GetAssetManager() : nullptr;
+    if (am && !Hamster::UUID::IsNil(sprite->assetUUID)) {
+      Hamster::SpriteSource src = am->ResolveSpriteSource(sprite->assetUUID);
+      tex = src.texture;
+      uv = src.uvRect;
+    } else if (sprite->texture) {
+      tex = sprite->texture.get(); // legacy whole-texture sprite
+    }
+  }
+  if (tex && tex->GetTextureId() != 0) {
+    ImVec2 uv0 = {uv.x, uv.y};
+    ImVec2 uv1 = {uv.x + uv.z, uv.y + uv.w};
+    dl->AddImage((ImTextureID)(intptr_t)tex->GetTextureId(), refTL, refBR, uv0,
+                 uv1, IM_COL32(255, 255, 255, 200));
   } else {
     dl->AddRectFilled(refTL, refBR, kRefRectColor);
   }
