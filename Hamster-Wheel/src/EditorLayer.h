@@ -82,6 +82,11 @@ public:
     bool m_LeftGrabberHeld     = false;
     bool m_BgHeld              = false;
 
+    // Aspect-lock for corner resize: capture the sprite's aspect ratio when a
+    // corner grab starts; while Shift is held the drag preserves it.
+    bool  m_CornerGrabActive = false;
+    float m_GrabAspect       = 1.0f;
+
     float m_MouseHeldTransformX = 0.0f;
     float m_MouseHeldTransformY = 0.0f;
 

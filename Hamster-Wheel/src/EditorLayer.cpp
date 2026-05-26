@@ -268,19 +268,35 @@ void EditorLayer::OnUpdate() {
         Hamster::Transform *t =
             &m_Scene->GetRegistry().get<Hamster::Transform>(sel);
 
-        if (m_BotRightGrabberHeld) { t->size.x += mouseDelta.x; t->size.y += mouseDelta.y; }
-        else if (m_TopLeftGrabberHeld) {
-            t->size.x -= mouseDelta.x; t->size.y -= mouseDelta.y;
-            t->position.x += mouseDelta.x; t->position.y += mouseDelta.y;
+        // Capture the sprite aspect ratio at the start of a corner grab, so
+        // Shift can lock to it for the whole drag.
+        bool cornerHeld = m_TopLeftGrabberHeld || m_TopRightGrabberHeld ||
+                          m_BotLeftGrabberHeld || m_BotRightGrabberHeld;
+        if (cornerHeld && !m_CornerGrabActive) {
+            m_GrabAspect = (t->size.y != 0.0f) ? (t->size.x / t->size.y) : 1.0f;
         }
-        else if (m_TopRightGrabberHeld) {
-            t->size.x += mouseDelta.x; t->size.y -= mouseDelta.y;
-            t->position.y += mouseDelta.y;
-        }
-        else if (m_BotLeftGrabberHeld) {
-            t->size.x -= mouseDelta.x; t->size.y += mouseDelta.y;
-            t->position.x += mouseDelta.x;
-        }
+        m_CornerGrabActive = cornerHeld;
+
+        // Corner resize. ex/ey: which edge moves (+1 right/bottom, -1 left/top).
+        // Width follows horizontal mouse; height follows vertical, OR is derived
+        // from width to preserve the aspect ratio while Shift is held. The
+        // opposite corner stays fixed (position shifts when a left/top edge moves).
+        const bool shiftLock = ImGui::GetIO().KeyShift && m_GrabAspect != 0.0f;
+        auto resizeCorner = [&](float ex, float ey) {
+            float oldW = t->size.x, oldH = t->size.y;
+            float newW = oldW + ex * mouseDelta.x;
+            float newH = shiftLock ? (newW / m_GrabAspect)
+                                   : (oldH + ey * mouseDelta.y);
+            t->size.x = newW;
+            t->size.y = newH;
+            if (ex < 0.0f) t->position.x += (oldW - newW); // left edge: keep right
+            if (ey < 0.0f) t->position.y += (oldH - newH); // top edge: keep bottom
+        };
+
+        if (m_BotRightGrabberHeld)      { resizeCorner(+1.0f, +1.0f); }
+        else if (m_TopLeftGrabberHeld)  { resizeCorner(-1.0f, -1.0f); }
+        else if (m_TopRightGrabberHeld) { resizeCorner(+1.0f, -1.0f); }
+        else if (m_BotLeftGrabberHeld)  { resizeCorner(-1.0f, +1.0f); }
         else if (m_TopGrabberHeld) {
             t->size.y -= mouseDelta.y; t->position.y += mouseDelta.y;
         }
