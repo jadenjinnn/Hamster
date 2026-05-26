@@ -1,6 +1,0 @@
-<RCC>
-    <qresource prefix="/panels"/>
-    <qresource prefix="/icons">
-        <file>icons/pencil-solid 2.svg</file>
-    </qresource>
-</RCC>

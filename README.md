@@ -1,29 +1,174 @@
 # Hamster
 
-Hamster is a game engine that is intended to be used in the classroom to teach beginners Python programming. It is intuitive and simple to use. The Python api can be used by itself as a library or used together with the graphical editor (work in progress). Hamster differs from existing Python libraries which enable game creation such as PyGame in its "pythonic" design rather than the object oriented design of many libraries. It is also much easier to use and get started.
+**A 2D game engine with an embedded Python scripting layer and a full visual editor.** Author gameplay in Python against a native C++ runtime — ECS, OpenGL rendering, Box2D physics — and build scenes in a custom Dear ImGui editor, then press Play to run the game in its own window.
 
-## What's new
+![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![OpenGL](https://img.shields.io/badge/OpenGL-4.0-5586A4?logo=opengl&logoColor=white)
+![CMake](https://img.shields.io/badge/CMake-Ninja-064F8C?logo=cmake&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white)
 
-- **Editor theme**: dark Figma-inspired theme with Inter font, Font Awesome icons, viewport play/pause/stop overlay, and consistent panel styling
-- **Sprite preview**: texture thumbnail with tint, dimensions, and inline color picker in the PropertyEditor
-- **Scene viewer**: dot grid, right-click context menus, zoom slider, axis gizmo, 8-handle selection box with resize
-- **UI polish**: bold typographic hierarchy, card-grid asset/file browsers, refined spacing across all panels
-- **Project hub redesign**: fullscreen card-grid hub with top bar, search, template-based create modal, and open-project flow
-- **Project registry**: persistent project list with create, open, rename, and delete from the hub
-- **Box2D physics**: gravity, velocity, forces/impulses, body types (static/dynamic/kinematic), box and circle colliders with density, friction, restitution, and gravity scale
-- **Collider editor**: visual editor for adjusting collider offset and size independently from sprite bounds, with drag handles for box and circle shapes
-- **Runtime entity management**: create and destroy entities from Python scripts at runtime with `create_entity`, `destroy_entity`, and `add_component` for Sprite and Rigidbody
-- **Animation system**: time-based sprite-swap animations with `.hanim` file format, Animation component, timeline editor panel with draggable keyframes, preview playback, Python API (`self.animate()`, `self.stop_animation()`, `self.is_animating`, `on_animation_complete`), and `AnimationCompleted` event
-- **Editor rewrite**: editor frontend rebuilt from the UI prototype with a fixed proportional card-style layout, custom borderless title bar with integrated menus and drag/maximise/close, custom panel headers with the underlined-accent tab style, and reusable component helpers (`HButton`, `HCombo`, `AxisDotInput`, `SectionHeader`) consumed by every panel
-- **Entity hierarchy**: parent/child entity relationships (organisational — no transform inheritance), recursive Hierarchy panel with collapse / drag-to-reparent / drag-to-reorder, cascading destroy, cycle-creating reparents refused, Python API (`self.parent`, `self.children`, `self.set_parent`, `create_entity(parent=)`), scene file persistence
-- **Asset sidecars**: scripts and textures get human-readable filenames (no more `Untitled_Script_<uuid>.py`); identity persists in `.meta` sidecars next to each file so renames survive both the editor and external tools (VS Code, Explorer); subdirectories supported with Python dotted-module imports (`enemies/boss.py` → `import enemies.boss`); a Win32 file watcher picks up external add/remove/rename live; missing references render as red `MISSING: <name>` in the Property Editor with a one-click "Reassign to" recovery; simulation refuses to start while any reference is unresolved
-- **Non-destructive play mode**: scene state is snapshotted on play and restored on stop — runtime-spawned entities, physics-moved transforms, and script-mutated components all revert when simulation ends. PropertyEditor and File→Save are disabled during play to make the no-mutate guarantee explicit (matches Unity)
-- **Sprite batching + spatial index**: same-texture sprite batching collapses N draw calls to 1 (`Renderer::BeginSpriteBatch` / `SubmitSprite` / `EndSpriteBatch`); quadtree spatial index over the ECS drives viewport-rect culling for the render path and O(log N + k) cursor-point picking in the editor; replaces the previous per-frame full-scene FBO + glReadPixels picking
-- **Project resolution + popout play window**: every project declares a target window resolution at creation (preset or custom); the editor scene viewport shows a grey outline of that play area; pressing Play opens a separate non-resizable OS window sized exactly to the target resolution, with keyboard + mouse input routed to it so the game feels like a real shipped binary while the editor stays editable
-- **Spritesheet support**: slice a PNG into named sub-sprites in a dedicated editor (drag to draw regions, resize/move handles, rename, delete, right-drag to pan; open via right-click → Edit Slices or double-clicking the card); regions persist in a `.png.sheet` sidecar that travels with renames; a `Sprite` can reference either a whole texture or a sub-sprite through one UUID (`AssetManager::ResolveSpriteSource`); the Asset Browser expands a sheet inline (with a grouping tray) to show its sub-sprites; drag sub-sprites onto the Sprite field or the Animation timeline; deleted references render the pink/black MISSING checker
-- **Project asset folders**: new projects scaffold `Assets/{Textures,Scripts,Animations}` (created on open if missing); imports, new scripts, and animations default into them; the Asset Browser is rooted at `Assets/` with a folder breadcrumb + back button
-- **Game UI**: anchored screen-space `UIButton` / `UIText` components rendered in a dedicated UI pass over the world, with a baked font atlas; buttons dispatch `on_button_clicked` to scripts; entities are reachable by name via `find_entity_by_name`
-- **Windows installer**: a standalone `HamsterSetup.exe` that installs and runs the editor on a machine with **no Python and no Visual Studio** — CPython is bundled via the official embeddable package (isolated `._pth`), the MSVC runtime ships app-local, and `Scripts/package.ps1` assembles the install tree (with a manifest check) before Inno Setup packs it. Per-user or per-machine install, Start-menu shortcut, uninstaller. The editor is a windowed app (no console) and logs to `%APPDATA%/Hamster/log.txt`
+<!-- Live demo: [link] -->
 
-## Getting Started
-To get started, follow the documentation at https://doritothepug.github.io/Hamster
+> Hamster started as a tool for teaching beginners Python by writing small games — that "scripting must stay dead-simple" constraint shaped the whole engine. It's a personal engineering project; the focus below is the systems work.
+
+## Demo
+
+<!-- Replace the GIFs in docs/ — capture instructions are in the project notes. -->
+
+|  |  |
+|:--:|:--:|
+| **Scene editor** — hierarchy, property panel, gizmo drag/resize, asset browser | **Play mode** — popout game window, Box2D physics, scripted movement |
+| ![Editor](docs/demo-editor.gif) | ![Play mode](docs/demo-play.gif) |
+| **Python scripting** — write a `HamsterBehaviour`, attach it, press Play | **Spritesheet + animation** — slice a sheet, build a keyframe timeline |
+| ![Scripting](docs/demo-scripting.gif) | ![Spritesheet](docs/demo-spritesheet.gif) |
+
+## What a Hamster script looks like
+
+Gameplay lives in Python. A script subclasses `HamsterBehaviour`; the C++ runtime instantiates it per entity and drives it with per-frame and event callbacks. Scripts call back into the engine for input, physics, transforms, and entity lookup.
+
+```python
+import Hamster
+
+class Player(Hamster.HamsterBehaviour):
+    def on_create(self):
+        self.speed = 600.0
+
+    def on_update(self, delta_time):
+        if self.key_pressed(Hamster.key_code.D):
+            self.apply_force(self.speed, 0.0)
+        if self.key_pressed(Hamster.key_code.A):
+            self.apply_force(-self.speed, 0.0)
+
+    def on_collision(self, other):
+        self.log("hit something")
+```
+
+## Features
+
+**Rendering**
+- OpenGL 4.0 sprite renderer with same-texture **batching** (collapses N draws into one `glDrawArrays`)
+- Separate anchored **screen-space UI pass** with a baked glyph atlas for in-game text
+- Quadtree **spatial index** over the ECS for viewport culling and O(log n + k) cursor picking
+- Camera pan/zoom, pixel-art nearest filtering, per-sprite tint and UV sub-rects
+
+**Simulation**
+- **Entity-component-system** via EnTT (Transform, Sprite, Rigidbody, Animation, Behaviour, UI components)
+- **Box2D 3.x physics** — gravity, forces/impulses, velocity, static/dynamic/kinematic bodies, box & circle colliders with density/friction/restitution
+- Time-based **sprite animation** with a keyframe timeline and `.hanim` format
+- Parent/child **entity hierarchy** with cascading destroy
+
+**Python scripting (pybind11)**
+- Embedded CPython interpreter; C++ drives Python via `on_create` / `on_update` / `on_collision` / `on_animation_complete` / `on_button_clicked`
+- Python calls back for input, physics, transforms, logging, animation, and runtime entity create/destroy/lookup
+- User scripts hot-load from the project directory, including subpackages (`enemies/boss.py` → `import enemies.boss`)
+
+**Editor (Hamster-Wheel)**
+- Dockless ImGui editor: hierarchy, property editor, asset browser, console, spritesheet slicer, animation timeline, project hub
+- Entity picking, transform gizmos, 8-handle resize, context menus
+- **Non-destructive play mode** — scene state is snapshotted on Play and fully restored on Stop (Unity-style)
+- **Popout play window** sized to the project's target resolution, with input routed to it
+- Asset identity via `.meta` **sidecars** that survive renames; a Win32 file watcher syncs external changes live
+- Spritesheet slicing into named sub-sprites; a `Sprite` references a whole texture or a sub-sprite through one UUID
+
+**Packaging**
+- Standalone **Windows installer** (Inno Setup) that runs on a machine with **no Python and no Visual Studio** — CPython is bundled via the official embeddable package and the MSVC runtime ships app-local
+
+**Not implemented / out of scope:** audio, networking, 3D, lighting, and a standalone runtime-only player (the editor hosts play mode today).
+
+## Tech stack
+
+| | |
+|---|---|
+| **Language** | C++20 (engine), Python 3.11 (gameplay scripts) |
+| **Graphics** | OpenGL 4.0 via GLAD; Dear ImGui (editor UI) |
+| **Bindings** | pybind11 (embedded interpreter + C++↔Python module) |
+| **ECS** | EnTT |
+| **Physics** | Box2D 3.0.1 |
+| **Math / windowing / images** | GLM, GLFW, stb_image |
+| **Misc** | tinyfiledialogs, Boost (UUID only) |
+| **Build** | CMake 3.28+, Ninja, clang-cl (LLVM/MSVC ABI) |
+| **Tests** | CTest smoke test exercising the C++↔Python boundary |
+
+## Architecture
+
+Hamster is three CMake subprojects with a deliberate dependency direction:
+
+```
+Hamster-Wheel  (editor executable: ImGui panels, scene viewport, project hub)
+      │  links
+      ▼
+Hamster-Core   (static lib: app loop, EnTT ECS, OpenGL renderer, Box2D,
+      │         AssetManager, Scene/Project serialization, pybind interpreter)
+      ▲  imports at runtime
+      │
+Hamster-Py     (pybind11 extension → Hamster.pyd: exposes C++ types to Python)
+```
+
+**Core** owns the application loop, the scene/ECS façade, the renderer, the physics world, and the embedded Python interpreter's lifecycle. **Py** is a separate pybind11 module compiled to `Hamster.pyd`, copied into each project so user scripts can `import Hamster`. **Wheel** is the editor — it links Core and renders everything through Dear ImGui.
+
+The main loop, each frame: flush queued layer changes → `Layer::OnUpdate` (editor input, picking) → ImGui pass (all panels + the scene viewport blitted from an FBO) → `Scene::OnUpdate` (Box2D step → contact events → sync physics to transforms → animation advance → Python `on_update`) → swap buffers. Gameplay runs *after* ImGui, so script-driven transform changes appear on the next frame's render.
+
+The **C++↔Python boundary** is one-directional by design: C++ owns the loop and calls into Python; Python calls back only through a fixed surface on `HamsterBehaviour` and the `EntityHandle` returned by lookups. A single interpreter lives for the whole process.
+
+For the full breakdown — module map, the per-frame data flow, the binding table, asset/sidecar identity, and serialization — see [`docs/architecture.md`](docs/architecture.md).
+
+## Building & running
+
+**Prerequisites (Windows):** [LLVM/clang-cl](https://releases.llvm.org/), [CMake](https://cmake.org/) 3.28+, [Ninja](https://ninja-build.org/), and [Python 3.11](https://www.python.org/) (for the embedded interpreter). pybind11 and all other dependencies are vendored as submodules — no package manager needed.
+
+```powershell
+# clone with submodules
+git clone --recurse-submodules https://github.com/jadenjinnn/Hamster.git
+cd Hamster
+
+# configure (Ninja + clang-cl + Python 3.11)
+cmake -G "Ninja" `
+  -DCMAKE_BUILD_TYPE=Debug `
+  -DCMAKE_C_COMPILER="C:/Program Files/LLVM/bin/clang-cl.exe" `
+  -DCMAKE_CXX_COMPILER="C:/Program Files/LLVM/bin/clang-cl.exe" `
+  -DPython_ROOT_DIR="C:/Path/To/Python311" `
+  -DCMAKE_CXX_FLAGS="/EHsc -Wno-unused-command-line-argument" `
+  -S . -B build
+
+# build the editor
+cmake --build build --target Hamster-Wheel -j 8
+
+# run it
+.\build\Hamster-Wheel\Hamster-Wheel.exe
+```
+
+The editor opens to the **project hub** — create a project, add an entity, attach a Python script (or drop a sprite in), and press **Play**. New projects scaffold `Assets/{Textures,Scripts,Animations}` and copy in the Python module automatically.
+
+**Smoke test** (builds the engine, embeds Python, runs one frame, exercises the bindings):
+
+```powershell
+ctest --test-dir build -R SmokeTest --output-on-failure
+```
+
+**Packaging an installer** (produces `dist/HamsterSetup.exe`, requires [Inno Setup 6](https://jrsoftware.org/isdl.php)):
+
+```powershell
+cmake --build build-release --target Hamster-Wheel Hamster -j 8   # Release build
+.\Scripts\package.ps1 -MakeInstaller
+```
+
+Full build recipe and flag notes live in [`docs/build.md`](docs/build.md).
+
+## Engineering highlights
+
+A few problems worth calling out:
+
+- **Interpreter lifetime across the C++/Python boundary.** Any C++ object holding a `pybind11::object` must release it *before* `Py_Finalize`, or the implicit member destruction decrefs Python objects on a dead interpreter and crashes. The fix was to make `Application`'s destructor finalize Python *last*, after explicitly releasing every pybind-holding member — a non-obvious ordering invariant that a clean exit depends on.
+
+- **Picking and culling without GPU stalls.** Entity selection originally re-rendered the whole scene to an offscreen buffer and did a `glReadPixels` readback every frame the cursor moved — a pipeline stall. That was replaced with a per-frame quadtree spatial index over the ECS, giving O(log n + k) point-picking and viewport-rect culling; combined with same-texture sprite batching, the release build holds 60+ fps at 5,000 sprites with live hover-picking.
+
+- **Non-destructive play mode.** Pressing Play snapshots the scene by reusing the existing stream-based serializer into an in-memory buffer; Stop restores it. The restore is deferred to the top of the next frame rather than run inline — doing it inline wiped the ECS registry mid-iteration during a script callback, a use-after-free on the EnTT view. Runtime-spawned entities, physics-moved transforms, and script-mutated state all revert cleanly.
+
+- **A Python-free Windows install.** The engine embeds CPython, so shipping it normally requires the user to have the exact Python installed. The installer instead bundles CPython's official *embeddable* package with an isolated `._pth`, ships the MSVC runtime app-local, and a packaging script asserts a file manifest before Inno Setup packs it — so it launches and runs scripted gameplay on a machine that has never had Python or Visual Studio.
+
+## Documentation
+
+- [`docs/architecture.md`](docs/architecture.md) — full system design, module map, data flow
+- [`docs/build.md`](docs/build.md) — toolchain, build, and packaging recipe
+- Hosted guide: <https://doritothepug.github.io/Hamster>
