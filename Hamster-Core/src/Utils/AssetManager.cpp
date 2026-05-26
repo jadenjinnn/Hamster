@@ -187,14 +187,28 @@ namespace Hamster {
         m_Scripts.emplace(uuid, script);
     }
 
+    // Defined below; forward-declared so AddDefaultScript can reuse it.
+    static std::string ModuleNameForScript(
+        const std::filesystem::path &scriptPath,
+        const std::filesystem::path &projectDir);
+
     UUID AssetManager::AddDefaultScript() {
         UUID scriptUUID;
 
         std::filesystem::path scriptPath =
                 Scripting::GenerateDefaultScript(&scriptUUID);
 
+        // Import by dotted module name (e.g. Assets.Scripts.Untitled_Script),
+        // exactly as LoadProjectScripts does: only the project root is on
+        // sys.path, so the bare stem isn't importable and the import would
+        // raise ModuleNotFoundError -> unhandled -> editor crash (bug 0014).
+        const std::filesystem::path projectDir =
+                Project::GetCurrentProject()->GetConfig().ProjectDirectory;
+        const std::string moduleName =
+                ModuleNameForScript(scriptPath, projectDir);
+
         std::shared_ptr<HamsterScript> script =
-                std::make_shared<HamsterScript>(scriptPath, scriptPath.stem().string());
+                std::make_shared<HamsterScript>(scriptPath, moduleName);
 
         script->SetUUID(scriptUUID);
         script->SetName(scriptPath.stem().string());

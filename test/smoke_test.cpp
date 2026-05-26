@@ -523,6 +523,68 @@ int main() {
     std::filesystem::remove_all(tmpProject);
   }
 
+  // ─── bug 0014: scripts under Assets/Scripts/ must import by their dotted
+  // module name. Only the project root is on sys.path (Scripting::AddPathToPy),
+  // so a bare stem isn't importable — AddDefaultScript used to pass the bare
+  // stem, which raised ModuleNotFoundError through the unguarded HamsterScript
+  // ctor and crashed the editor. This guards the dotted-import mechanism the
+  // fix depends on. ───
+  {
+    auto *am = app.GetAssetManager();
+
+    std::filesystem::path tmpProject =
+        std::filesystem::temp_directory_path() / "hamster_newscript_smoke";
+    std::filesystem::remove_all(tmpProject);
+    std::filesystem::create_directories(tmpProject / "Assets" / "Scripts");
+
+    // Editor adds only the project ROOT to sys.path.
+    pybind11::list sysPath = pybind11::module_::import("sys").attr("path");
+    sysPath.append(tmpProject.string());
+
+    const std::filesystem::path scriptFile =
+        tmpProject / "Assets" / "Scripts" / "Untitled_Script.py";
+    {
+      std::ofstream out(scriptFile);
+      out << "import Hamster\nclass test(Hamster.HamsterBehaviour):\n"
+             "    def on_update(self, delta_time): pass\n";
+    }
+
+    // Premise: the bare stem is not importable from the project root. If this
+    // ever stops failing the bug's trigger is gone — and so is the need for the
+    // dotted name, so surface it rather than silently passing.
+    bool bareImportFailed = false;
+    try {
+      pybind11::module_::import("Untitled_Script");
+    } catch (pybind11::error_already_set &) {
+      bareImportFailed = true;
+    }
+    if (!bareImportFailed) {
+      std::cerr << "FAIL: bare-stem import unexpectedly succeeded (test premise)"
+                << std::endl;
+      return 1;
+    }
+
+    // Real path: LoadProjectScripts derives the dotted name and imports it.
+    am->LoadProjectScripts(tmpProject);
+
+    bool registered = false;
+    for (auto const &[uuid, script] : am->GetScriptMap()) {
+      if (script->GetScriptPath() == scriptFile) {
+        registered = true;
+        break;
+      }
+    }
+    if (!registered) {
+      std::cerr << "FAIL: Assets/Scripts script not loaded by dotted name"
+                << std::endl;
+      return 1;
+    }
+    std::cout << "PASS: Assets/Scripts script imports by dotted module name "
+                 "(bug 0014)" << std::endl;
+
+    std::filesystem::remove_all(tmpProject);
+  }
+
   // ─── Missing-script detection on scene load ───
   {
     auto *am = app.GetAssetManager();
