@@ -182,7 +182,7 @@ See `docs/build.md` for the full build recipe (populated in Phase 2). Shape:
 - ~~**Linux install targets in `Hamster-Wheel/CMakeLists.txt`**~~ Fixed: removed in Phase 2.
 - ~~**`ImGui::ShowDemoWindow()` left in `EditorLayer::OnImGuiUpdate`**~~ Fixed: removed.
 - ~~**`HamsterWheelApp.cpp:32` — uninitialized `EditorLayer*`**~~ Fixed: initialized to `nullptr`.
-- **`Hamster-WheelQT/`** — abandoned Qt UI experiment, not in any CMakeLists. Dormant for now; planned to eventually replace Hamster-Wheel.
+- ~~**`Hamster-WheelQT/`** — abandoned Qt UI experiment~~ Removed from the repo (2026-05-26).
 
 ## Open questions
 

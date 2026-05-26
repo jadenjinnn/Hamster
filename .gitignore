@@ -161,6 +161,11 @@ imgui.ini
 dist/
 Scripts/.cache/
 
+### IDE / local-only (de-tracked, kept on disk) ###
+.idea/
+.cmake/
+RESUME_SOURCE.md
+
 ### Python ###
 __pycache__/
 *.pyc
