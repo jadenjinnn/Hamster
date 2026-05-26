@@ -161,15 +161,19 @@ void AnimationPanel::Render() {
             if (kf.time <= previewTime) current = &kf;
             else break;
         }
-        try {
-            auto tex = m_AssetManager->GetTexture(current->textureUUID);
-            if (tex && tex->GetTextureId() != 0) {
-                dl->AddImage(reinterpret_cast<ImTextureID>(
-                                 static_cast<intptr_t>(tex->GetTextureId())),
-                             prevPos,
-                             {prevPos.x + previewSize, prevPos.y + previewSize});
-            }
-        } catch (...) {}
+        // Resolve through the asset manager so sub-sprite keyframes preview
+        // with their UV sub-rect (not the whole parent sheet).
+        Hamster::SpriteSource src =
+            m_AssetManager->ResolveSpriteSource(current->textureUUID);
+        if (src.texture && src.texture->GetTextureId() != 0) {
+            ImVec2 uv0(src.uvRect.x, src.uvRect.y);
+            ImVec2 uv1(src.uvRect.x + src.uvRect.z, src.uvRect.y + src.uvRect.w);
+            dl->AddImage(reinterpret_cast<ImTextureID>(
+                             static_cast<intptr_t>(src.texture->GetTextureId())),
+                         prevPos,
+                         {prevPos.x + previewSize, prevPos.y + previewSize},
+                         uv0, uv1);
+        }
     } else if (g_IconLarge) {
         const char *ic = ICON_FA_IMAGE;
         ImVec2 iSz = g_IconLarge->CalcTextSizeA(36.0f, FLT_MAX, 0, ic);
@@ -205,24 +209,37 @@ void AnimationPanel::Render() {
     if (HToolbarButton(ICON_FA_PLUS "  Add Keyframe")) {
         ImGui::OpenPopup("Add Keyframe");
     }
-    if (ImGui::BeginPopup("Add Keyframe")) {
-        for (auto &[uuid, texture] : m_AssetManager->GetTextureMap()) {
-            Hamster::UUID mUUID = uuid;
-            std::string label = texture->GetName() + "##" + mUUID.GetUUIDString();
-            if (ImGui::Selectable(label.c_str())) {
-                Hamster::AnimationKeyframe kf;
-                kf.textureUUID = uuid;
-                kf.time = m_Keyframes.empty() ? 0.0f : m_Keyframes.back().time + 0.1f;
-                m_Keyframes.push_back(kf);
-                m_Duration = m_Keyframes.back().time;
-                m_SelectedKeyframe = static_cast<int>(m_Keyframes.size()) - 1;
-                m_Dirty = true;
-            }
+    if (HBeginStyledPopup("Add Keyframe")) {
+        auto appendKeyframe = [&](Hamster::UUID uuid) {
+            Hamster::AnimationKeyframe kf;
+            kf.textureUUID = uuid;
+            kf.time = m_Keyframes.empty() ? 0.0f
+                                          : m_Keyframes.back().time + 0.1f;
+            m_Keyframes.push_back(kf);
+            m_Duration = m_Keyframes.back().time;
+            m_SelectedKeyframe = static_cast<int>(m_Keyframes.size()) - 1;
+            m_Dirty = true;
+        };
+        // Sub-sprites first (named, more specific), then whole textures —
+        // mirrors the Sprite / button-image pickers so a keyframe can be a
+        // spritesheet frame, not just a standalone texture.
+        for (const auto &[uuid, ss] : m_AssetManager->GetSubSpriteMap()) {
+            if (!ss) continue;
+            ImGui::PushID(ss->uuid.GetUUIDString().c_str());
+            if (HComboItem(ss->name.c_str(), false)) appendKeyframe(ss->uuid);
+            ImGui::PopID();
         }
-        if (m_AssetManager->GetTextureMap().empty()) {
-            ImGui::TextDisabled("No textures in project");
+        for (const auto &[uuid, texture] : m_AssetManager->GetTextureMap()) {
+            ImGui::PushID(texture->GetUUID().GetUUIDString().c_str());
+            if (HComboItem(texture->GetName().c_str(), false))
+                appendKeyframe(texture->GetUUID());
+            ImGui::PopID();
         }
-        ImGui::EndPopup();
+        if (m_AssetManager->GetTextureMap().empty() &&
+            m_AssetManager->GetSubSpriteMap().empty()) {
+            ImGui::TextDisabled("No textures or sprites in project");
+        }
+        HEndStyledPopup();
     }
 
     // Timeline bar

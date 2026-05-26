@@ -123,23 +123,36 @@ void EditorLayer::OnUpdate() {
         bool uiConsumed = false;
         if (insideViewport) {
             const bool simRunning = !m_Scene->IsSceneSimulationPaused();
-            float panelW = m_LevelEditorAvailRegion.x;
-            float panelH = m_LevelEditorAvailRegion.y;
-            auto uiView = m_Scene->GetRegistry()
-                              .view<Hamster::UIButton, Hamster::ID>();
-            for (auto e : uiView) {
-                auto &btn = uiView.get<Hamster::UIButton>(e);
-                auto &id  = uiView.get<Hamster::ID>(e);
-                Hamster::UIRect r =
-                    m_Renderer->ResolveUIButton(btn, panelW, panelH);
-                if (r.ContainsPoint(mousePosX, mousePosY)) {
+            // UI anchors in the play-area box (world coords), so hit-test in
+            // world coords to match the render. Fall back to panel coords if
+            // there's no project/box.
+            float uiW = m_LevelEditorAvailRegion.x;
+            float uiH = m_LevelEditorAvailRegion.y;
+            float hx = mousePosX, hy = mousePosY;
+            if (auto proj = Hamster::Project::GetCurrentProject()) {
+                uiW = static_cast<float>(proj->GetConfig().TargetWidth);
+                uiH = static_cast<float>(proj->GetConfig().TargetHeight);
+                glm::vec2 w = PanelMouseToWorld(mousePosX, mousePosY);
+                hx = w.x;
+                hy = w.y;
+            }
+
+            // Buttons.
+            auto btnView = m_Scene->GetRegistry()
+                               .view<Hamster::UIButton, Hamster::ID>();
+            for (auto e : btnView) {
+                auto &btn = btnView.get<Hamster::UIButton>(e);
+                auto &id  = btnView.get<Hamster::ID>(e);
+                // Hidden buttons (visible=false, set by scripts at runtime)
+                // are neither drawn nor clickable.
+                if (!btn.visible) continue;
+                Hamster::UIRect r = m_Renderer->ResolveUIButton(btn, uiW, uiH);
+                if (r.ContainsPoint(hx, hy)) {
                     if (simRunning) {
                         Hamster::ButtonClickedEvent be(id.uuid);
                         m_Dispatcher->Post<Hamster::ButtonClickedEvent>(be);
                     } else {
                         m_Hierarchy->SetSelectedEntity(e);
-                        // Begin UI drag — capture offset at mousedown so the
-                        // drag delta accumulates from a fixed start.
                         m_UIHeld = true;
                         m_UIHeldEntity = e;
                         m_UIHeldStartOffset = btn.offset;
@@ -148,12 +161,49 @@ void EditorLayer::OnUpdate() {
                     break;
                 }
             }
+
+            // Text — edit-mode select/drag only (no click events in play).
+            if (!uiConsumed && !simRunning) {
+                auto txtView = m_Scene->GetRegistry()
+                                   .view<Hamster::UIText, Hamster::ID>();
+                for (auto e : txtView) {
+                    auto &txt = txtView.get<Hamster::UIText>(e);
+                    const Hamster::FontAtlas *fa =
+                        (txt.bold && m_Renderer->GetFontAtlasBold() &&
+                         m_Renderer->GetFontAtlasBold()->IsValid())
+                            ? m_Renderer->GetFontAtlasBold()
+                            : m_Renderer->GetFontAtlas();
+                    if (!fa || !fa->IsValid()) continue;
+                    glm::vec2 size = {fa->MeasureWidth(txt.text, txt.fontSize),
+                                      txt.fontSize};
+                    glm::vec2 tl = Hamster::ResolveAnchoredTopLeft(
+                        txt.anchor, txt.offset, size, uiW, uiH);
+                    Hamster::UIRect r{tl.x, tl.y, size.x, size.y};
+                    if (r.ContainsPoint(hx, hy)) {
+                        m_Hierarchy->SetSelectedEntity(e);
+                        m_UIHeld = true;
+                        m_UIHeldEntity = e;
+                        m_UIHeldStartOffset = txt.offset;
+                        uiConsumed = true;
+                        break;
+                    }
+                }
+            }
         }
 
         // Pass 1 — grabbers (only if something is selected).
         int grabberID = -1;
         entt::entity selectedEntity = m_Hierarchy->GetSelectedEntity();
-        if (!uiConsumed && insideViewport && selectedEntity != entt::null &&
+        // UI entities don't use the transform resize grabbers — they're
+        // anchored/auto-sized — so skip the grabber FBO pick for them.
+        bool selIsUI = selectedEntity != entt::null &&
+                       m_Scene->GetRegistry().valid(selectedEntity) &&
+                       (m_Scene->GetRegistry().all_of<Hamster::UIButton>(
+                            selectedEntity) ||
+                        m_Scene->GetRegistry().all_of<Hamster::UIText>(
+                            selectedEntity));
+        if (!uiConsumed && !selIsUI && insideViewport &&
+            selectedEntity != entt::null &&
             m_Scene->GetRegistry().valid(selectedEntity)) {
             glEnable(GL_SCISSOR_TEST);
             glScissor(0, 0, m_LevelEditorAvailRegion.x,
@@ -319,18 +369,33 @@ void EditorLayer::OnUpdate() {
     // mouse always moves the rect right regardless of which corner it
     // anchors to.
     if (m_UIHeld && m_UIHeldEntity != entt::null &&
-        m_Scene->GetRegistry().valid(m_UIHeldEntity) &&
-        m_Scene->GetRegistry().all_of<Hamster::UIButton>(m_UIHeldEntity)) {
-        auto &btn = m_Scene->GetRegistry().get<Hamster::UIButton>(m_UIHeldEntity);
-        ImVec2 d = ImGui::GetMouseDragDelta();
-        float xSign = (btn.anchor == Hamster::UIAnchor::TopRight ||
-                       btn.anchor == Hamster::UIAnchor::MiddleRight ||
-                       btn.anchor == Hamster::UIAnchor::BottomRight) ? -1.0f : 1.0f;
-        float ySign = (btn.anchor == Hamster::UIAnchor::BottomLeft ||
-                       btn.anchor == Hamster::UIAnchor::BottomCentre ||
-                       btn.anchor == Hamster::UIAnchor::BottomRight) ? -1.0f : 1.0f;
-        btn.offset.x = m_UIHeldStartOffset.x + d.x * xSign;
-        btn.offset.y = m_UIHeldStartOffset.y + d.y * ySign;
+        m_Scene->GetRegistry().valid(m_UIHeldEntity)) {
+        auto &reg = m_Scene->GetRegistry();
+        Hamster::UIAnchor anchor = Hamster::UIAnchor::TopLeft;
+        glm::vec2 *offset = nullptr;
+        if (reg.all_of<Hamster::UIButton>(m_UIHeldEntity)) {
+            auto &b = reg.get<Hamster::UIButton>(m_UIHeldEntity);
+            anchor = b.anchor; offset = &b.offset;
+        } else if (reg.all_of<Hamster::UIText>(m_UIHeldEntity)) {
+            auto &t = reg.get<Hamster::UIText>(m_UIHeldEntity);
+            anchor = t.anchor; offset = &t.offset;
+        }
+        if (offset) {
+            ImVec2 d = ImGui::GetMouseDragDelta();
+            // Offset is in play-area (world) units when anchored to the box, so
+            // convert the pixel drag by the editor zoom.
+            float zoom = m_Renderer->GetZoom();
+            float div = (Hamster::Project::GetCurrentProject() && zoom > 0.0f)
+                            ? zoom : 1.0f;
+            float xSign = (anchor == Hamster::UIAnchor::TopRight ||
+                           anchor == Hamster::UIAnchor::MiddleRight ||
+                           anchor == Hamster::UIAnchor::BottomRight) ? -1.0f : 1.0f;
+            float ySign = (anchor == Hamster::UIAnchor::BottomLeft ||
+                           anchor == Hamster::UIAnchor::BottomCentre ||
+                           anchor == Hamster::UIAnchor::BottomRight) ? -1.0f : 1.0f;
+            offset->x = m_UIHeldStartOffset.x + (d.x / div) * xSign;
+            offset->y = m_UIHeldStartOffset.y + (d.y / div) * ySign;
+        }
     }
 
     // ── Render scene into FBO ──
@@ -392,42 +457,65 @@ void EditorLayer::OnUpdate() {
     }
 
     if (selValid) {
-        m_Renderer->DrawGuizmo(
-            m_Scene->GetRegistry().get<Hamster::Transform>(sel),
-            Hamster::Translate, false);
+        auto &reg = m_Scene->GetRegistry();
+        bool isUI = reg.all_of<Hamster::UIButton>(sel) ||
+                    reg.all_of<Hamster::UIText>(sel);
+        if (isUI) {
+            // UI entities live in anchored play-area space, not at their
+            // Transform. Draw the selection outline at the resolved UI rect
+            // (world coords — the play-area box IS world (0,0)→(target)), so
+            // it tracks the element as its anchor/offset change.
+            float uiW = m_LevelEditorAvailRegion.x;
+            float uiH = m_LevelEditorAvailRegion.y;
+            if (auto proj = Hamster::Project::GetCurrentProject()) {
+                uiW = static_cast<float>(proj->GetConfig().TargetWidth);
+                uiH = static_cast<float>(proj->GetConfig().TargetHeight);
+            }
+            Hamster::UIRect r{};
+            bool haveRect = false;
+            if (reg.all_of<Hamster::UIButton>(sel)) {
+                r = m_Renderer->ResolveUIButton(reg.get<Hamster::UIButton>(sel),
+                                                uiW, uiH);
+                haveRect = true;
+            } else {
+                auto &txt = reg.get<Hamster::UIText>(sel);
+                const Hamster::FontAtlas *fa =
+                    (txt.bold && m_Renderer->GetFontAtlasBold() &&
+                     m_Renderer->GetFontAtlasBold()->IsValid())
+                        ? m_Renderer->GetFontAtlasBold()
+                        : m_Renderer->GetFontAtlas();
+                if (fa && fa->IsValid()) {
+                    glm::vec2 size = {fa->MeasureWidth(txt.text, txt.fontSize),
+                                      txt.fontSize};
+                    glm::vec2 tl = Hamster::ResolveAnchoredTopLeft(
+                        txt.anchor, txt.offset, size, uiW, uiH);
+                    r = Hamster::UIRect{tl.x, tl.y, size.x, size.y};
+                    haveRect = true;
+                }
+            }
+            if (haveRect) {
+                m_Renderer->DrawWorldRectOutline(
+                    glm::vec2(r.x, r.y), glm::vec2(r.w, r.h),
+                    glm::vec3(0.2f, 0.5f, 1.0f), 2.0f, 1.0f);
+            }
+        } else {
+            m_Renderer->DrawGuizmo(reg.get<Hamster::Transform>(sel),
+                                   Hamster::Translate, false);
+        }
     }
 
-    // ── UI pass (screen-space, always on top) ──
-    // The renderer's world projection covers (0..vpW, 0..vpH) which is the
-    // full window FB; the level-editor FBO is panel-sized. For UI we want
-    // pixel-perfect alignment with the panel, so switch viewport here. The
-    // viewport gets reset right after FBO unbind below so the intermediate
-    // state never escapes this block.
+    // ── UI pass ──
+    // Render UI through the WORLD projection (the viewport set above,
+    // 0..vpW x 0..vpH, is still active) anchored within (0,0)->(target), so it
+    // lands on the play-area box and pans/zooms with it — same projection that
+    // drew the play-area outline. Without a project, fall back to panel-anchored
+    // screen-space UI. (bug 0019)
     if (m_LevelEditorAvailRegion.x > 0 && m_LevelEditorAvailRegion.y > 0) {
-        // Anchor the UI preview to the play-area box (world (0,0)->(target)) so
-        // it matches where it renders in the play window — not to the whole
-        // panel. Map that world rect to an FBO viewport via the inverse of
-        // PanelMouseToWorld, then render the UI (sized to the target res) into
-        // it. (bug 0019)
-        auto activeProject = Hamster::Project::GetCurrentProject();
-        float zoom = m_Renderer->GetZoom();
-        if (activeProject && zoom > 0.0f) {
+        if (auto activeProject = Hamster::Project::GetCurrentProject()) {
             const auto &cfg = activeProject->GetConfig();
-            glm::vec2 cam = m_Renderer->GetCameraOffset();
-            float tw = static_cast<float>(cfg.TargetWidth);
-            float th = static_cast<float>(cfg.TargetHeight);
-            float panelH = m_LevelEditorAvailRegion.y;
-            float vpH = static_cast<float>(m_Renderer->GetViewportHeight());
-            // Play-area world (0,0)->(tw,th) in panel (top-left) coords:
-            float px = -cam.x * zoom;
-            float py = -cam.y * zoom - (vpH - panelH);
-            float pw = tw * zoom;
-            float ph = th * zoom;
-            // glViewport is bottom-left within the panel-sized FBO:
-            glViewport(static_cast<int>(px),
-                       static_cast<int>(panelH - (py + ph)),
-                       static_cast<int>(pw), static_cast<int>(ph));
-            m_Scene->OnRenderUI(tw, th);
+            m_Scene->OnRenderUI(static_cast<float>(cfg.TargetWidth),
+                                static_cast<float>(cfg.TargetHeight),
+                                /*worldProjection=*/true);
         } else {
             glViewport(0, 0,
                        static_cast<int>(m_LevelEditorAvailRegion.x),

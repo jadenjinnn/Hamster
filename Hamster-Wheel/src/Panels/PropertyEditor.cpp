@@ -524,7 +524,11 @@ void PropertyEditor::Render() {
         float bg[4] = {m_UIButton->bgColour.r, m_UIButton->bgColour.g,
                        m_UIButton->bgColour.b, m_UIButton->bgColour.a};
         ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - kScrollGap);
-        if (ImGui::ColorEdit4("##uibtn_bg", bg, ImGuiColorEditFlags_NoLabel)) {
+        // AlphaBar surfaces the alpha channel as a draggable bar — drag it to 0
+        // for a fully transparent background (image-only buttons).
+        if (ImGui::ColorEdit4("##uibtn_bg", bg,
+                              ImGuiColorEditFlags_NoLabel |
+                                  ImGuiColorEditFlags_AlphaBar)) {
             m_UIButton->bgColour = glm::vec4(bg[0], bg[1], bg[2], bg[3]);
         }
         ImGui::PopItemWidth();
@@ -555,6 +559,49 @@ void PropertyEditor::Render() {
         m_UIButton->textAlign = static_cast<Hamster::UITextAlign>(alignIdx);
 
         HCheckbox("Bold", "##uibtn_bold", &m_UIButton->bold);
+
+        ImGui::Dummy({0, 6});
+        // Optional background image. Mirrors the Sprite "Select Sprite" picker:
+        // sub-sprites first (named), then whole textures; both set imageUUID.
+        ImGui::Text("Image");
+        if (!Hamster::UUID::IsNil(m_UIButton->imageUUID)) {
+            std::string imgName = "(missing)";
+            if (auto ss = m_AssetManager->GetSubSprite(m_UIButton->imageUUID)) {
+                imgName = ss->name;
+            } else {
+                const auto &texMap = m_AssetManager->GetTextureMap();
+                auto it = texMap.find(m_UIButton->imageUUID);
+                if (it != texMap.end() && it->second)
+                    imgName = it->second->GetName();
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", imgName.c_str());
+        }
+        if (HButton("Select Image", avail)) {
+            ImGui::OpenPopup("Select Image");
+        }
+        if (HBeginStyledPopup("Select Image")) {
+            if (HComboItem("(none)", Hamster::UUID::IsNil(m_UIButton->imageUUID)))
+                m_UIButton->imageUUID = Hamster::UUID::GetNil();
+            for (const auto &[uuid, ss] : m_AssetManager->GetSubSpriteMap()) {
+                if (!ss) continue;
+                ImGui::PushID(ss->uuid.GetUUIDString().c_str());
+                bool isSel =
+                    m_UIButton->imageUUID.GetUUID() == ss->uuid.GetUUID();
+                if (HComboItem(ss->name.c_str(), isSel))
+                    m_UIButton->imageUUID = ss->uuid;
+                ImGui::PopID();
+            }
+            for (const auto &[uuid, texture] : m_AssetManager->GetTextureMap()) {
+                ImGui::PushID(texture->GetUUID().GetUUIDString().c_str());
+                bool isSel = m_UIButton->imageUUID.GetUUID() ==
+                             texture->GetUUID().GetUUID();
+                if (HComboItem(texture->GetName().c_str(), isSel))
+                    m_UIButton->imageUUID = texture->GetUUID();
+                ImGui::PopID();
+            }
+            HEndStyledPopup();
+        }
 
         SectionSeparator();
     }
