@@ -9,6 +9,7 @@
 
 #include "Theme.h"
 #include "IconsFontAwesome6.h"
+#include "Components/Components.h" // HBeginStyledPopup / HComboItem — app-wide dropdown styling
 
 static constexpr float kTopBarHeight = 50.0f;
 static constexpr float kHeaderHeight = 90.0f;
@@ -334,22 +335,24 @@ void ProjectHubLayer::RenderCardGrid(float width, float startY, float height) {
     }
   }
 
-  if (ImGui::BeginPopup("##CardContextMenu")) {
+  // Use the app-wide styled popup helpers so this matches every other dropdown
+  // (tight padding) instead of ImGui's default chunky MenuItem spacing.
+  if (HBeginStyledPopup("##CardContextMenu")) {
     if (m_ContextMenuIndex >= 0 &&
         m_ContextMenuIndex < static_cast<int>(entries.size())) {
-      if (ImGui::MenuItem(ICON_FA_PEN "  Rename")) {
+      if (HComboItem(ICON_FA_PEN "  Rename", false)) {
         m_RenameIndex = m_ContextMenuIndex;
         auto &name = entries[m_RenameIndex].name;
         strncpy(m_RenameBuffer, name.c_str(), sizeof(m_RenameBuffer) - 1);
         m_RenameBuffer[sizeof(m_RenameBuffer) - 1] = '\0';
         m_ShowRenameModal = true;
       }
-      if (ImGui::MenuItem(ICON_FA_TRASH "  Delete")) {
+      if (HComboItem(ICON_FA_TRASH "  Delete", false)) {
         m_DeleteIndex = m_ContextMenuIndex;
         m_ShowDeleteConfirm = true;
       }
     }
-    ImGui::EndPopup();
+    HEndStyledPopup();
   }
 
   float totalH = rows * (cardH + kCardGap) + 16.0f;
@@ -432,11 +435,14 @@ void ProjectHubLayer::RenderDeleteConfirmation() {
 
   ImVec2 center = ImGui::GetMainViewport()->GetCenter();
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-  ImGui::SetNextWindowSize(ImVec2(460, 180));
+  // Width fixed; height auto-fits the content (0 = auto-size) so the text +
+  // buttons never overflow into a scrollbar. NoScrollbar belt-and-suspenders.
+  ImGui::SetNextWindowSize(ImVec2(460, 0));
 
   if (ImGui::BeginPopupModal("Delete Project?", nullptr,
                              ImGuiWindowFlags_NoResize |
-                                 ImGuiWindowFlags_NoMove)) {
+                                 ImGuiWindowFlags_NoMove |
+                                 ImGuiWindowFlags_NoScrollbar)) {
     auto &entries = m_Registry.GetEntries();
     if (m_DeleteIndex >= 0 &&
         m_DeleteIndex < static_cast<int>(entries.size())) {
